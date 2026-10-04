@@ -1,999 +1,683 @@
-# Yeni Nesil Ayrıştırılmış Register Tabanlı CPU Mimarisi
+# NEXSUS Yeni Nesil Kişisel Bilgisayar Mimarisi
 
 ## 1. Giriş
 
-Bu CPU mimarisinin temel amacı, klasik işlemci tasarımlarında farklı görevler için aynı register ve bellek yapılarının kullanılmasından kaynaklanan veri erişim darboğazlarını azaltmak ve işlemcinin farklı işlem türlerini fiziksel olarak ayrıştırmaktır.
+Günümüzde kişisel bilgisayar mimarisi, çok uzun bir teknolojik evrimin sonucudur. Ancak bu evrim yalnızca yeni teknolojilerin eklenmesi şeklinde gerçekleşmiştir. Önceki nesillerden kalan birçok donanım ve yazılım katmanı, yeni sistemlerde de uyumluluk amacıyla yaşamaya devam etmektedir.
 
-Mimari üç temel register alanı üzerine kuruludur:
+Modern bilgisayarlar çok güçlü işlemcilere, hızlı belleklere, yüksek bant genişlikli bağlantılara ve özel işlem birimlerine sahip olmasına rağmen temel sistem organizasyonu hâlâ tarihsel olarak oluşmuş birçok kavramı taşımaktadır.
 
-- **RA00–RA63:** Application / Scalar Register Bank
-- **DA00–DA63:** Data Register Bank
-- **MA00–MA31:** Matrix / Vector Register Bank
+NEXSUS yaklaşımı ise mevcut PC mimarisini geliştirmek yerine, kişisel bilgisayarı **işlemci, bellek, depolama, firmware ve çevre birimleri birlikte düşünülerek sıfırdan tasarlanan bir platform** olarak ele alır.
 
-Bunlara ek olarak kod belleği ve veri belleği birbirinden fiziksel ve mantıksal olarak ayrılır.
+Temel amaç daha fazla donanım eklemek değil;
 
-Temel yapı:
+> **gereksiz tarihsel katmanları ortadan kaldırmak ve birbirleriyle doğal olarak çalışan yeni bir bilgisayar ekosistemi oluşturmaktır.**
 
-```text
-                         CPU
-                          │
-              ┌───────────┴───────────┐
-              │ Instruction / Control │
-              │       Unit            │
-              └───────────┬───────────┘
-                          │
-              ┌───────────┴───────────┐
-              │    Instruction        │
-              │       Decode          │
-              └───────┬───────┬───────┘
-                      │       │
-                Scalar Path   Vector/Matrix Path
-                      │       │
-              ┌───────▼───┐ ┌─▼────────────┐
-              │ RA00-RA63 │ │ MA00-MA31    │
-              │ 64 × 64b  │ │ 32 × 256b   │
-              └───────┬───┘ └──────┬───────┘
-                      │             │
-                   Scalar ALU   Matrix/Vector ALU
-                      │             │
-              ┌───────▼───┐        │
-              │ DA00-DA63 │◄───────┘
-              │ 64 × 64b  │
-              └───────┬───┘
-                      │
-                 Load / Store
-                      │
-                ┌─────▼─────┐
-                │ DATA RAM  │
-                └───────────┘
-```
+Bu sistemin temel bileşenleri:
 
-Buradaki temel prensip, **instruction, application state, data ve vector/matrix işlemlerinin aynı kaynak için birbirleriyle yarışmasını mümkün olduğunca önlemektir.**
+- Nexus Flow programlama dili,
+- NEXSUS CPU,
+- FAPU yardımcı işlemcisi,
+- NPU öğrenme ve sistem davranışı işlemcisi,
+- MOSRAM çalışma belleği,
+- M-SSD kalıcı depolama,
+- SCP sistem kontrol işlemcisi,
+- yeni nesil sistem firmware'i,
+- ortak kablolu çevre birimi arayüzü,
+- çoklu cihaz destekli kablosuz iletişim sistemi
+
+olarak düşünülmektedir.
 
 ---
 
-# 2. Bellek Mimarisi
+# 2. Temel Mimari Felsefe
 
-Mimari iki temel bellek alanını birbirinden ayırır.
+NEXSUS mimarisinin temel farkı, bilgisayarı yalnızca CPU merkezli düşünmemesidir.
 
-## 2.1. CODE Memory
-
-CODE memory yalnızca veya ağırlıklı olarak program kodlarının tutulduğu alandır.
-
-Önerilen mimari kapasite:
+Klasik yaklaşım kabaca:
 
 ```text
-Normal hedef:       ~4 GB
-Mimari üst sınır:   ~8 GB
+CPU
+ │
+ ├── RAM
+ ├── Chipset
+ ├── Storage
+ ├── USB
+ ├── Network
+ └── Other Devices
 ```
 
-Buradaki 4–8 GB değeri tek bir programın mutlaka bu kadar kod kullanacağı anlamına gelmez. Amaç, sistemin toplam aktif uygulama/kod alanı açısından geniş bir adresleme kapasitesine sahip olmasıdır.
+şeklinde gelişmiştir.
 
-CODE memory'nin temel özelliği:
-
-- Instruction Fetch için kullanılır.
-- Data RAM ile aynı fiziksel erişim yolunu paylaşmaz.
-- Çoğunlukla read ağırlıklıdır.
-- Instruction pipeline tarafından sürekli okunabilir.
-
-Temel akış:
+NEXSUS yaklaşımında ise bütün birimler ortak bir sistem mimarisinin parçalarıdır:
 
 ```text
-CODE MEMORY
-     │
-     ▼
-Instruction Fetch
-     │
-     ▼
-Instruction Decode
-     │
-     ├──────────► RA / Scalar
-     ├──────────► DA / Data
-     └──────────► MA / Vector-Matrix
+                     NEXSUS SYSTEM
+                           │
+             ┌─────────────┼─────────────┐
+             │             │             │
+           CPU            FAPU          NPU
+             │             │             │
+             └─────────────┼─────────────┘
+                           │
+                    SYSTEM FABRIC
+                           │
+             ┌─────────────┼─────────────┐
+             │             │             │
+          MOSRAM         M-SSD          SCP
+                           │
+                    I/O / NETWORK
 ```
 
-Bu ayrım sayesinde işlemci veri belleğine erişirken instruction fetch işleminin aynı kaynağı beklemesi gerekmez.
+Buradaki amaç her iş için ayrı bir kontrolcü üretmek değildir.
+
+Her birimin **kendi doğal görev alanı** bulunur.
 
 ---
 
-# 3. DATA Memory
+# 3. NEXSUS CPU
 
-DATA memory uygulamanın çalışma sırasında kullandığı değişkenler, büyük veri kümeleri, dosya tamponları ve diğer çalışma verileri için kullanılır.
+NEXSUS CPU sistemin genel amaçlı işlem merkezidir.
 
-Başlangıç mimarisi:
+Daha önce tanımlanan temel register organizasyonu:
 
 ```text
-Minimum:       8 GB
-Genişleme:     16 GB
-               32 GB
-               64 GB
-               128 GB+
+RA00–RA63
+DA00–DA63
+MA00–MA31
 ```
 
-CODE memory sabit veya büyük ölçüde sabit tutulurken DATA memory sistem tasarımına göre genişletilebilir.
+şeklindedir.
 
-Bu ayrım özellikle büyük veri kullanan uygulamalarda önemlidir.
+RA genel amaçlı scalar işlemler için,
+
+DA veri işlemleri için,
+
+MA ise yüksek paralellikli vektör/matris işlemleri için kullanılmaktadır.
+
+Burada CPU'nun görevi:
+
+- program yürütmek,
+- kontrol akışını yönetmek,
+- genel hesaplamaları gerçekleştirmek,
+- sistem kaynaklarını kullanmak,
+- diğer işlem birimleriyle koordinasyon kurmaktır.
+
+NEXSUS CPU bütün hesaplamaları kendisi yapmak zorunda değildir.
+
+Bu, mimarinin önemli farklarından biridir.
+
+---
+
+# 4. FAPU
+
+FAPU, CPU'nun yapamadığı işleri yapmak için eklenmiş klasik bir yardımcı işlemci değildir.
+
+FAPU'nun amacı CPU üzerinde pahalı veya özel işlem gerektiren hesaplamaları kendi çalışma alanına almaktır.
+
+FAPU içerisinde zaman içerisinde farklı hesaplama sınıfları bulunabilir:
+
+```text
+FAPU
+ │
+ ├── yüksek hassasiyetli matematik
+ ├── paralel hesaplama
+ ├── özel sayısal işlemler
+ ├── kriptografik işlemler
+ └── uygulamaya özel hesaplama
+```
+
+Böylece şifreleme için ayrıca tamamen bağımsız bir kripto işlemcisi zorunlu değildir.
+
+Kriptografik algoritmalar FAPU'nun yüksek hızlı hesaplama kabiliyetlerinden yararlanabilir.
+
+Bu yaklaşım, çok sayıda küçük özel işlemci yerine **daha genel yetenekli bir yardımcı işlemci** kullanır.
+
+---
+
+# 5. NPU — Sistem Öğrenme Birimi
+
+NEXSUS sistemindeki NPU'nun temel görevi klasik anlamda AI uygulamalarını çalıştırmak değildir.
+
+NPU daha küçük ve daha özel bir öğrenme sistemi olarak tasarlanabilir.
+
+Temel amacı:
+
+> **bilgisayarın çalışma alışkanlıklarını öğrenmek ve gelecekteki davranışları öngörerek sistemi optimize etmek.**
+
+Örneğin NPU zaman içerisinde:
+
+- hangi uygulamaların birlikte kullanıldığını,
+- hangi uygulamaların hangi saatlerde çalıştırıldığını,
+- hangi dosyaların sık kullanıldığını,
+- hangi işlemlerin tekrarladığını,
+- hangi kaynakların ne zaman gerektiğini
+
+öğrenebilir.
+
+Bunun sonucunda:
+
+```text
+Kullanıcı davranışı
+        ↓
+       NPU
+        ↓
+Örüntü / tahmin
+        ↓
+Sistem optimizasyonu
+        ↓
+CPU / FAPU / MOSRAM / M-SSD
+```
+
+oluşabilir.
+
+Bu nedenle NPU'nun sistemdeki görevi doğrudan işlem gücü eklemekten çok **bilgisayarın zaman içerisinde kullanıcıya uyum sağlamasıdır.**
+
+Kişisel bilgisayarda bu yaklaşım özellikle anlamlıdır; çünkü öğrenilen model belirli bir kullanıcının kullanım alışkanlıklarına göre oluşur.
+
+---
+
+# 6. MOSRAM
+
+MOSRAM sistemin ana çalışma belleği olarak düşünülmektedir.
+
+MOSRAM'ın temel yaklaşımı MOSFET gate bölgesindeki elektriksel yük/gerilim durumunu veri saklama mekanizmasının parçası olarak kullanmaktır.
+
+Önerilen yapının önemli özelliği, bellek erişiminin yüksek paralelliğe uygun olmasıdır.
+
+Bu nedenle klasik bellek mimarisindeki veri taşıma darboğazlarının önemli bir kısmı farklı şekilde ele alınabilir.
+
+MOSRAM:
+
+```text
+              MOSRAM
+                 │
+       ┌─────────┼─────────┐
+       │         │         │
+      CPU       FAPU      NPU
+       │         │         │
+       └─────────┼─────────┘
+```
+
+şeklinde ortak çalışma alanı oluşturabilir.
+
+Burada ayrıca büyük bir veri taşıma işlemcisi kullanmak zorunlu olmayabilir.
+
+Bunun yerine MOSRAM'ın fiziksel yapısından yararlanılarak **bank paralelliği ve eşzamanlı erişim** ön plana çıkarılabilir.
+
+Bu, MOSRAM'ın yalnızca daha hızlı RAM olması yerine sistem mimarisini değiştiren bir bileşen olmasını sağlayabilir.
+
+---
+
+# 7. M-SSD
+
+MOSRAM kısa/orta süreli çalışma belleği ise M-SSD kalıcı depolama katmanıdır.
+
+M-SSD'nin amacı mevcut SSD teknolojisini yalnızca daha hızlı hale getirmek değil, MOSRAM ve NEXSUS mimarisine doğal şekilde bağlanan yeni bir kalıcı bellek sistemi oluşturmaktır.
+
+```text
+              NEXSUS
+                 │
+              MOSRAM
+                 │
+               M-SSD
+```
+
+Bu yapı klasik:
+
+```text
+CPU → RAM → SATA/NVMe → SSD
+```
+
+modelinden farklı bir bellek/depolama hiyerarşisine dönüşebilir.
+
+M-SSD'nin kendi veri yapısı, erişim modeli ve yönetim sistemi NEXSUS mimarisine göre tasarlanabilir.
+
+Bu nedenle taşınabilir depolama cihazları ve USB bellekler için de yeni bir protokol ailesi oluşturulabilir.
+
+---
+
+# 8. SCP — System Control Processor
+
+NEXSUS anakartında ayrıca küçük fakat bağımsız bir sistem kontrol işlemcisi bulunabilir.
+
+**SCP — System Control Processor**
+
+ana CPU'nun yerine geçmez.
+
+Görevi bilgisayarın fiziksel sistem durumunu yönetmektir.
 
 Örneğin:
 
-```text
-CODE
-4 GB
-│
-├── Program A
-├── Program B
-├── Program C
-└── System Code
+- güç açma/kapatma,
+- reset,
+- sıcaklık izleme,
+- fan kontrolü,
+- güç yönetimi,
+- donanım başlatma,
+- hata izleme,
+- firmware işlemleri,
+- çevre birimlerinin keşfi
 
-DATA
-64 GB
-│
-├── Application Data
-├── Buffers
-├── Images
-├── Models
-├── Databases
-└── Runtime Data
+SCP tarafından gerçekleştirilebilir.
+
+Böylece ana CPU işletim sistemi çalıştırırken anakartın temel yönetimi başka bir işlemci tarafından gerçekleştirilebilir.
+
+```text
+              NEXSUS CPU
+                  │
+             normal çalışma
+                  │
+────────────────────────────────
+                  │
+                  │
+                 SCP
+                  │
+       fiziksel sistem yönetimi
 ```
 
-Dolayısıyla büyük veri kullanan bir uygulamanın veri ihtiyacı arttığında kod alanının değiştirilmesi gerekmez.
+Bu yaklaşım modern SoC'lerde bulunan platform yönetim denetleyicileriyle aynı genel ihtiyaca cevap verir; ancak NEXSUS'ta baştan tasarlanan bütünsel sistem mimarisinin parçasıdır. Güncel SoC'lerde de platform yönetim kontrolcüleri, yüksek hızlı I/O ve işlem birimleri aynı sistem içinde bütünleştirilebilmektedir.
 
 ---
 
-# 4. RA Register Bank
+# 9. Yeni Firmware Sistemi
 
-RA register bankı işlemcinin ana application/scalar state alanıdır.
+NEXSUS'ta klasik BIOS kavramının doğrudan kullanılmasına gerek yoktur.
 
-```text
-RA00
-RA01
-RA02
-...
-RA61
-RA62
-RA63
-```
+Modern sistemlerde BIOS kavramının yerini büyük ölçüde UEFI tabanlı firmware almış durumdadır; UEFI zaten işletim sistemi ile platform firmware'i arasında standart bir arayüz sağlar.
 
-Toplam:
+Ancak NEXSUS için daha temiz bir yaklaşım:
 
-$$\[
-64 \times 64 = 4096\text{ bit}
-\]$$
-
-yani toplam **512 byte** fiziksel register kapasitesi bulunur.
-
-Her RA registerı 64 bittir.
-
-RA registerlarının görevleri:
-
-- Arithmetic işlemleri
-- Pointer değerleri
-- Fonksiyon parametreleri
-- Return değerleri
-- Local state
-- Geçici değerler
-- Adres hesaplamaları
-- Kontrol değerleri
-
-gibi işlemleri gerçekleştirmektir.
-
-Önemli nokta:
-
-**RA00–RA63 bir adres değeri taşıyan registerlar değildir.**
-
-Bunların kendileri CPU içindeki fiziksel register seçimleridir.
-
-Örneğin:
-
-```text
-ADD RA03, RA07, RA12
-```
-
-şu anlama gelir:
-
-$$\[
-RA12 = RA03 + RA07
-\]$$
-
-CPU instruction decoder doğrudan RA03, RA07 ve RA12 fiziksel registerlarını seçer.
-
-Arada:
-
-```text
-RA03 → başka register → RA03'ün adresi
-```
-
-gibi ikinci bir register adresleme katmanı bulunmaz.
-
----
-
-# 5. DA Register Bank
-
-DA register bankı doğrudan veri yolu ile ilişkili register alanıdır.
-
-```text
-DA00
-DA01
-...
-DA62
-DA63
-```
-
-Toplam:
-
-$$\[
-64 \times 64 = 4096\text{ bit}
-\]$$
-
-kapasiteye sahiptir.
-
-Her register:
-
-$$\[
-64\text{ bit}
-\]$$
-
-genişliğindedir.
-
-DA registerları özellikle DATA memory ile CPU arasındaki yüksek hızlı veri transferinde kullanılır.
-
-Örneğin:
-
-```text
-DATA RAM
-   │
-   ▼
-LOAD
-   │
-   ▼
-DA12
-```
-
-veya:
-
-```text
-DA12
-  │
-  ▼
-STORE
-  │
-  ▼
-DATA RAM
-```
-
-Bu nedenle DA bankı, RA bankından mantıksal olarak ayrılmış bir **data staging / processing register alanı** oluşturur.
-
----
-
-# 6. MA Register Bank
-
-Mimarinin en önemli farklılıklarından biri MA register bankıdır.
-
-```text
-MA00
-MA01
-...
-MA30
-MA31
-```
-
-Toplam:
-
-$$\[
-32 \times 256 = 8192\text{ bit}
-\]$$
-
-yani:
-
-$$\[
-1024\text{ byte}
-\]$$
-
-register kapasitesi vardır.
-
-Her MA registerı fiziksel olarak **256 bit** genişliğindedir.
-
-Ancak bu 256 bitin tek bir 256-bit sayı olarak kullanılması zorunlu değildir.
-
-MA registerları değişken element genişliğine sahiptir.
-
-| İşlem genişliği | Bir MA registerındaki element sayısı |
-|---:|---:|
-| 8 bit | 32 |
-| 16 bit | 16 |
-| 32 bit | 8 |
-| 64 bit | 4 |
-| 128 bit | 2 |
-| 256 bit | 1 |
-
-Örneğin 8-bit modunda:
-
-```text
-MA00
-┌──┬──┬──┬──┬──┬──┬──┬──┬──────┐
-│8 │8 │8 │8 │8 │8 │8 │8 │ ...  │
-└──┴──┴──┴──┴──┴──┴──┴──┴──────┘
-              32 × 8 bit
-```
-
-64-bit modunda:
-
-```text
-MA00
-┌────────┬────────┬────────┬────────┐
-│ 64 bit │ 64 bit │ 64 bit │ 64 bit │
-└────────┴────────┴────────┴────────┘
-```
-
-256-bit modunda ise register tek bir veri olarak kullanılabilir.
-
-Bu yapı MA bankını klasik scalar registerlardan ayırarak doğal bir SIMD/vector/matrix işlem alanı oluşturur.
-
----
-
-# 7. Variable Width İşlem Sistemi
-
-MA registerlarının fiziksel genişliği sabit:
-
-$$\[
-W_{MA}=256\text{ bit}
-\]$$
-
-ancak işlem genişliği:
-
-$$\[
-W_{op}\in\{8,16,32,64,128,256\}
-\]$$
+**NEXSUS System Firmware — NSF**
 
 olabilir.
 
-Dolayısıyla aynı donanım farklı veri tiplerinde çalışabilir.
+Firmware'in görevi:
+
+```text
+Power ON
+   ↓
+SCP
+   ↓
+Hardware discovery
+   ↓
+MOSRAM initialization
+   ↓
+M-SSD discovery
+   ↓
+NEXSUS CPU initialization
+   ↓
+Peripheral discovery
+   ↓
+System configuration
+   ↓
+OS loader
+```
+
+olur.
+
+Firmware sabit bir anakart listesini takip etmek yerine sistemde bulunan donanımları keşfedebilir.
+
+Bu yaklaşım güncel firmware tasarımlarındaki modülerlik eğilimiyle de uyumludur; örneğin Intel'in USF yaklaşımı SoC, platform ve OS payload katmanları arasında daha açık sınırlar ve modüler firmware arayüzleri hedeflemektedir.
+
+---
+
+# 10. BIOS'un Ortadan Kalkması
+
+Buradaki amaç sadece BIOS'un adını değiştirmek değildir.
+
+Eski PC mimarisinden kalan varsayımlar da mümkün olduğunca kaldırılır.
+
+Yeni firmware:
+
+- CPU'yu başlatır,
+- belleği tanır,
+- depolamayı tanır,
+- çevre birimlerini keşfeder,
+- sistem kaynaklarını düzenler,
+- güvenlik kontrollerini yapar,
+- işletim sistemini yükler.
+
+Böylece firmware doğrudan NEXSUS donanım modelinin bir parçası olur.
+
+---
+
+# 11. Kablolu Çevre Birimi Sistemi
+
+NEXSUS için fiziksel bağlantı standardı olarak USB-C benzeri küçük ve ters çevrilebilir bir konnektör kullanılabilir.
+
+Ancak burada USB-C yalnızca **fiziksel bağlantı biçimi** olabilir.
+
+Üzerinde çalışan protokol NEXSUS'a özel olabilir.
+
+Örneğin:
+
+**NPI — NEXSUS Peripheral Interface**
+
+```text
+NEXSUS PORT
+    │
+    ├── Keyboard
+    ├── Mouse
+    ├── Headset
+    ├── Microphone
+    ├── Phone
+    ├── Display
+    ├── Storage
+    └── Other Devices
+```
+
+Aynı fiziksel bağlantı üzerinden farklı cihaz sınıfları çalışabilir.
+
+Cihaz bağlandığında:
+
+```text
+Connect
+   ↓
+Device identification
+   ↓
+Capability discovery
+   ↓
+Interface selection
+   ↓
+Driver / service assignment
+   ↓
+Active
+```
+
+şeklinde otomatik tanımlanabilir.
+
+USB Type-C günümüzde de host/device rolleri, güç yönetimi ve fiziksel yönlendirme gibi ayrı kontrol mekanizmaları gerektiren bir sistemdir. NEXSUS yaklaşımında bu işlevlerin daha bütünleşik bir platform protokolünde ele alınması hedeflenebilir.
+
+---
+
+# 12. Tek Alıcılı Kablosuz Çevre Birimi Sistemi
+
+NEXSUS'un kablosuz tarafında Bluetooth'un doğrudan kopyalanması yerine yeni bir **çoklu cihaz bağlantı protokolü** düşünülebilir.
+
+Temel fikir:
+
+> Bir bilgisayara her cihaz için ayrı USB alıcı takmak gerekmemelidir.
 
 Örneğin:
 
 ```text
-MADD.8
-MADD.16
-MADD.32
-MADD.64
-MADD.128
-MADD.256
+                    NEXSUS WIRELESS
+                         RECEIVER
+                             │
+       ┌─────────┬──────────┼──────────┬─────────┐
+       │         │          │          │         │
+     Mouse   Keyboard    Headset    Microphone  Phone
 ```
 
-Buradaki `.8`, `.16`, `.32` vb. değerler register genişliğini değil **işlem element genişliğini** belirtir.
+Tek alıcı aynı anda çok sayıda cihazla haberleşebilir.
 
-Bu özellikle AI, görüntü işleme, sinyal işleme, fiziksel simülasyon ve matris hesaplamaları için önemlidir.
+Her cihazın fiziksel olarak ayrı kanal kullanması zorunlu değildir.
+
+Bağlantı:
+
+```text
+Host
+ │
+ └── Wireless Link
+       ├── HID channel
+       ├── Audio channel
+       ├── Microphone channel
+       ├── Control channel
+       └── Data channel
+```
+
+şeklinde mantıksal kanallara ayrılabilir.
+
+Böylece kullanıcı açısından:
+
+**bir cihaz = bir receiver**
+
+yerine:
+
+**bir bilgisayar = bir ortak kablosuz bağlantı alanı**
+
+modeli oluşur.
 
 ---
 
-# 8. Scalar ve Vector/Matrix İşlemlerinin Ayrılması
+# 13. Telefonun Sistemin Bir Parçası Haline Gelmesi
 
-CPU içerisinde iki temel hesaplama yolu bulunur.
+Bu sistemin daha ileri bir sonucu ortaya çıkar.
 
-### Scalar Path
-
-```text
-RA
- │
- ▼
-Scalar ALU
- │
- ▼
-RA / DA
-```
-
-### Vector / Matrix Path
+Telefon:
 
 ```text
-MA
- │
- ▼
-Vector / Matrix ALU
- │
- ├──► MA
- └──► DA
+NEXSUS Wireless Link
+        │
+       Phone
+        │
+        ├── Audio
+        ├── Microphone
+        ├── Camera
+        ├── Notifications
+        ├── File transfer
+        └── Application services
 ```
 
-Böylece aynı işlemci içerisinde:
+şeklinde bilgisayarın harici bir çevre birimi gibi bağlanabilir.
 
-```text
-RA → scalar arithmetic
-DA → data processing
-MA → vector/matrix arithmetic
-```
-
-ayrı kaynaklardan yürütülebilir.
+Bu durumda telefon ve bilgisayar arasında klasik Bluetooth eşleştirmesinden daha yüksek seviyeli bir **cihaz oturumu** kurulabilir.
 
 ---
 
-# 9. Instruction Decoder
+# 14. System Fabric
 
-Instruction decoder mimarinin merkezi kontrol noktasıdır.
+Bütün bu bileşenlerin birbirleriyle haberleşmesini sağlayan ortak bağlantı katmanı:
 
-Instruction CODE memory'den getirildikten sonra decoder:
+**NEXSUS System Fabric**
 
-1. Opcode'u çözer.
-2. İşlem tipini belirler.
-3. Kaynak registerları seçer.
-4. Hedef registerı seçer.
-5. İşlem genişliğini belirler.
-6. İlgili execution unit'e komut gönderir.
+olarak düşünülebilir.
 
-Örneğin:
+Bu yapı klasik anlamda tek bir bus olmak zorunda değildir.
 
-```text
-ADD RA03, RA07, RA12
-```
+Amacı:
 
-decoder:
+- CPU,
+- FAPU,
+- NPU,
+- MOSRAM,
+- M-SSD,
+- SCP,
+- I/O
 
-```text
-Opcode      = ADD
-Source 1    = RA03
-Source 2    = RA07
-Destination = RA12
-Mode        = scalar
-```
-
-olarak çözer.
-
-Başka bir instruction:
+arasındaki veri ve kontrol iletişimini ortak bir sistem modeline taşımaktır.
 
 ```text
-MADD.32 MA04, MA08, MA12
+                     NEXSUS FABRIC
+                          │
+       ┌──────────┬───────┼───────┬──────────┐
+       │          │       │       │          │
+      CPU        FAPU    NPU    MOSRAM     M-SSD
+       │
+      SCP
+       │
+      I/O
 ```
 
-şeklinde olabilir.
-
-Decoder:
-
-```text
-Opcode      = MADD
-Source 1    = MA04
-Source 2    = MA08
-Destination = MA12
-Element     = 32-bit
-Unit        = Matrix/Vector ALU
-```
-
-olarak çözer.
+Bu yapı klasik PC'deki CPU, bellek, PCH ve çeşitli bağımsız veri yollarının oluşturduğu daha parçalı modelin yerine daha bütünleşik bir sistem yaklaşımı getirebilir. Güncel bilgisayarlarda CPU, bellek, PCH, PCIe ve USB gibi farklı bağlantı katmanlarının bulunması bu tarihsel ayrışmanın tipik örneğidir.
 
 ---
 
-# 10. İç Register Adresleme ve RAM Adresleme Ayrımı
+# 15. Sistem Birimlerinin Çalışma Dağılımı
 
-Bu mimaride kritik bir tasarım prensibi vardır:
-
-**CPU içindeki register seçimi ile dış bellek adreslemesi aynı şey değildir.**
-
-RA register bankı için:
-
-$$\[
-64=2^6
-\]$$
-
-dolayısıyla register seçimi için:
-
-\[
-6\text{ bit}
-\]
-
-yeterlidir.
-
-DA için de:
-
-$$\[
-6\text{ bit}
-\]$$
-
-gerekir.
-
-MA için:
-
-$$\[
-32=2^5
-\]$$
-
-olduğundan:
-
-$$\[
-5\text{ bit}
-\]
-$$
-yeterlidir.
-
-Buna karşılık external memory adresleme 64-bit olabilir.
+NEXSUS sisteminin temel çalışma modeli:
 
 ```text
-CPU INTERNAL
-─────────────
-RA selector → 6 bit
-DA selector → 6 bit
-MA selector → 5 bit
-
-EXTERNAL MEMORY
-───────────────
-RAM Address → 64 bit
+                         PROGRAM
+                            │
+                       Nexus Flow
+                            │
+                         NEXSUS
+                            │
+              ┌─────────────┼─────────────┐
+              │             │             │
+           normal         özel         öğrenme
+           işlem         hesaplama      / tahmin
+              │             │             │
+             CPU           FAPU           NPU
+              │             │             │
+              └─────────────┼─────────────┘
+                            │
+                         MOSRAM
+                            │
+                         M-SSD
 ```
 
-Bu nedenle işlemci instructionlarının register seçim alanlarının tamamının 64-bit olması gerekmez.
-
-Bu yaklaşım instruction encoding açısından önemli bir alan tasarrufu sağlayabilir.
-
----
-
-# 11. Klasik Stack Belleğinin Kaldırılması
-
-Bu mimaride klasik RAM tabanlı stack yapısının zorunlu olması hedeflenmemektedir.
-
-Geleneksel sistemlerde:
+Sistem yönetimi ise paralel yürür:
 
 ```text
-CALL
- ↓
-STACK
- ↓
-Push parameters
-Push registers
-Push return state
-```
-
-gibi işlemler yapılabilir.
-
-Yeni mimaride ise application state'in önemli bölümü RA register bankında tutulabilir.
-
-Örneğin:
-
-```text
-RA00–RA15 → parameters
-RA16–RA31 → local state
-RA32–RA47 → temporaries
-RA48–RA55 → pointers
-RA56–RA63 → return / control state
-```
-
-Bu yalnızca örnek bir register allocation modelidir; registerların sabit görevlerle sınırlandırılması zorunlu değildir.
-
-Ama temel prensip şudur:
-
-> Fonksiyon çağrısı için her geçici değerin RAM üzerindeki stack'e taşınması zorunlu olmamalıdır.
-
-Bu yaklaşım stack erişiminin neden olduğu memory traffic'i azaltabilir.
-
-Daha ileri bir uygulamada recursion, interrupt ve context switching için fiziksel register banklarının donanımsal context yönetimi veya register window mekanizması kullanılabilir.
-
----
-
-# 12. Paralel Çalışma Prensibi
-
-Mimarinin temel avantajlarından biri farklı kaynakların aynı zaman diliminde kullanılabilmesidir.
-
-Örneğin:
-
-```text
-             CODE MEMORY
-                  │
-                  ▼
-           Instruction Fetch
-                  │
-                  ▼
-           Instruction Decode
-             │          │
-             │          │
-             ▼          ▼
-          RA / ALU     MA / ALU
-             │          │
-             │          │
-             ▼          ▼
-            DA       Matrix Data
-             │
-             ▼
-          DATA RAM
-```
-
-Bir instruction fetch işlemi sürerken DATA RAM'den veri transferi yapılabilir.
-
-Aynı zamanda MA bir vector/matrix işlemi gerçekleştirebilir.
-
-Dolayısıyla ideal durumda:
-
-$$\[
-Instruction\ Fetch
-\parallel
-Data\ Access
-\parallel
-Vector\ Computation
-\]$$
-
-şeklinde bir çalışma mümkün olabilir.
-
-Elbette gerçek paralellik execution unit sayısı, pipeline tasarımı, memory bandwidth ve dependency yönetimine bağlı olacaktır.
-
----
-
-# 13. Örnek İşlem Akışı
-
-Bir programın aşağıdaki işlemleri yaptığını düşünelim:
-
-```text
-1. CODE'dan instruction getir
-2. DATA RAM'den veri oku
-3. Scalar hesaplama yap
-4. Verileri MA registerlarına aktar
-5. Matrix işlemi gerçekleştir
-6. Sonucu DATA RAM'e yaz
-```
-
-Mimaride:
-
-```text
-CODE
+SCP
  │
- ▼
-FETCH
- │
- ▼
-DECODE
- │
- ├──────────────► RA
- │                 │
- │                 ▼
- │              Scalar ALU
- │
- └──────────────► DA ◄──────── DATA RAM
-                   │
-                   ▼
-                 MA
-                   │
-                   ▼
-             Matrix ALU
-                   │
-                   ▼
-                  DA
-                   │
-                   ▼
-                DATA RAM
+ ├── Power
+ ├── Thermal
+ ├── Reset
+ ├── Hardware state
+ ├── Firmware
+ └── Peripheral management
 ```
 
-Burada CODE memory instruction üretirken DATA memory ayrı bir veri yolu üzerinden çalışabilir.
-
----
-
-# 14. Örnek Instruction Set
-
-Mimari için örnek bir instruction biçimi:
+Çevre birimleri:
 
 ```text
-ADD RA03, RA07, RA12
-SUB RA04, RA08, RA10
-MUL RA02, RA05, RA09
-
-LOAD RA05, DA12
-STORE DA12, RA05
-
-MADD.8  MA04, MA08, MA12
-MADD.16 MA04, MA08, MA12
-MADD.32 MA04, MA08, MA12
-MADD.64 MA04, MA08, MA12
-
-MOV MA04, DA12
-MOV DA12, MA04
-```
-
-Bunlar nihai ISA değildir; mimarinin register mantığını göstermek için örneklerdir.
-
----
-
-# 15. Fiziksel Register Organizasyonu
-
-CPU'nun temel register alanı:
-
-```text
-┌──────────────────────────────────────────┐
-│              REGISTER FILE               │
-├──────────────────────────────────────────┤
-│                                          │
-│  RA BANK                                 │
-│  64 × 64 bit                             │
-│                                          │
-├──────────────────────────────────────────┤
-│                                          │
-│  DA BANK                                 │
-│  64 × 64 bit                             │
-│                                          │
-├──────────────────────────────────────────┤
-│                                          │
-│  MA BANK                                 │
-│  32 × 256 bit                            │
-│  Variable element width                  │
-│                                          │
-└──────────────────────────────────────────┘
-```
-
-Toplam fiziksel register kapasitesi:
-
-RA:
-
-$$\[
-64\times64=4096\text{ bit}
-\]$$
-
-DA:
-
-\[
-64\times64=4096\text{ bit}
-\]
-
-MA:
-
-$$\[
-32\times256=8192\text{ bit}
-\]$$
-
-Toplam:
-
-$$\[
-4096+4096+8192=16384\text{ bit}
-\]$$
-
-yani:
-
-$$\[
-\boxed{2048\text{ byte}=2\text{ KiB}}
-\]$$
-
-register storage bulunur.
-
-Bu değer yalnızca register file kapasitesidir; cache, local buffer, pipeline registerları ve diğer mikro-mimari depolama alanları buna dahil değildir.
-
----
-
-# 16. Cache ve Yerel Bellek Konusu
-
-Bu mimaride stack'in kaldırılması, bütün küçük ve geçici verilerin mutlaka RA/DA/MA içinde tutulması gerektiği anlamına gelmez.
-
-Büyük veri kümeleri DATA memory'de bulunabilir.
-
-CPU ile DATA memory arasındaki hız farkını azaltmak için ilerleyen tasarım aşamasında:
-
-```text
-CPU
- │
- ├── Register File
- │
- ├── Local Buffer
- │
- ├── L1/L2 benzeri cache
- │
- └── DATA Memory
-```
-
-şeklinde bir hiyerarşi eklenebilir.
-
-Ancak bu cache sistemi stack'in yerine geçmek zorunda değildir.
-
-Stack mantığı ile cache mantığı farklı problemlerdir.
-
----
-
-# 17. CODE Memory ile DATA Memory'nin Fiziksel Ayrılması
-
-Bu mimarinin daha ileri bir donanım uygulamasında CODE ve DATA memory farklı fiziksel bellek teknolojileriyle üretilebilir.
-
-Örneğin:
-
-```text
-CODE
-└── yüksek yoğunluklu / read optimized memory
-
-DATA
-└── yüksek yazma performanslı / expandable memory
-```
-
-Böyle bir ayrım gelecekte farklı bellek teknolojilerinin aynı CPU mimarisinde kullanılmasına olanak sağlayabilir.
-
-Özellikle yeni nesil transistor tabanlı bellek teknolojileri açısından CODE ve DATA taraflarının aynı fiziksel hücre yapısını kullanması zorunlu değildir.
-
----
-
-# 18. MOSRAM ile Olası Entegrasyon
-
-Geliştirilmekte olan MOSRAM benzeri transistor-gate tabanlı bir bellek teknolojisi ileride bu mimariyle birlikte değerlendirilebilir.
-
-Örneğin teorik olarak:
-
-```text
-CPU
- │
- ├────────────── CODE MEMORY
- │
- │                 MOSRAM / başka teknoloji
- │
- └────────────── DATA MEMORY
-                   │
-                   └── MOSRAM / başka teknoloji
-```
-
-Ancak bu aşamada MOSRAM'ın CPU mimarisinin zorunlu bir parçası olduğu kabul edilmemelidir.
-
-CPU mimarisi bellek teknolojisinden bağımsız olarak tanımlanabilir.
-
-Bu ayrım önemlidir:
-
-$$\[
-\text{ISA/Mimari} \neq \text{Bellek Hücresi Teknolojisi}
-\]$$
-
-Bellek teknolojisi değişebilirken register mimarisi ve instruction set korunabilir.
-
----
-
-# 19. Mimarinin Temel Tasarım İlkeleri
-
-Bu CPU'nun temel prensipleri şu şekilde özetlenebilir:
-
-### 1. Kod ve veri ayrımı
-
-```text
-CODE ≠ DATA
-```
-
-Instruction fetch ve data access farklı yollar üzerinden yürütülür.
-
-### 2. Register görev ayrımı
-
-```text
-RA → Application / Scalar
-DA → Data
-MA → Vector / Matrix
-```
-
-### 3. Doğrudan register seçimi
-
-```text
-RA03
-RA07
-RA12
-```
-
-CPU tarafından doğrudan fiziksel register seçimi olarak yorumlanır.
-
-### 4. Değişken işlem genişliği
-
-MA:
-
-```text
-8 → 16 → 32 → 64 → 128 → 256 bit
-```
-
-işlem modlarına sahip olabilir.
-
-### 5. Harici bellek için geniş adresleme
-
-External memory:
-
-$$\[
-64\text{-bit addressing}
-\]$$
-
-kullanabilir.
-
-### 6. Klasik stack zorunlu değildir
-
-Application state register banklarında tutulabilir.
-
-### 7. Paralel işlem yolları
-
-```text
-Instruction Fetch
-        ∥
-Data Access
-        ∥
-Vector / Matrix Processing
-```
-
-aynı anda yürütülebilecek şekilde tasarlanır.
-
----
-
-# 20. Mimari Blok Diyagram
-
-Genel sistem şu şekilde özetlenebilir:
-
-```text
-                         ┌───────────────────────┐
-                         │      CODE MEMORY      │
-                         │       4–8 GB          │
-                         └───────────┬───────────┘
-                                     │
-                                     ▼
-                         ┌───────────────────────┐
-                         │  INSTRUCTION FETCH    │
-                         └───────────┬───────────┘
-                                     │
-                                     ▼
-                    ┌────────────────────────────────┐
-                    │      INSTRUCTION DECODER       │
-                    │       + CONTROL UNIT           │
-                    └───────┬────────┬────────┬──────┘
-                            │        │        │
-                            ▼        ▼        ▼
-                       ┌────────┐ ┌────────┐ ┌────────────┐
-                       │RA00-63 │ │DA00-63 │ │ MA00-31    │
-                       │64×64b  │ │64×64b  │ │32×256b     │
-                       └────┬───┘ └────┬───┘ └─────┬──────┘
-                            │           │            │
-                            ▼           │            ▼
-                       ┌────────┐       │      ┌────────────┐
-                       │Scalar  │       │      │Vector /    │
-                       │ALU     │       │      │Matrix ALU  │
-                       └────┬───┘       │      └─────┬──────┘
-                            │           │            │
-                            └───────────┼────────────┘
-                                        │
-                                        ▼
-                                  ┌───────────┐
-                                  │ DA / DATA │
-                                  │ INTERFACE │
-                                  └─────┬─────┘
-                                        │
-                                        ▼
-                         ┌─────────────────────────┐
-                         │       DATA MEMORY       │
-                         │ 8 GB → 16 → 32 → 64 → │
-                         │       128+ GB          │
-                         └─────────────────────────┘
+                NEXSUS I/O
+                    │
+          ┌─────────┴─────────┐
+          │                   │
+         NPI          NEXSUS Wireless
+          │                   │
+      wired devices       wireless devices
 ```
 
 ---
 
-# 21. Sonuç
+# 16. Eski Sistemden Çıkarılan Kavramlar
 
-Bu mimari, CPU içindeki kaynakları tek bir genel amaçlı register ve tek bir bellek yolu etrafında toplamak yerine görevlerine göre ayırmayı hedeflemektedir.
+NEXSUS'un yeniliği yalnızca eklenen bileşenlerden oluşmaz.
 
-Temel yapı:
+Bazı eski kavramlar doğrudan gereksiz hale gelebilir.
 
-$$\[
-\boxed{
-CODE
-+
-RA
-+
-DA
-+
-MA
-+
-DATA
-}
-\]$$
+### Ortadan kalkması hedeflenenler
 
-şeklinde özetlenebilir.
+- klasik BIOS yaklaşımı,
+- tarihsel BIOS uyumluluk katmanları,
+- klasik chipset/PCH merkezli organizasyon,
+- ayrı USB receiver bağımlılığı,
+- ayrı kablosuz alıcılar,
+- SATA merkezli depolama modeli,
+- klasik DRAM merkezli bellek varsayımı,
+- CPU'nun bütün hesaplamaları tek başına üstlenmesi,
+- çok sayıda birbirinden bağımsız küçük kontrolcü,
+- çevre birimlerinin ayrı ayrı sistemlere bağlanması.
 
-RA application/scalar state'i, DA veri hareketini, MA ise yüksek genişlikli vector/matrix işlemlerini üstlenir.
+Burada “ortadan kalkması” fiziksel olarak her parçanın yok olması anlamında değil; **işlevin daha bütünleşik bir sistem tarafından üstlenilmesi** anlamındadır.
 
-Fiziksel register genişliği ile işlem genişliği birbirinden ayrılır. Özellikle MA registerlarının 256-bit fiziksel genişliğe sahip olup 8-bit'ten 256-bit'e kadar farklı element genişliklerinde kullanılabilmesi, aynı register mimarisinin hem küçük integer işlemlerinde hem de geniş vector/matrix işlemlerinde kullanılmasını sağlar.
+---
 
-Bunun yanında CODE memory ile DATA memory'nin ayrılması, instruction fetch ile data access işlemlerinin birbirinden bağımsız ilerleyebilmesine olanak sağlayan temel mimari prensiptir.
+# 17. Yeni Sistemin Getirdiği Temel Yenilikler
 
-CPU içindeki register seçimleri küçük selector alanlarıyla gerçekleştirilirken external memory için 64-bit adresleme kullanılabilir. Böylece CPU'nun her iç adresinin 64-bit olması gerekmez.
+NEXSUS mimarisinin temel yenilikleri birkaç başlıkta toplanabilir.
 
-Mimarinin nihai amacı yalnızca daha fazla register eklemek değildir. Asıl amaç:
+### 17.1. CPU merkezli olmayan bilgisayar
 
-$$\[
-\boxed{
-\text{Kod}
-\rightarrow
-\text{Kontrol}
-\rightarrow
-\text{Scalar}
-\rightarrow
-\text{Data}
-\rightarrow
-\text{Vector/Matrix}
-}
-\]$$
+CPU hâlâ ana işlemcidir ancak bütün hesaplama yükünün sahibi değildir.
 
-işlem yollarını birbirinden mümkün olduğunca ayırarak **daha düşük memory traffic, daha az gereksiz veri kopyalama ve daha yüksek doğal paralellik** elde etmektir.
+```text
+CPU + FAPU + NPU
+```
 
-Bu nedenle mimari klasik stack-merkezli ve tek tip register yaklaşımından farklı olarak, **ayrıştırılmış register bankları + ayrıştırılmış bellek + paralel execution path** prensibine dayanmaktadır.
-----
+birlikte çalışır.
+
+### 17.2. Belleğin mimari rolünün değişmesi
+
+MOSRAM yalnızca RAM kapasitesi değildir.
+
+Yüksek paralellik ve hızlı erişim sistemi işlem birimlerinin çalışma biçimini etkileyebilir.
+
+### 17.3. Öğrenen sistem
+
+NPU, uygulama çalıştırmak yerine bilgisayarın çalışma alışkanlığını öğrenebilir.
+
+### 17.4. Anakartın kendi işlemcisi
+
+SCP, sistem yönetimini ana CPU'dan ayırır.
+
+### 17.5. Firmware'in yeniden tasarlanması
+
+Firmware eski PC mirasını taşımak yerine NEXSUS donanımının doğal başlangıç ve yönetim katmanı olur.
+
+### 17.6. Tek bağlantı yaklaşımı
+
+Kablolu ve kablosuz çevre birimleri ayrı ayrı protokoller ve alıcılarla parçalanmak yerine ortak bir cihaz iletişim modeline yaklaşır.
+
+### 17.7. Tek alıcı ile çoklu cihaz
+
+Klavye, mouse, kulaklık, mikrofon, telefon ve diğer cihazlar aynı kablosuz sistem içerisinde aynı anda bulunabilir.
+
+### 17.8. Depolama sisteminin yeniden düşünülmesi
+
+M-SSD yalnızca daha hızlı SSD değildir; MOSRAM ile birlikte yeni bir bellek/depolama hiyerarşisinin parçasıdır.
+
+---
+
+# 18. Klasik PC ile NEXSUS'un Kavramsal Karşılaştırması
+
+| Alan | Klasik PC yaklaşımı | NEXSUS yaklaşımı |
+|---|---|---|
+| Ana işlem | CPU | CPU + FAPU + NPU |
+| Bellek | DRAM | MOSRAM |
+| Kalıcı depolama | SSD/NVMe/SATA | M-SSD |
+| Sistem kontrolü | chipset/EC vb. | SCP |
+| Firmware | BIOS/UEFI | NEXSUS Firmware |
+| Çevre birimleri | çoklu protokol | ortak NPI yaklaşımı |
+| Kablosuz cihaz | çoğunlukla ayrı bağlantı/receiver modelleri | tek çoklu cihaz bağlantısı |
+| Veri yolu | çok sayıda özel bağlantı | ortak System Fabric yaklaşımı |
+| AI | uygulamaya bağlı GPU/NPU | küçük sistem öğrenme NPU'su |
+| Kriptografi | ayrı donanım veya CPU talimatları | FAPU tabanlı yaklaşım |
+| Anakart | çok sayıda kontrolcü | bütünleşik sistem kontrolü |
+| Depolama erişimi | blok cihaz merkezli | NEXSUS/M-SSD odaklı model |
+| Sistem optimizasyonu | büyük ölçüde yazılım kuralları | NPU destekli öğrenme |
+| Tasarım yaklaşımı | geriye dönük uyumluluk ağırlıklı | sıfırdan bütünleşik tasarım |
+
+---
+
+# 19. Sonuç
+
+NEXSUS'un temel iddiası:
+
+> **Yeni bir bilgisayar yapmak için yalnızca daha hızlı bir CPU yapmak yeterli değildir.**
+
+İşlemci, bellek, depolama, firmware, anakart kontrolü ve çevre birimleri aynı sistem düşüncesinin parçaları olarak yeniden ele alınmalıdır.
+
+Bu nedenle NEXSUS platformunda:
+
+**Nexus Flow** yazılımın doğal dili,
+
+**NEXSUS CPU** genel işlem merkezi,
+
+**FAPU** yüksek seviyeli özel hesaplama birimi,
+
+**NPU** sistem davranışını öğrenen yardımcı işlemci,
+
+**MOSRAM** yüksek hızlı çalışma belleği,
+
+**M-SSD** yeni nesil kalıcı depolama,
+
+**SCP** fiziksel sistem yöneticisi,
+
+**NEXSUS Firmware** donanım ile işletim sistemi arasındaki başlangıç ve yönetim katmanı,
+
+**NPI** kablolu çevre birimi sistemi,
+
+**NEXSUS Wireless Link** ise çoklu cihaz kablosuz iletişim katmanı olarak görev yapar.
+
+Bu mimarinin esas yeniliği tek tek bu parçaların varlığı değildir. Modern sistemlerde heterojen işlemciler, AI motorları, platform kontrolcüleri ve yüksek hızlı bağlantılar zaten farklı biçimlerde kullanılmaktadır.
+
+NEXSUS'un özgün yaklaşımı, bunları **eski PC mimarisinin üzerine eklemek yerine, baştan birlikte tasarlanmış tek bir kişisel bilgisayar platformu olarak ele almaktır.**
+
+Bu nedenle sonraki aşamada yapılması gereken en önemli çalışma, her bir yeni birimin teknik ayrıntılarını hemen belirlemek değil; **bu birimlerin çalışma prensiplerini tek tek tanımlamak ve aralarındaki görev sınırlarını kesinleştirmektir.**
+---
