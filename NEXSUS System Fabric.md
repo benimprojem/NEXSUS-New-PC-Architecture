@@ -1,955 +1,771 @@
 # NEXSUS System Fabric
-## Kavramsal ve Teknik Mimari
+## Merkezi Sistem İletişim, Veri Akışı ve Zamanlama Mimarisi
 
-### 1. Tanım
-
-**NEXSUS System Fabric (NSF)**, NEXSUS bilgisayarındaki işlemciler, bellekler, depolama birimleri, sistem kontrol işlemcisi ve çevre birimleri arasındaki veri, kontrol ve durum iletişimini sağlayan ortak sistem bağlantı mimarisidir.
-
-NSF klasik anlamda yalnızca bir veri yolu değildir.
-
-Temel amacı:
-
-> **Veriyi mümkün olduğunca kısa fiziksel ve mantıksal yol üzerinden, doğru işlem birimine ve doğru bellek bölgesine ulaştırmaktır.**
-
-NEXSUS'ta fabric mimarisi, sistemin sonradan eklenen bir bağlantı katmanı değil, işlemci ve bellek yerleşimiyle birlikte tasarlanan temel mimari katmanlardan biridir.
+**Doküman Türü:** Teknik Mimari Makale  
+**Proje:** NEXSUS  
+**Bileşen:** System Fabric (S.Fabric)  
+**Durum:** Kavramsal / Mimari Tasarım  
+**Sürüm:** 1.0
 
 ---
 
-# 2. Neden klasik bus yaklaşımı yeterli değildir?
+## 1. Genel Bakış
 
-Klasik bilgisayar mimarisinde farklı cihazlar için farklı bağlantı sistemleri bulunur:
+NEXSUS mimarisinde System Fabric (S.Fabric), klasik anlamdaki bir bus veya yalnızca cihazlar arasında veri taşıyan bir bağlantı sistemi değildir.
 
-```text
-CPU
- │
- ├── Memory bus
- ├── PCIe
- ├── USB
- ├── SATA
- ├── Network
- └── çeşitli özel bağlantılar
-```
+S.Fabric, sistemdeki işlem, bellek, depolama ve I/O düğümlerinin birbirleriyle iletişimini, veri aktarım zamanlamasını ve bağlantı kaynaklarının kullanımını yöneten **merkezi sistem altyapısıdır**.
 
-Bu yapı her teknolojinin kendi gereksinimine göre gelişmiştir.
+NEXSUS'ta CPU, GPU, FAPU, NPU, MOSRAM, MSSD ve I/O birimleri Fabric üzerinde çalışan bağımsız düğümlerdir.
 
-NEXSUS ise sistemin başından itibaren birlikte tasarlanması sayesinde bu ayrışmayı azaltabilir.
+Bu nedenle NEXSUS mimarisinde sistemin merkezi CPU değil, **System Fabric** olarak kabul edilir.
 
 Temel yaklaşım:
 
-```text
-                NEXSUS SYSTEM FABRIC
-                         │
-        ┌────────────────┼────────────────┐
-        │                │                │
-       CPU              FAPU             NPU
-        │                │                │
-        ├──────── MOSRAM ┼────────────────┤
-        │                │                │
-       SCP              M-SSD            I/O
-```
-
-Böylece farklı birimler arasında ortak bir iletişim modeli oluşturulur.
+> **Düğümler kendi çalışma frekanslarında çalışır; System Fabric ise bu farklı çalışma alanlarını yüksek hızlı ortak bir iletişim ve zamanlama altyapısında birleştirir.**
 
 ---
 
-# 3. Fabric'in üç temel iletişim sınıfı
+# 2. Mimari Temel İlke
 
-NSF üzerinde üç temel iletişim türü bulunmalıdır:
+Geleneksel bilgisayar mimarisinde CPU çoğu zaman sistemin merkezinde bulunur.
 
-### 3.1. Data
+Veri akışı çoğunlukla:
 
-Gerçek veri taşınması.
+```text
+CPU
+ │
+ ├── RAM
+ ├── GPU
+ ├── Storage
+ └── I/O
+```
+
+şeklinde düşünülür.
+
+NEXSUS'ta ise yapı:
+
+```text
+                 CPU
+                  │
+GPU ──────────────┼────────────── FAPU
+                  │
+NPU ──────────────┼────────────── I/O
+                  │
+MOSRAM ───────────┼────────────── MSSD
+                  │
+            SYSTEM FABRIC
+```
+
+şeklinde ele alınır.
+
+Burada CPU, diğer düğümlerin üzerinden geçmek zorunda değildir.
 
 Örneğin:
 
 ```text
-MOSRAM → CPU
-MOSRAM → FAPU
+MSSD → GPU
+MSSD → NPU
+MOSRAM → GPU
+GPU → MSSD
 FAPU → MOSRAM
-M-SSD → MOSRAM
-CPU → I/O
 ```
 
-### 3.2. Control
+gibi doğrudan düğüm-düğüm veri akışları gerçekleştirilebilir.
 
-Birimin diğer birime işlem talimatı veya kontrol mesajı göndermesi.
-
-Örneğin:
-
-```text
-CPU → FAPU
-"Bu veri üzerinde işlemi başlat."
-
-CPU → NPU
-"Bu davranış modelini güncelle."
-
-SCP → CPU
-"Donanım durumu değişti."
-```
-
-### 3.3. Status
-
-Birimin kendi durumunu bildirmesi.
-
-Örneğin:
-
-```text
-FAPU → Fabric
-BUSY
-
-NPU → Fabric
-MODEL_READY
-
-M-SSD → Fabric
-READ_COMPLETE
-
-SCP → Fabric
-THERMAL_WARNING
-```
-
-Bu üç iletişim türünün aynı fiziksel altyapıyı kullanması mümkün olmakla birlikte mantıksal olarak birbirinden ayrılmalıdır.
+CPU yalnızca gerçekten gerekli olduğu durumlarda veri yoluna dahil olur.
 
 ---
 
-# 4. Fabric'in temel düğümleri
+# 3. S.Fabric'in Temel Görevleri
 
-NEXSUS sisteminin temel fabric düğümleri:
+System Fabric aşağıdaki temel görevleri üstlenir:
 
-```text
-CPU
-FAPU
-NPU
-SCP
-Application MOSRAM
-Data MOSRAM
-M-SSD
-I/O Controller
-Wireless Controller
-```
+1. Veri yönlendirme
+2. Dinamik lane tahsisi
+3. Veri transferlerinin zamanlanması
+4. Farklı clock domain'lerinin yönetimi
+5. Trafik interleaving
+6. Arbitration
+7. QoS ve öncelik yönetimi
+8. Akış kontrolü
+9. Hata tespiti
+10. Yeniden iletim / recovery
+11. Congestion yönetimi
+12. Doğrudan node-to-node iletişim
+13. Kaynakların dinamik paylaşımı
+14. Sistem genelinde iletişim sürekliliğinin sağlanması
 
-olarak düşünülebilir.
-
-Bunların tamamı eşit değildir.
-
-Özellikle bellekler fabric içerisinde yalnızca veri kaynağı değildir; sistemin ana veri merkezleridir.
-
----
-
-# 5. Application MOSRAM ve Data MOSRAM
-
-NEXSUS'un önemli farklılıklarından biri belleklerin fiziksel ve işlevsel olarak ayrılmasıdır.
-
-```text
-                NEXSUS CPU
-                    │
-                    │
-          APPLICATION MOSRAM
-                    │
-              kısa bağlantı
-                    │
-             SYSTEM FABRIC
-                    │
-       ┌────────────┼────────────┐
-       │            │            │
-   DATA MOSRAM   DATA MOSRAM   DATA MOSRAM
-```
-
-### Application MOSRAM
-
-CPU'ya mümkün olduğunca yakın konumlandırılır.
-
-Öncelikli kullanım:
-
-- program kodu,
-- executable,
-- runtime,
-- sık kullanılan kütüphaneler,
-- instruction verileri,
-- sabit program tabloları.
-
-### Data MOSRAM
-
-Daha büyük kapasiteye sahip olabilir.
-
-Öncelikli kullanım:
-
-- kullanıcı verileri,
-- değişkenler,
-- bufferlar,
-- grafik/ses verileri,
-- hesaplama verileri,
-- cache benzeri çalışma alanları.
-
-Bu ayrım fabric tasarımını doğrudan etkiler.
+Bu nedenle Fabric Controller, basit bir bus controller değil, **aktif sistem iletişim yöneticisi** olarak tasarlanır.
 
 ---
 
-# 6. Fiziksel yakınlık tabanlı fabric
+# 4. Bağımsız Clock Domain'leri
 
-NSF'nin önemli prensiplerinden biri:
+NEXSUS düğümlerinin aynı clock frekansında çalışması gerekli değildir.
 
-> **Her bağlantının aynı mesafede olması gerekmez.**
-
-Örneğin:
+Örneğin bir sistemde:
 
 ```text
-CPU
- │
- └── Application MOSRAM
-       çok kısa yol
-```
-
-iken:
-
-```text
-CPU
- │
- └── Data MOSRAM
-       daha uzun yol
+CPU       = 5 GHz
+GPU       = 2 GHz
+FAPU      = 4 GHz
+NPU       = 3 GHz
+MOSRAM    = 6 GHz
+MSSD      = farklı çalışma frekansı
+I/O       = farklı çalışma frekansı
 ```
 
 olabilir.
 
-Benzer şekilde:
+Bu frekansların birbirine eşitlenmesi gerekmez.
+
+Temel prensip:
+
+> **Node Clock ≠ Fabric Clock ≠ Memory Clock**
+
+Her düğüm kendi işlem ve veri kabul kapasitesine göre çalışır.
+
+System Fabric ise bu farklı clock domain'leri ortak bir yüksek çözünürlüklü iletişim zaman tabanında birbirine bağlar.
+
+---
+
+# 5. Fabric Clock
+
+S.Fabric'in kendi çalışma zaman tabanı bulunur.
+
+Bu clock, CPU veya GPU'nun çalışma clock'u değildir.
+
+Fabric Clock'un temel amacı:
+
+- veri transferlerini küçük zaman dilimlerine ayırmak,
+- düğümlerin veri kabul pencerelerini yönetmek,
+- farklı clock domain'leri arasında transferleri koordine etmek,
+- aynı anda gelen talepleri interleave etmek,
+- Fabric kaynaklarının mümkün olduğunca sürekli kullanılmasını sağlamaktır.
+
+Dolayısıyla Fabric Clock'un başarısı yalnızca frekansıyla değil, **zamanlama çözünürlüğü ve transfer gecikmesi** ile değerlendirilir.
+
+---
+
+# 6. Veri Kabul Pencereleri
+
+Bir düğüm veri istediğinde veya veri yazacağını bildirdiğinde Fabric bu isteği kuyruğa alır.
+
+Ancak klasik bir FIFO yaklaşımı kullanılmaz.
+
+Örneğin:
 
 ```text
-FAPU
- │
- └── FAPU'ya yakın Data MOSRAM
+CPU → READ
+NPU → WRITE
+MOSRAM → READ/WRITE
+GPU → READ
+FAPU → WRITE
 ```
 
-ve:
+talepleri aynı anda gelebilir.
+
+Fabric Controller bunları tek tek tamamlamayı beklemek yerine, her transferi uygun zaman dilimlerine yerleştirir.
+
+Örneğin:
 
 ```text
+Fabric Cycle
+
+01 → CPU
+02 → CPU
+03 → NPU
+04 → NPU
+05 → MOSRAM
+06 → MOSRAM
+07 → GPU
+08 → FAPU
+09 → CPU
+10 → GPU
+11 → MOSRAM
+12 → NPU
+```
+
+Bu sıra sabit değildir.
+
+Trafik değiştiğinde anında değişebilir.
+
+---
+
+# 7. Dynamic Time-Slot Interleaving
+
+S.Fabric'in önemli özelliklerinden biri **Dynamic Time-Slot Interleaving** mekanizmasıdır.
+
+Amaç:
+
+> Bir düğümün beklemesi gerekiyorsa Fabric'in de beklememesidir.
+
+Örneğin CPU'nun veri kabul penceresi henüz uygun değilse:
+
+```text
+CPU bekliyor
+```
+
+ancak Fabric:
+
+```text
+GPU
 NPU
- │
- └── NPU çalışma belleği
-```
-
-oluşturulabilir.
-
-Bu nedenle NSF tek bir düz ağ değil, **mesafe ve kullanım yoğunluğuna göre hiyerarşik bir fabric** olabilir.
-
----
-
-# 7. Fabric bölgeleri
-
-Kavramsal olarak NSF dört ana bölgeye ayrılabilir.
-
-```text
-                    NSF
-                     │
-       ┌─────────────┼─────────────┐
-       │             │             │
-     LOCAL         SHARED        EXTERNAL
-       │             │             │
-       │             │             │
- Application      Data MOSRAM     I/O
- MOSRAM           M-SSD           Network
-       │             │             │
-       └─────────────┴─────────────┘
-                     │
-                  SYSTEM
-```
-
-### Local Fabric
-
-İşlemci ile ona yakın kaynaklar.
-
-### Shared Fabric
-
-Birden fazla işlem biriminin eriştiği ortak kaynaklar.
-
-### Storage Fabric
-
-M-SSD ve kalıcı veri kaynakları.
-
-### External Fabric
-
-Kullanıcı ve dış cihazlarla iletişim.
-
----
-
-# 8. Local Fabric
-
-En düşük gecikme gerektiren bağlantıdır.
-
-Örneğin:
-
-```text
-CPU
- │
- ║
- ║
-Application MOSRAM
-```
-
-Bu bağlantı mümkün olduğunca kısa tutulur.
-
-Aynı yaklaşım FAPU ve NPU için de kullanılabilir.
-
-Burada amaç fabric üzerinden uzak bir yönlendirme yapmak yerine işlemciye yakın belleği doğrudan kullanmaktır.
-
----
-
-# 9. Shared Fabric
-
-Birden fazla işlemcinin ortak kullandığı kaynakların bağlantısıdır.
-
-Örneğin:
-
-```text
-                  Shared Fabric
-                       │
-       ┌───────────────┼───────────────┐
-       │               │               │
-      CPU             FAPU            NPU
-       │               │               │
-       └───────────────┼───────────────┘
-                       │
-                  Data MOSRAM
-```
-
-Buradaki önemli problem **erişim çakışmasıdır**.
-
-Üç işlemci aynı anda aynı bellek bankına erişmek istediğinde fabric:
-
-- öncelik,
-- zamanlama,
-- sıra,
-- bant genişliği
-
-yönetimini gerçekleştirmelidir.
-
----
-
-# 10. Bellek Bank Paralelliği
-
-MOSRAM'ın yüksek paralellik potansiyeli nedeniyle NSF'nin bellek erişimini banklara ayırması önemlidir.
-
-Örneğin:
-
-```text
-                 DATA MOSRAM
-                      │
-          ┌───────────┼───────────┐
-          │           │           │
-        BANK 0      BANK 1      BANK 2
-          │           │           │
-          │           │           │
-         CPU         FAPU        NPU
-```
-
-Bu durumda farklı işlemciler farklı banklara erişiyorsa işlemler aynı anda gerçekleştirilebilir.
-
-Dolayısıyla NSF yalnızca:
-
-> "Veriyi taşı"
-
-mantığında değil:
-
-> **"Verinin hangi bankta olduğunu bil ve en kısa yolu seç."**
-
-mantığında çalışabilir.
-
----
-
-# 11. Data locality
-
-Bu nedenle NEXSUS Fabric'in önemli bir prensibi:
-
-### Data Locality
-
-Veri hangi işlem birimi tarafından yoğun kullanılıyorsa o işlem birimine mümkün olduğunca yakın tutulur.
-
-Örneğin:
-
-```text
-FAPU hesaplaması
-      ↓
-FAPU'ya yakın veri bankı
-      ↓
 FAPU
-```
-
-CPU üzerinden:
-
-```text
-FAPU
- ↓
-CPU
- ↓
 MOSRAM
- ↓
-CPU
- ↓
-FAPU
+MSSD
+I/O
 ```
 
-gibi gereksiz dolaşım yapılmaz.
+transferlerini yürütmeye devam eder.
 
-Bu özellikle büyük veri kümelerinde fabric trafiğini ciddi şekilde azaltabilecek temel bir mimari prensiptir.
+Böylece:
 
-2026'da yayınlanan bir araştırmada da bellekler arasında doğrudan die-to-die veri aktarımının hesaplama çipinden veri geçirme zorunluluğunu azaltabildiği ve bellek bant genişliğini artırabildiği gösterilmiştir.
+> **Bekleyen düğüm ≠ bekleyen Fabric**
 
-NEXSUS'ta bunun daha genel bir versiyonu hedeflenebilir:
+olur.
 
-> **Veriyi yalnızca CPU üzerinden dolaştırmamak.**
+Bu yapı sistem kaynaklarının boşta kalmasını önemli ölçüde azaltabilir.
 
 ---
 
-# 12. Direct Memory Path
+# 8. Dynamic Lane Allocation
 
-NSF'nin önemli özelliklerinden biri doğrudan bellek erişim yollarıdır.
+S.Fabric'in fiziksel bağlantı kapasitesi düğümlere sabit olarak bölüştürülmez.
 
-Örneğin:
+Örneğin toplam:
 
 ```text
-M-SSD
-  │
-  ↓
-Data MOSRAM
-  │
-  ↓
-FAPU
+1024 fiziksel sinyal hattı
 ```
 
-CPU'nun araya girmesi zorunlu olmamalıdır.
-
-Benzer şekilde:
+bulunuyorsa bunlar örneğin:
 
 ```text
-Data MOSRAM
-     │
-     ↓
-    NPU
+512 Full-Duplex Lane
+```
+
+olarak kullanılabilir.
+
+Ancak bu 512 lane'in:
+
+```text
+CPU = 64
+GPU = 128
+NPU = 64
+FAPU = 64
+...
+```
+
+şeklinde kalıcı olarak bölüştürülmesi gerekmez.
+
+Lane'ler ortak kaynak havuzudur.
+
+Örneğin bir anda:
+
+```text
+CPU  → MSSD       16 lane
+GPU  → MOSRAM    256 lane
+NPU  → MOSRAM     96 lane
+FAPU → MSSD       64 lane
+I/O                32 lane
+```
+
+kullanılabilir.
+
+Başka bir anda:
+
+```text
+CPU  → MSSD       64 lane
+GPU  → MOSRAM    128 lane
+NPU  → MSSD      192 lane
+FAPU → MOSRAM     96 lane
+I/O                32 lane
 ```
 
 olabilir.
 
-Bu sayede CPU yalnızca veri taşıyan bir aracı haline gelmez.
-
-CPU esas işlem görevine odaklanır.
+Fabric Controller lane kapasitesini anlık trafik gereksinimine göre yeniden dağıtır.
 
 ---
 
-# 13. Fabric üzerinde işlem birimleri arası doğrudan iletişim
+# 9. Lane Sayısı Sabit Mimari Sınır Değildir
 
-Daha ileri seviyede:
+512 lane, NEXSUS mimarisinin zorunlu maksimumu olarak kabul edilmemelidir.
+
+Aynı Fabric mimarisi:
 
 ```text
-CPU ↔ FAPU
-FAPU ↔ NPU
-FAPU ↔ GPU*
-NPU ↔ MOSRAM
-FAPU ↔ M-SSD*
+128 lane
+256 lane
+512 lane
+1024 lane
+2048+ lane
 ```
 
-gibi doğrudan iletişimler mümkün olabilir.
+gibi farklı sistem ölçeklerinde uygulanabilir.
 
-Buradaki `*` gelecekte eklenebilecek birimlerdir.
+Dolayısıyla Fabric protokolü fiziksel bağlantı genişliğinden bağımsız olarak tasarlanmalıdır.
 
-Örneğin FAPU bir hesaplama sonucu oluşturduğunda sonucu önce CPU'ya gönderip sonra NPU'ya vermek zorunda kalmamalıdır.
+Bu yaklaşım küçük sistemlerden yüksek performanslı sistemlere kadar aynı mimarinin ölçeklenmesini sağlar.
+
+---
+
+# 10. Node Clock ile Veri Transfer Clock'unun Ayrılması
+
+CPU'nun 5 GHz çalışması, Fabric'in de 5 GHz çalışmasını gerektirmez.
+
+Aynı şekilde GPU'nun 2 GHz olması, GPU'nun Fabric üzerinden yalnızca 2 GHz hızında veri alabileceği anlamına gelmez.
+
+Düğümün kendi clock'u:
 
 ```text
+işlem hızı
+```
+
+ile ilgilidir.
+
+Fabric Clock ise:
+
+```text
+sistemler arası veri transferinin zaman çözünürlüğü
+```
+
+ile ilgilidir.
+
+Bu nedenle:
+
+```text
+CPU     5 GHz
+GPU     2 GHz
+MOSRAM  6 GHz
+```
+
+gibi farklı sistemlerin aynı Fabric üzerinde çalışması mümkündür.
+
+---
+
+# 11. Veri Transferinin Küçük Birimlere Ayrılması
+
+Büyük bir veri transferinin tek parça halinde Fabric'i uzun süre işgal etmesi yerine transferler daha küçük işlem birimlerine bölünebilir.
+
+Örneğin:
+
+```text
+CPU → MSSD
+8 KB READ
+```
+
+isteği geldiğinde CPU'nun 512 lane kullanması gerekmez.
+
+Fabric ihtiyaca göre örneğin 8 veya 16 lane tahsis edebilir.
+
+Kalan kaynak:
+
+```text
+GPU
+NPU
 FAPU
- │
- └────────→ NPU
+MOSRAM
+I/O
 ```
 
-doğrudan mümkün olabilir.
+tarafından kullanılabilir.
+
+Büyük bir GPU veri transferi ise aynı anda yüzlerce lane kullanabilir.
 
 ---
 
-# 14. Fabric ve CPU arasındaki ilişki
+# 12. Interleaving ile Kaynakların Birleştirilmesi
 
-CPU fabric'in sahibi olmak zorunda değildir.
+Fabric'in amacı transferleri katı bir sıraya koymak değildir.
 
-Bu önemli bir ayrımdır.
+Örneğin gelen talepler:
 
-Klasik düşüncede:
+```text
+CPU  → MSSD
+GPU  → MOSRAM
+NPU  → MOSRAM
+FAPU → MSSD
+```
+
+ise:
 
 ```text
 CPU
- │
- ├── Memory
- ├── I/O
- └── Devices
-```
-
-gibi CPU merkezli bir organizasyon oluşur.
-
-NEXSUS'ta:
-
-```text
-                SYSTEM FABRIC
-              /       │       \
-            CPU      FAPU      NPU
-             \        │        /
-              \       │       /
-                 MOSRAM
-```
-
-CPU fabric üzerinde **eşit derecede önemli bir işlem düğümüdür**, fakat bütün iletişimin zorunlu merkezi değildir.
-
----
-
-# 15. SCP'nin Fabric üzerindeki rolü
-
-SCP normal uygulama verisinin içinde olmamalıdır.
-
-SCP daha çok **yönetim düzleminde** bulunmalıdır.
-
-```text
-                SYSTEM FABRIC
-                      │
-       ┌──────────────┴──────────────┐
-       │                             │
-   DATA PLANE                  CONTROL PLANE
-       │                             │
- CPU/FAPU/NPU/MOSRAM               SCP
-```
-
-### Data Plane
-
-Normal çalışma sırasında veri taşır.
-
-### Control Plane
-
-Sistem durumu, güç, reset, hata, firmware ve donanım yönetimini gerçekleştirir.
-
-Bu ayrım fabric'in karmaşıklaşmasını önler.
-
----
-
-# 16. Fabric'in üç düzlemli yapısı
-
-Bunu bir adım daha ileri götürmek mümkün:
-
-```text
-              NEXSUS SYSTEM FABRIC
-
-        ┌───────────────────────────┐
-        │       CONTROL PLANE       │
-        │       SCP / System        │
-        ├───────────────────────────┤
-        │       DATA PLANE          │
-        │       CPU / FAPU / NPU    │
-        ├───────────────────────────┤
-        │       MEMORY PLANE        │
-        │       MOSRAM / M-SSD      │
-        └───────────────────────────┘
-```
-
-Bu üç düzlem fiziksel olarak aynı fabric altyapısını paylaşabilir ancak mantıksal olarak ayrıdır.
-
-Bu sayede büyük veri transferi sırasında:
-
-> “Sistem sıcaklığı kritik seviyeye çıktı”
-
-gibi bir SCP mesajının beklemesi engellenebilir.
-
-Kontrol mesajları **yüksek öncelikli** olabilir.
-
----
-
-# 17. Öncelik sistemi
-
-NSF'de bütün paketlerin eşit olması gerekmeyebilir.
-
-Örneğin:
-
-```text
-Priority 0 → Emergency / system control
-Priority 1 → Real-time control
-Priority 2 → CPU/FAPU/NPU data
-Priority 3 → Memory transfer
-Priority 4 → Storage
-Priority 5 → background
-```
-
-Bu sadece kavramsal bir örnektir; sayısal sınıflar daha sonra belirlenir.
-
-Ama prensip önemlidir:
-
-> **Sistem kontrolü, büyük bir veri aktarımının arkasında beklememelidir.**
-
-UCIe'nin güncel 3.0 özelliklerinde de zaman açısından kritik sistem olayları için öncelikli sideband paketleri ve acil durum sinyalleşmesi gibi mekanizmalar bulunuyor; bu, fabric'te veri ile kontrol trafiğinin ayrıştırılmasının pratik önemini gösteriyor.
-
----
-
-# 18. Fabric ve fiziksel anakart
-
-NSF yalnızca mantıksal bir ağ değildir.
-
-PCB yerleşimi fabric'in fiziksel karşılığıdır.
-
-Örneğin:
-
-```text
-                   ÖN YÜZ
-
-             ┌─────────────┐
-             │ NEXSUS CPU  │
-             └──────┬──────┘
-                    │
-          Application MOSRAM
-                    │
-        ┌───────────┴───────────┐
-        │                       │
-       FAPU                    NPU
-        │                       │
-════════════════════════════════════════
-              SYSTEM FABRIC
-════════════════════════════════════════
-
-                   ARKA YÜZ
-
-        Data MOSRAM   Data MOSRAM
-             │             │
-             └──────┬──────┘
-                    │
-                  M-SSD
-```
-
-Bu nedenle fiziksel mesafe fabric tasarımının bir parametresidir.
-
----
-
-# 19. İki taraflı anakart
-
-NEXSUS anakartının iki yüzü aktif olarak kullanılabilir.
-
-Bu:
-
-> yalnızca daha fazla komponent koymak
-
-anlamına gelmez.
-
-İşlevsel bir yerleşim oluşturur.
-
-### Ön yüz
-
-Kullanıcı ve işlemci odaklı:
-
-```text
-CPU
+GPU
+NPU
+GPU
 FAPU
 NPU
-SCP
-Application MOSRAM
-I/O connectors
+CPU
+GPU
+...
 ```
 
-### Arka yüz
+şeklinde küçük transfer parçaları birbirine kaynaştırılabilir.
 
-Yüksek yoğunluklu veri ve bağlantı:
+Aynı zamanda farklı lane grupları paralel çalışabilir.
 
-```text
-Data MOSRAM
-M-SSD
-Fabric routing
-Power distribution
-```
-
-Bu yapı kablo karmaşasını azaltırken yüksek hızlı bağlantıların mesafesini de azaltabilir.
+Böylece tek bir transferin tamamlanması diğer bütün transferlerin başlamasını engellemez.
 
 ---
 
-# 20. Fabric'in katmanlı çalışma modeli
+# 13. Doğrudan Node-to-Node İletişim
 
-NSF için kavramsal olarak:
+NEXSUS'ta CPU sistemin zorunlu veri aracısı değildir.
 
-```text
-Application
-     ↓
-System Service
-     ↓
-Fabric Protocol
-     ↓
-Routing
-     ↓
-Physical Link
-     ↓
-Destination
-```
-
-şeklinde bir yapı düşünülebilir.
-
-Örneğin CPU:
+Örneğin klasik yaklaşım:
 
 ```text
-"FAPU'ya veri gönder"
-```
-
-dediğinde sistem:
-
-```text
+MSSD
+ ↓
 CPU
  ↓
-Fabric
+RAM
  ↓
-destination = FAPU
- ↓
-route selection
- ↓
-FAPU
+GPU
 ```
 
-işlemini gerçekleştirir.
+olabilir.
 
-CPU'nun fiziksel bağlantı ayrıntılarını bilmesi gerekmez.
-
----
-
-# 21. Adresleme
-
-Fabric üzerinde iki farklı adres kavramını ayırmak gerekir.
-
-### Memory Address
-
-Bellek içindeki veri adresi.
-
-### Fabric Address
-
-Verinin hangi sistem düğümüne gönderileceğini belirleyen adres.
-
-Örneğin:
+NEXSUS'ta ise:
 
 ```text
-Destination:
-    DATA_MOSRAM_BANK_04
-
-Offset:
-    0x....
+MSSD ─────────→ GPU
 ```
 
 veya:
 
 ```text
-Destination:
-    FAPU
-Channel:
-    2
+MSSD → MOSRAM → GPU
 ```
 
-şeklinde düşünülebilir.
+mümkündür.
 
-Bu ayrım NEXSUS ISA kesinleşmeden önce bile mimari seviyede tanımlanabilir.
+Benzer şekilde:
+
+```text
+FAPU → MOSRAM
+GPU  → MSSD
+NPU  → MSSD
+MSSD → NPU
+GPU  → FAPU
+```
+
+gibi doğrudan veri akışları desteklenir.
+
+Bu yaklaşım CPU üzerindeki veri taşıma yükünü azaltır.
 
 ---
 
-# 22. Fabric'in en önemli özelliği: gereksiz veri hareketini azaltmak
+# 14. MSSD'nin Fabric İçindeki Konumu
 
-NEXSUS Fabric'in temel performans ölçütü yalnızca:
+MSSD, klasik anlamda CPU'ya bağlı bir SSD değildir.
 
-**GB/s**
-
-olmamalıdır.
-
-Aynı zamanda:
-
-**kaç kez veri yer değiştirdi?**
-
-sorusunu da dikkate almalıdır.
-
-Örneğin kötü mimari:
-
-```text
-M-SSD
- ↓
-CPU
- ↓
-MOSRAM
- ↓
-CPU
- ↓
-FAPU
- ↓
-CPU
- ↓
-MOSRAM
-```
-
-NEXSUS yaklaşımı:
-
-```text
-M-SSD
- ↓
-Data MOSRAM
- ↓
-FAPU
-```
-
-Sonuç:
-
-- daha az fabric trafiği,
-- daha düşük gecikme,
-- daha az enerji,
-- CPU'nun daha az meşgul olması.
-
----
-
-# 23. Fabric'in gelecekteki genişleme modeli
-
-NEXSUS'a daha sonra yeni işlem birimleri eklenebilir.
+MSSD, System Fabric üzerinde **birinci sınıf veri düğümü** olarak konumlandırılır.
 
 Örneğin:
 
 ```text
-System Fabric
-     │
-     ├── CPU
-     ├── FAPU
-     ├── NPU
-     ├── GPU
-     ├── DSP
-     ├── Security
-     ├── ISP
-     └── future accelerator
+CPU  → MSSD
+GPU  → MSSD
+FAPU → MSSD
+NPU  → MSSD
 ```
 
-Yeni birimin fabric'e bağlanması, bütün sistemin yeniden tasarlanmasını gerektirmemelidir.
+erişimleri CPU aracılığı olmadan gerçekleşebilir.
 
-Yeni düğüm:
+MSSD'nin bu şekilde konumlandırılması, kalıcı veri katmanının bütün sistem tarafından ortak kullanılmasını sağlar.
+
+---
+
+# 15. MOSRAM'ın Fabric İçindeki Konumu
+
+MOSRAM da yalnızca CPU'nun RAM'i olarak düşünülmez.
+
+Fabric üzerinde doğrudan erişilebilir bir bellek düğümüdür.
+
+Örneğin:
 
 ```text
-Device
- ↓
-Capability discovery
- ↓
-Fabric registration
- ↓
-Resource allocation
- ↓
-Ready
+GPU  → MOSRAM
+NPU  → MOSRAM
+FAPU → MOSRAM
+CPU  → MOSRAM
 ```
 
-şeklinde sisteme dahil olabilir.
+erişimleri eş zamanlı olarak gerçekleştirilebilir.
 
-Bu özellik özellikle NEXSUS'un uzun ömürlü bir mimari olması açısından önemlidir.
+Fabric Controller, aynı MOSRAM bölgesine gelen çakışan erişimleri yönetir.
+
+Bağımsız bellek bölgelerine yapılan erişimler mümkün olduğunca paralel yürütülür.
 
 ---
 
-# 24. Fabric'in güvenilirlik mekanizması
+# 16. Arbitration
 
-Fabric yalnızca hızlı olmamalıdır.
+Birden fazla düğüm aynı anda aynı kaynağa erişmek istediğinde Fabric Controller arbitration gerçekleştirir.
 
-Veri hataları da tespit edilmelidir.
+Ancak arbitration yalnızca:
 
-Temel seviyede:
+> "Önce kim?"
+
+sorusu değildir.
+
+Şunlar birlikte değerlendirilir:
+
+- Transfer boyutu
+- Öncelik
+- Gecikme toleransı
+- Veri bağımlılığı
+- Mevcut lane kullanımı
+- Hedef düğümün kabul kapasitesi
+- Kaynak düğümün üretim hızı
+- Diğer transferlerin etkilenme derecesi
+
+Amaç tek bir düğümü maksimum hızda çalıştırmak değil, **sistem genelinde dengeli veri akışı sağlamaktır.**
+
+---
+
+# 17. QoS ve Öncelik
+
+Her veri transferi aynı öneme sahip değildir.
+
+Örneğin:
 
 ```text
-Data
- ↓
-Integrity check
- ↓
-Transmission
- ↓
-Integrity check
- ↓
-Destination
+Gerçek zamanlı video
+        ↓
+yüksek öncelik
 ```
 
-gibi bir mekanizma bulunabilir.
-
-Hata durumunda:
+iken:
 
 ```text
-error
- ↓
-retry / correction
- ↓
-status
+arka plan veri aktarımı
+        ↓
+düşük öncelik
 ```
 
-uygulanabilir.
+olabilir.
 
-Buradaki ayrıntılı ECC/CRC seçimi daha sonraki tasarım aşamasına bırakılabilir.
+Fabric Controller gerekli durumlarda yüksek öncelikli trafiğe daha fazla lane veya daha sık zaman dilimi tahsis edebilir.
 
----
+Ancak düşük öncelikli trafik tamamen bloke edilmemelidir.
 
-# 25. Fabric'in yeni nesil yaklaşımı
-
-NEXSUS System Fabric'in temel prensipleri şu şekilde özetlenebilir:
-
-1. **CPU merkezli olmamak**
-2. **İşlemciye yakın belleği kullanmak**
-3. **Application ve Data MOSRAM'ı ayırmak**
-4. **Belleği banklara bölerek paralellik oluşturmak**
-5. **İşlemciler arasında doğrudan veri aktarımına izin vermek**
-6. **Veriyi gereksiz yere CPU üzerinden geçirmemek**
-7. **Data / Control / Status trafiğini ayırmak**
-8. **Kritik kontrol mesajlarına öncelik vermek**
-9. **Fiziksel mesafeyi fabric tasarımının parçası yapmak**
-10. **Anakartın iki yüzünü aktif kullanmak**
-11. **Yeni işlem birimlerinin fabric'e eklenebilmesini sağlamak**
-12. **Fabric'i CPU'dan bağımsız ortak sistem altyapısı olarak tasarlamak**
+Bu nedenle QoS mekanizması starvation önleme kurallarına sahip olmalıdır.
 
 ---
 
-# 26. NEXSUS Fabric'in kavramsal farkı
+# 18. Hata Yönetimi
 
-NEXSUS System Fabric'in amacı:
+Fiziksel sistemlerde mutlak anlamda "sıfır hata" garanti edilemez.
 
-> **“Bütün cihazları birbirine bağlamak”**
+Bu nedenle hedef:
 
-değildir.
+> **Hatanın sistem tarafından görünür bir veri bozulmasına dönüşmesini engellemek.**
 
-Daha doğru ifade:
+olmalıdır.
 
-> **“Sistemdeki verinin mümkün olan en kısa, en düşük gecikmeli ve en az enerji harcayan yoldan doğru işlem birimine ulaşmasını sağlamak.”**
-
-Bu nedenle NSF bir **bus**, yalnızca bir **interconnect** veya yalnızca bir **chiplet bağlantısı** değildir.
-
-NSF:
-
-**işlem + bellek + depolama + kontrol + fiziksel yerleşim**
-
-birlikte düşünülerek oluşturulan sistem iletişim mimarisidir.
-
----
-
-# 27. NEXSUS System Fabric'in temel modeli
-
-Sonuçta sistem:
+Transfer paketlerinde örneğin:
 
 ```text
-                         NEXSUS SYSTEM
-
-                           ┌───────┐
-                           │  CPU  │
-                           └───┬───┘
-                               │
-                      Application MOSRAM
-                               │
-                               │
-       ┌───────────────────────┼──────────────────────┐
-       │                  SYSTEM FABRIC               │
-       │                                               │
-     FAPU                    NPU                     SCP
-       │                      │                       │
-       └──────────────────────┼───────────────────────┘
-                              │
-                    ┌─────────┼─────────┐
-                    │         │         │
-                  DATA       DATA      DATA
-                 MOSRAM     MOSRAM    MOSRAM
-                    │         │         │
-                    └─────────┼─────────┘
-                              │
-                            M-SSD
-                              │
-                       External I/O
-                              │
-                    ┌─────────┴─────────┐
-                    │                   │
-                   NPI          NEXSUS Wireless
+HEADER
+SOURCE
+DESTINATION
+ADDRESS
+LENGTH
+SEQUENCE
+DATA
+CRC/ECC
 ```
 
-şeklinde düşünülebilir.
+gibi alanlar bulunabilir.
 
-Buradaki en önemli fikir şudur:
+Alıcı hata tespit ederse:
 
-**NEXSUS'ta fabric, parçaları birbirine bağlayan sonradan eklenmiş bir kablo sistemi değildir; parçaların nasıl yerleştirileceğini ve verinin sistem içerisinde nasıl hareket edeceğini belirleyen temel mimari katmandır.**
+```text
+ERROR
+ ↓
+RETRY / REPLAY
+ ↓
+TRANSFER CONTINUE
+```
+
+gerçekleştirilir.
+
+Gerekli durumlarda problemli lane devre dışı bırakılarak trafik başka lane'lere yönlendirilebilir.
+
 ---
+
+# 19. Congestion Management
+
+Bir hedef düğümün veri kabul kapasitesi dolduğunda Fabric yeni veriyi zorla göndermemelidir.
+
+Bunun yerine:
+
+```text
+Backpressure
+Queue
+Lane Redistribution
+Priority Adjustment
+```
+
+mekanizmaları kullanılmalıdır.
+
+Örneğin GPU geçici olarak veri kabul edemiyorsa GPU'ya ayrılmış lane'lerin bir bölümü başka düğümlere aktarılabilir.
+
+GPU tekrar hazır olduğunda kapasite yeniden artırılır.
+
+---
+
+# 20. Fabric Controller
+
+Bütün bu işlemlerin merkezi bileşeni **Fabric Controller** veya **Fabric Controller/Router** olarak tanımlanır.
+
+Bu bileşen:
+
+```text
+                  FABRIC CONTROLLER
+                         │
+       ┌─────────────────┼─────────────────┐
+       │                 │                 │
+    Routing          Scheduling        Arbitration
+       │                 │                 │
+ Lane Allocation   Time Interleave       QoS
+       │                 │                 │
+       └─────────────────┼─────────────────┘
+                         │
+                 Error / Recovery
+```
+
+fonksiyonlarını gerçekleştirir.
+
+Bu nedenle Fabric Controller, NEXSUS anakartının en kritik kontrol bileşenlerinden biridir.
+
+---
+
+# 21. Fabric'in Merkezi Rolü
+
+NEXSUS'ta:
+
+```text
+CPU      = İşlem düğümü
+GPU      = Paralel işlem düğümü
+FAPU     = Yardımcı işlem düğümü
+NPU      = AI/özel işlem düğümü
+MOSRAM   = Çalışma belleği düğümü
+MSSD     = Kalıcı veri düğümü
+I/O      = Harici iletişim düğümleri
+
+SYSTEM FABRIC = Ortak sistem altyapısı
+```
+
+Bu nedenle System Fabric'i yalnızca bir bus olarak tanımlamak doğru değildir.
+
+Daha doğru tanım:
+
+> **System Fabric, NEXSUS sisteminin merkezi iletişim, kaynak dağıtım ve veri zamanlama altyapısıdır.**
+
+---
+
+# 22. Temel Mimari Hedef
+
+NEXSUS System Fabric'in temel hedefi maksimum teorik bant genişliğinden daha geniştir.
+
+Asıl hedef:
+
+> **Sistemdeki farklı hızlarda çalışan düğümlerin veri ihtiyaçlarını mümkün olan en düşük bekleme süresiyle karşılamak ve bir düğümün bekleme durumunun diğer düğümlerin çalışmalarını gereksiz yere durdurmasını önlemek.**
+
+Bu nedenle performans:
+
+```text
+Fabric Bandwidth
++
+Fabric Clock
++
+Lane Count
++
+Latency
++
+Interleaving Efficiency
++
+Node Acceptance Timing
++
+Routing Efficiency
++
+Error Recovery
+```
+
+birlikte değerlendirilmelidir.
+
+---
+
+# 23. Referans Mimari
+
+İlk yüksek performanslı NEXSUS tasarımı için referans hedef:
+
+```text
+SYSTEM FABRIC
+────────────────────────────────
+
+Fabric Controller
+Dynamic Lane Allocation
+Dynamic Time-Slot Interleaving
+Direct Node-to-Node Communication
+
+Reference Width:
+1024 Full-Duplex Lane hedefi
+
+Scalable:
+128 / 256 / 512 / 1024 / 2048+
+
+Independent Clock Domains:
+CPU
+GPU
+FAPU
+NPU
+MOSRAM
+MSSD
+I/O
+
+Core Functions:
+Routing
+Arbitration
+Scheduling
+QoS
+Flow Control
+CRC/ECC
+Retry
+Recovery
+Backpressure
+```
+
+1024 lane burada mimarinin zorunlu sınırı değil, yüksek performanslı referans sistem için başlangıç hedefidir.
+
+---
+
+# 24. Sonuç
+
+NEXSUS System Fabric'in temel amacı yalnızca cihazlar arasında yüksek hızlı veri taşımak değildir.
+
+Fabric:
+
+- farklı clock domain'lerini birleştirir,
+- düğümlerin veri kabul zamanlarını koordine eder,
+- kullanılmayan bağlantı kapasitesini başka düğümlere aktarır,
+- veri transferlerini küçük zaman dilimlerine böler,
+- transferleri birbirleriyle interleave eder,
+- doğrudan node-to-node iletişim sağlar,
+- MSSD ve MOSRAM'ı sistemin ortak veri altyapısına dahil eder,
+- hata ve congestion durumlarını yönetir,
+- sistem kaynaklarının mümkün olduğunca sürekli kullanılmasını sağlar.
+
+Bu nedenle NEXSUS mimarisinde System Fabric, klasik bir bus'ın geliştirilmiş biçimi olarak değil, **anakartın merkezi sistem altyapısı** olarak ele alınmalıdır.
+
+Temel mimari ifade:
+
+> **CPU sistemi çalıştıran ana işlem düğümüdür; System Fabric ise sistemin bütün düğümlerinin birlikte ve uyumlu çalışmasını sağlayan merkezi altyapıdır.**
+
+NEXSUS'un ölçeklenebilirliği yalnızca işlemci performansından değil, **Fabric'in sistemdeki bütün kaynakları ne kadar etkin bir şekilde birbirine bağlayabildiğinden** gelecektir.
