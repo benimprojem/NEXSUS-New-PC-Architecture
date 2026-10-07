@@ -769,3 +769,738 @@ Temel mimari ifade:
 > **CPU sistemi çalıştıran ana işlem düğümüdür; System Fabric ise sistemin bütün düğümlerinin birlikte ve uyumlu çalışmasını sağlayan merkezi altyapıdır.**
 
 NEXSUS'un ölçeklenebilirliği yalnızca işlemci performansından değil, **Fabric'in sistemdeki bütün kaynakları ne kadar etkin bir şekilde birbirine bağlayabildiğinden** gelecektir.
+
+# 25. Fabric Controller İç Mimari
+
+System Fabric'in merkezi yönetim bileşeni **Fabric Controller (FC)** olarak tanımlanır.
+
+Fabric Controller'ın görevi yalnızca adresleri yönlendirmek değildir. Sistem üzerindeki bütün düğümlerin veri taleplerini değerlendirir, uygun bağlantı kaynaklarını tahsis eder ve farklı clock domain'leri arasındaki veri akışını düzenler.
+
+Temel yapı:
+
+```text
+                         FABRIC CONTROLLER
+                                │
+        ┌───────────────────────┼────────────────────────┐
+        │                       │                        │
+        ▼                       ▼                        ▼
+   Request Manager        Scheduler               Router
+        │                       │                        │
+        ▼                       ▼                        ▼
+   Queue Manager         Lane Manager          Address Manager
+        │                       │                        │
+        └───────────────────────┼────────────────────────┘
+                                │
+                 ┌──────────────┼──────────────┐
+                 ▼              ▼              ▼
+          Clock Domain     Flow Control    Error Manager
+            Manager
+```
+
+---
+
+# 26. Request Manager
+
+Her düğüm veri okumak veya yazmak istediğinde Fabric'e bir **Request** gönderir.
+
+Örneğin:
+
+```text
+CPU  → MSSD : READ
+GPU  → MOSRAM : READ
+FAPU → MSSD : WRITE
+NPU  → MOSRAM : READ
+```
+
+Request Manager bu talepleri kabul eder ve aşağıdaki bilgileri oluşturur:
+
+```text
+SOURCE
+DESTINATION
+READ / WRITE
+ADDRESS
+LENGTH
+PRIORITY
+REQUEST ID
+CLOCK DOMAIN
+DEADLINE / LATENCY CLASS
+```
+
+Bu aşamada veri henüz aktarılmak zorunda değildir.
+
+Önce talep Fabric'in kaynak yönetim sistemine girer.
+
+---
+
+# 27. Request Queue
+
+Her düğüm için sabit bir sıra bulunması zorunlu değildir.
+
+Fabric Controller farklı talepleri ortak bir request pool içinde tutabilir.
+
+Örneğin:
+
+```text
+Request Pool
+
+R01 CPU  → MSSD
+R02 GPU  → MOSRAM
+R03 NPU  → MOSRAM
+R04 FAPU → MSSD
+R05 CPU  → MOSRAM
+R06 GPU  → MSSD
+```
+
+Scheduler bu taleplerin hangilerinin aynı anda çalışabileceğini belirler.
+
+Çakışmayan talepler paralel yürütülür.
+
+---
+
+# 28. Scheduler
+
+Scheduler, Fabric Controller'ın en önemli bölümlerinden biridir.
+
+Ancak klasik bir FIFO scheduler kullanılmaz.
+
+Temel mantık:
+
+> **İlk gelen ilk işlenir yerine, o anda en verimli şekilde hangi transferlerin birlikte yürütülebileceğini belirle.**
+
+Örneğin:
+
+```text
+CPU → MSSD
+GPU → MOSRAM
+NPU → MOSRAM
+```
+
+aynı anda gerçekleştirilebiliyorsa birbirlerini bekletmemelidir.
+
+Ancak:
+
+```text
+CPU → MOSRAM Bank 2
+NPU → MOSRAM Bank 2
+```
+
+aynı kaynağa çakışıyorsa scheduler bunları uygun zaman dilimlerine dağıtır.
+
+---
+
+# 29. Dynamic Scheduling
+
+Scheduler sürekli olarak aşağıdaki bilgileri değerlendirir:
+
+```text
+Node Load
+Request Queue
+Destination Availability
+Lane Availability
+Transfer Size
+Priority
+Latency Requirement
+Clock Domain
+Current Fabric Load
+Memory Bank Availability
+```
+
+Böylece Fabric'in kaynakları sürekli yeniden düzenlenebilir.
+
+Örneğin:
+
+```text
+T0
+
+CPU  → MSSD      16 lane
+GPU  → MOSRAM   256 lane
+NPU  → MOSRAM    96 lane
+FAPU → MSSD      64 lane
+```
+
+daha sonra:
+
+```text
+T1
+
+CPU  → MSSD       8 lane
+GPU  → MOSRAM    64 lane
+NPU  → MSSD      256 lane
+FAPU → MOSRAM    128 lane
+```
+
+haline gelebilir.
+
+---
+
+# 30. Lane Manager
+
+Lane Manager, fiziksel Fabric kapasitesinin hangi transferlere ayrılacağını yönetir.
+
+Örneğin sistem:
+
+```text
+512 Full-Duplex Lane
+```
+
+kapasitesine sahipse, bu kaynak statik olarak düğümlere bölünmez.
+
+Bunun yerine:
+
+```text
+Lane Pool = 512
+```
+
+olarak değerlendirilir.
+
+Scheduler talepleri belirledikten sonra Lane Manager uygun miktarı tahsis eder.
+
+---
+
+# 31. Lane Allocation
+
+Örneğin:
+
+```text
+CPU → MSSD       16 lane
+GPU → MOSRAM    192 lane
+NPU → MOSRAM    128 lane
+FAPU → MSSD      64 lane
+I/O               32 lane
+```
+
+kullanılıyorsa:
+
+```text
+Toplam = 432 lane
+```
+
+olur.
+
+Kalan:
+
+```text
+80 lane
+```
+
+başka bir transfer için hazır tutulabilir.
+
+Yeni bir yüksek bant genişlikli talep geldiğinde bu kaynak anında kullanılabilir.
+
+---
+
+# 32. Lane Reallocation
+
+Bir transfer tamamlandığında o transfer için ayrılan lane'ler otomatik olarak serbest bırakılır.
+
+Örneğin:
+
+```text
+GPU → MOSRAM
+256 lane
+```
+
+kullanan bir transfer tamamlandığında:
+
+```text
+256 lane → Lane Pool
+```
+
+geri döner.
+
+Ardından:
+
+```text
+NPU → MSSD
+```
+
+talebine tahsis edilebilir.
+
+Bu işlem statik yapılandırma gerektirmeden gerçekleştirilir.
+
+---
+
+# 33. Time-Slot Manager
+
+Lane Manager fiziksel bağlantı kaynaklarını yönetirken Time-Slot Manager transferlerin zamanlama tarafını yönetir.
+
+Fabric Clock üzerinden küçük zaman pencereleri oluşturulur.
+
+Örneğin:
+
+```text
+F01 → CPU
+F02 → GPU
+F03 → NPU
+F04 → GPU
+F05 → MOSRAM
+F06 → FAPU
+F07 → CPU
+F08 → NPU
+```
+
+Bu sıra sabit değildir.
+
+Scheduler'ın kararlarına göre sürekli değişebilir.
+
+---
+
+# 34. Node Acceptance Window
+
+Her düğüm kendi clock domain'inde çalıştığı için Fabric Controller düğümün veri kabul durumunu bilmelidir.
+
+Örneğin:
+
+```text
+CPU
+READY
+READY
+BUSY
+READY
+READY
+
+GPU
+READY
+BUSY
+BUSY
+READY
+```
+
+Fabric yalnızca uygun kabul penceresinde veri teslim eder.
+
+Bu sayede farklı clock frekanslarının doğrudan birbirine bağlanması gerekmez.
+
+---
+
+# 35. Clock Domain Manager
+
+Clock Domain Manager farklı düğümlerin clock alanlarını birbirinden izole eder.
+
+Örneğin:
+
+```text
+CPU      5 GHz
+GPU      2 GHz
+FAPU     4 GHz
+NPU      3 GHz
+MOSRAM   6 GHz
+```
+
+olabilir.
+
+Fabric bunları tek bir clock'a zorlamaz.
+
+Her bağlantının:
+
+```text
+Source Clock
+Fabric Clock
+Destination Clock
+```
+
+ilişkisi yönetilir.
+
+Bu yapı clock-domain crossing mekanizmalarıyla desteklenir.
+
+---
+
+# 36. Router
+
+Router, veri paketlerinin hedef düğüme ulaşmasını sağlar.
+
+Örneğin:
+
+```text
+MSSD → GPU
+```
+
+isteği geldiğinde Router:
+
+```text
+SOURCE = MSSD
+DESTINATION = GPU
+```
+
+bilgisine göre uygun Fabric yolunu belirler.
+
+CPU'nun araya girmesi gerekmez.
+
+---
+
+# 37. Direct Path
+
+Mümkün olan durumlarda Fabric Controller veri yolunu en kısa uygun bağlantı üzerinden oluşturur.
+
+Örneğin:
+
+```text
+MSSD
+ │
+ └────────────→ GPU
+```
+
+CPU üzerinden:
+
+```text
+MSSD → CPU → GPU
+```
+
+yoluna zorlanmaz.
+
+Bu, özellikle büyük veri akışlarında önemli bir gecikme avantajı sağlayabilir.
+
+---
+
+# 38. Address Manager
+
+Fabric Controller fiziksel cihaz adreslerini ve mantıksal adresleri eşleştirir.
+
+Örneğin:
+
+```text
+0x0000... → MOSRAM Bank 0
+0x1000... → MOSRAM Bank 1
+0x8000... → MSSD
+0xF000... → GPU
+```
+
+gibi bir adresleme yapısı kullanılabilir.
+
+Bu yapı sayesinde kaynak düğüm hedef donanımın fiziksel bağlantı ayrıntısını bilmek zorunda kalmaz.
+
+---
+
+# 39. Memory Bank Parallelism
+
+MOSRAM ve MSSD gibi kaynaklar birden fazla bağımsız bank içeriyorsa Fabric bunları ayrı kaynaklar olarak değerlendirebilir.
+
+Örneğin:
+
+```text
+MOSRAM
+├── Bank 0
+├── Bank 1
+├── Bank 2
+├── Bank 3
+├── Bank 4
+├── Bank 5
+├── Bank 6
+└── Bank 7
+```
+
+şeklinde bir yapı bulunabilir.
+
+Bu durumda:
+
+```text
+GPU → Bank 2
+NPU → Bank 5
+CPU → Bank 7
+```
+
+aynı anda gerçekleştirilebilir.
+
+Bu, Fabric'in toplam paralelliğini önemli ölçüde artırır.
+
+---
+
+# 40. Flow Control
+
+Bir düğüm veya bellek birimi geçici olarak veri kabul edemiyorsa Flow Control devreye girer.
+
+Örneğin:
+
+```text
+GPU Buffer = FULL
+```
+
+durumunda Fabric:
+
+```text
+GPU'ya veri gönderme
+```
+
+yerine diğer transferlere kaynak ayırır.
+
+GPU tekrar:
+
+```text
+READY
+```
+
+durumuna geldiğinde transfer devam eder.
+
+Bu yapı Fabric'in gereksiz yere bloklanmasını önler.
+
+---
+
+# 41. Backpressure
+
+Backpressure, veri akışının hedef kapasitesini aşmasını engeller.
+
+Örneğin:
+
+```text
+MSSD → GPU
+```
+
+yüksek hızda veri üretirken GPU daha yavaş tüketiyorsa Fabric bunu algılar.
+
+Aktarım:
+
+```text
+MSSD → GPU
+```
+
+için ayrılan lane miktarı azaltılabilir.
+
+Boşa çıkan kaynak:
+
+```text
+GPU → ...
+NPU → ...
+CPU → ...
+```
+
+gibi başka transferlere tahsis edilir.
+
+---
+
+# 42. Error Manager
+
+Error Manager, Fabric üzerindeki veri bütünlüğünü takip eder.
+
+Kontrol mekanizmaları:
+
+```text
+CRC
+ECC
+Sequence Check
+Packet Integrity
+Timeout
+Lane Status
+Link Status
+```
+
+olabilir.
+
+Hata oluştuğunda:
+
+```text
+Detect
+ ↓
+Identify
+ ↓
+Retry
+ ↓
+Recover
+```
+
+işlemleri uygulanır.
+
+---
+
+# 43. Lane Failure Recovery
+
+Fiziksel bir lane problemli hale gelirse Fabric Controller bunu tespit edebilir.
+
+Örneğin:
+
+```text
+Lane 183 = ERROR
+```
+
+olduğunda:
+
+```text
+Lane 183
+   ↓
+Disable
+   ↓
+Traffic Re-route
+```
+
+uygulanabilir.
+
+Böylece tek bir fiziksel bağlantı problemi bütün sistemin durmasına neden olmaz.
+
+---
+
+# 44. QoS Manager
+
+QoS Manager transferlere öncelik sınıfları atar.
+
+Örneğin:
+
+```text
+Priority 0 → kritik / gerçek zamanlı
+Priority 1 → yüksek
+Priority 2 → normal
+Priority 3 → arka plan
+```
+
+olabilir.
+
+Ancak düşük öncelikli transferlerin sonsuza kadar beklemesini engellemek için starvation protection uygulanmalıdır.
+
+---
+
+# 45. Transfer Completion
+
+Bir transfer tamamlandığında Fabric Controller:
+
+```text
+DATA COMPLETE
+```
+
+durumunu kaynak düğüme bildirir.
+
+Ardından:
+
+```text
+Lane Release
+Queue Update
+Resource Update
+```
+
+gerçekleştirilir.
+
+Serbest kalan kaynaklar yeni transferlere atanabilir.
+
+---
+
+# 46. Fabric'in Sürekli Çalışma Döngüsü
+
+Fabric Controller'ın çalışma döngüsü kavramsal olarak:
+
+```text
+REQUEST
+   ↓
+ANALYZE
+   ↓
+CHECK DESTINATION
+   ↓
+CHECK RESOURCE
+   ↓
+ALLOCATE LANES
+   ↓
+ALLOCATE TIME SLOT
+   ↓
+TRANSFER
+   ↓
+VERIFY
+   ↓
+COMPLETE
+   ↓
+RELEASE RESOURCE
+   ↓
+NEW REQUEST
+```
+
+şeklindedir.
+
+Ancak bu işlemler birbirini tamamen bekleyen seri işlemler değildir.
+
+Bir transfer gerçekleşirken başka transferler analiz edilebilir, yeni talepler kabul edilebilir ve boşalan kaynaklar başka düğümlere tahsis edilebilir.
+
+---
+
+# 47. Fabric Controller'ın Paralel Çalışması
+
+Bu nedenle Fabric Controller'ın iç mimarisi de yüksek derecede paralel olmalıdır.
+
+```text
+                 FABRIC CONTROLLER
+                         │
+        ┌────────────────┼────────────────┐
+        │                │                │
+    Request Engine   Scheduler       Router
+        │                │                │
+        ├────────────┬───┴────┬───────────┤
+        │            │        │           │
+   Lane Manager  Time Manager QoS     Error Manager
+        │            │        │           │
+        └────────────┴────────┴───────────┘
+                         │
+                  Fabric Interface
+```
+
+Tek bir merkezi işlem çekirdeğinin bütün kararları sırayla vermesi yerine, Fabric Controller'ın kendisi de paralel donanım bloklarından oluşmalıdır.
+
+---
+
+# 48. Fabric Controller'ın Tasarım İlkesi
+
+Fabric Controller için temel prensip:
+
+> **Kontrol merkezi olabilir; darboğaz merkezi olmamalıdır.**
+
+Yani bütün sistem Fabric Controller tarafından yönetilir ancak bütün veri paketlerinin tek bir dar kontrol yolundan geçmesi gerekmemelidir.
+
+Kontrol:
+
+```text
+merkezi
+```
+
+veri akışı:
+
+```text
+paralel
+```
+
+olmalıdır.
+
+---
+
+# 49. Sistem Seviyesinde Örnek
+
+Aynı anda:
+
+```text
+CPU → MSSD       8 KB READ
+GPU → MOSRAM     4 MB READ
+NPU → MOSRAM     512 KB READ
+FAPU → MSSD      128 KB WRITE
+I/O → MSSD       32 KB WRITE
+```
+
+geldiğini düşünelim.
+
+Fabric:
+
+```text
+1. Talepleri kabul eder.
+2. Hedef kaynakları kontrol eder.
+3. Çakışmaları belirler.
+4. Gerekli lane miktarlarını hesaplar.
+5. Transferleri zaman dilimlerine dağıtır.
+6. Bağımsız transferleri paralel yürütür.
+7. Aynı kaynağa erişenleri interleave eder.
+8. Hedef düğümün kabul penceresine göre teslim eder.
+9. Tamamlanan transferlerin kaynaklarını serbest bırakır.
+10. Yeni taleplere aktarır.
+```
+
+Böylece sistem:
+
+```text
+CPU beklerken GPU durmaz.
+GPU beklerken NPU durmaz.
+NPU beklerken FAPU durmaz.
+MSSD bir isteği işlerken MOSRAM başka bir isteği işleyebilir.
+```
+
+---
+
+# 50. Nihai Mimari Tanım
+
+NEXSUS System Fabric Controller şu şekilde tanımlanabilir:
+
+> **Fabric Controller, NEXSUS sistemindeki tüm işlem, bellek, depolama ve I/O düğümlerinin bağımsız çalışma hızlarını ortak bir yüksek hızlı iletişim altyapısında koordine eden; veri taleplerini dinamik olarak yönlendiren, zamanlayan, lane kaynaklarını tahsis eden, transferleri interleave eden ve iletişim sürekliliğini sağlayan merkezi donanım kontrol sistemidir.**
+
+Temel mimari prensip:
+
+> **Merkezi kontrol, dağıtılmış veri akışı.**
+
+Bu prensip NEXSUS System Fabric'in temel tasarım karakteristiğidir.
