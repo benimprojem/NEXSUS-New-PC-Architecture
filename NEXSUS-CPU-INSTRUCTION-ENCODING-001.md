@@ -490,6 +490,38 @@ MOVI64 sembolik assembly gösterimidir; temel MOVI opcode'unun literal destekley
 - EXT prefix'ten sonra başka bir EXT prefix gelmesi, normal instruction gelmemesi veya ayrılmış alanların sıfır olmaması illegal encoding fault üretir.
 - İlk sürümde COUNT yalnızca 1 olabilir.
 
+
+### 7.6 MOVI — 64-bit immediate yükleme
+
+İlk EXT kullanan opcode örneği olarak `MOVI` seçilir. Komut RI formatını kullanır; EXT'siz ve EXT'li biçimleri aynı mnemonic ailesinin iki kodlama biçimidir.
+
+**RI alan kısıtları**
+
+| Alan | Kural |
+|---|---|
+| D | Hedef RA0–RA31 selector'ı |
+| A | 0 olmalıdır (kullanılmıyor) |
+| W | İlk sürümde 64-bit kodu; diğer genişlikler ayrılmıştır |
+| M | `000` olmalıdır |
+| IMM | EXT yoksa signed 36-bit immediate; EXT varsa sıfır olmalıdır |
+
+**EXT'siz biçim**
+
+- Akış tek RI word'dür.
+- IMM, signed 36-bit iki'nin tümleyeni olarak yorumlanır ve 64-bit'e sign-extend edilerek RA[D]'ye yazılır.
+- Örnek: `MOVI RA4, -17`.
+
+**EXT'li biçim**
+
+- Akış: EXT prefix (`KIND=RAW_LITERAL`, `COUNT=1`) → MOVI RI word → 64-bit literal word.
+- RI word içindeki IMM alanı sıfır olmalıdır; immediate değerin tamamı literal word'dedir.
+- Literal, signed sayı olarak yeniden yorumlanmaz veya sign-extend edilmez. 64-bit ham bit deseni doğrudan RA[D]'ye yazılır.
+- Bu nedenle literal hem signed hem unsigned yorumlanan değerleri ve tüm 64-bit bit desenlerini kayıpsız temsil eder.
+- Örnek: `MOVI RA4, 0x123456789ABCDEF0`; assembler bunu EXT'li üç-word paket olarak üretir. `MOVI64` yazımı, aynı kodlamanın isteğe bağlı açık-genişlik alias'ıdır; ayrı opcode değildir.
+
+Geçersiz durumlar: A≠0, W≠64, M≠000, EXT'li biçimde IMM≠0 veya desteklenmeyen EXT KIND/COUNT kullanımı illegal encoding fault üretir. Fault durumunda hedef RA kaydı değişmeden kalır.
+
+
 ## 8. Opcode alanı ve ilk opcode haritası
 
 OP alanı 8-bit olduğundan 256 primary opcode değeri sunar. İlk aşamada opcode numaralarını aileler halinde ayırmak önerilir:
@@ -580,34 +612,3 @@ Aşağıdaki örnekler gerçek hexadecimal makine kodu değildir; opcode değerl
 - P0: 64-bit word kayıtları; EXT paketleri prefix, normal instruction ve COUNT kadar literal word tüketir.
 
 Bu belge, NEXSUS CPU instruction encoding için ilk ortak referanstır. Sayısal opcode değerleri ve açık kararlar kapatıldığında revizyon 1.0 olarak dondurulabilir.
-
-
-### 7.6 MOVI — 64-bit immediate yükleme
-
-İlk EXT kullanan opcode örneği olarak `MOVI` seçilir. Komut RI formatını kullanır; EXT'siz ve EXT'li biçimleri aynı mnemonic ailesinin iki kodlama biçimidir.
-
-**RI alan kısıtları**
-
-| Alan | Kural |
-|---|---|
-| D | Hedef RA0–RA31 selector'ı |
-| A | 0 olmalıdır (kullanılmıyor) |
-| W | İlk sürümde 64-bit kodu; diğer genişlikler ayrılmıştır |
-| M | `000` olmalıdır |
-| IMM | EXT yoksa signed 36-bit immediate; EXT varsa sıfır olmalıdır |
-
-**EXT'siz biçim**
-
-- Akış tek RI word'dür.
-- IMM, signed 36-bit iki'nin tümleyeni olarak yorumlanır ve 64-bit'e sign-extend edilerek RA[D]'ye yazılır.
-- Örnek: `MOVI RA4, -17`.
-
-**EXT'li biçim**
-
-- Akış: EXT prefix (`KIND=RAW_LITERAL`, `COUNT=1`) → MOVI RI word → 64-bit literal word.
-- RI word içindeki IMM alanı sıfır olmalıdır; immediate değerin tamamı literal word'dedir.
-- Literal, signed sayı olarak yeniden yorumlanmaz veya sign-extend edilmez. 64-bit ham bit deseni doğrudan RA[D]'ye yazılır.
-- Bu nedenle literal hem signed hem unsigned yorumlanan değerleri ve tüm 64-bit bit desenlerini kayıpsız temsil eder.
-- Örnek: `MOVI RA4, 0x123456789ABCDEF0`; assembler bunu EXT'li üç-word paket olarak üretir. `MOVI64` yazımı, aynı kodlamanın isteğe bağlı açık-genişlik alias'ıdır; ayrı opcode değildir.
-
-Geçersiz durumlar: A≠0, W≠64, M≠000, EXT'li biçimde IMM≠0 veya desteklenmeyen EXT KIND/COUNT kullanımı illegal encoding fault üretir. Fault durumunda hedef RA kaydı değişmeden kalır.
