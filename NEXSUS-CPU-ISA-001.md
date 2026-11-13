@@ -157,7 +157,7 @@ Bu bölümdeki tüm FP kaynak ve hedef operandları FA0–FA31 bankındadır. FP
 | FMIN | dst, a, b | FP minimum | FPU |
 | FMAX | dst, a, b | FP maksimum | FPU |
 | FCMP | a, b | FP karşılaştırma | FPU |
-| FCONV | dst, src, type | FP/integer dönüşüm | FPU / conversion path |
+| FCONV | dst, src, src_type, dst_type | RA ↔ FA arasında sayısal integer/floating dönüşümü; türler açıkça belirtilir | FPU / conversion path |
 
 FCONV, RA'daki integer değeri FA formatına veya FA'daki floating-point değeri RA integer formatına dönüştürür; kaynak/hedef bankı operandlarda açıkça belirtilir. Başlangıç formatları FP32 ve FP64'tür. FP128, FA pair biçimiyle ISA'da desteklenir; gerçek FPU throughput ve latency mikro-mimari doğrulamasına tabidir.
 
@@ -240,6 +240,16 @@ Aşağıdaki komutlar tek instruction word içinde `R4` formatını kullanır; d
 | `MADD dst, a, b, acc` | R4 | D=dst, A=a, B=b, C=acc (MA bankı) |
 
 R4 alan yerleşimi ve FMT kodu `NEXSUS-CPU-INSTRUCTION-ENCODING-001.md` belgesinde tanımlanır. Pair kullanan MA/FA operandlarında selector, pair'in ilk (çift indisli) kaydını gösterir. R4 kullanılması komutun tek çevrimde tamamlanacağı anlamına gelmez.
+
+### 7.1 FCONV register ve tür eşlemesi
+
+`FCONV` kaynak ve hedef register banklarını encoding içinde açıkça belirtir. Kaynak/hedef bank yalnızca RA veya FA olabilir:
+
+- `FCONV FA3, RA7, i64, f64`: RA7'deki signed 64-bit integer değerini FA3'e FP64 olarak dönüştürür.
+- `FCONV RA7, FA3, f64, i32`: FA3'teki FP64 değeri signed 32-bit integer'a dönüştürerek RA7'nin alt 32-bit görünümüne yazar.
+- `FCONV FA4:FA5, RA8, i64, f128`: RA8'deki signed 64-bit integer değerini FP128'e dönüştürüp FA4:FA5 pair'ine yazar.
+
+`FCONV` bir bit aktarımı değildir; `MOV.RA.DA` veya `MOV.FA.DA` ile aynı semantiğe sahip değildir. Encoding alanları, tür kodları, rounding ve conversion flags `NEXSUS-CPU-INSTRUCTION-ENCODING-001.md` içindeki FCONV alt bölümünde tanımlanır. FP128 kullanıldığında FA pair başlangıcı çift indisli olmalıdır.
 
 ## 12. Açık kalan ISA kararları
 
