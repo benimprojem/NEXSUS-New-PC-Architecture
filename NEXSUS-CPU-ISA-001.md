@@ -244,6 +244,16 @@ Memory komutlarının numeric OP atamaları Encoding belgesi §8.5–§8.6 ile e
 - MOV.RA.DA, MOV.FA.DA, MOV.MA.DA, MOV.DA.RA, MOV.DA.FA ve MOV.DA.MA assembly adları 0x85 XFER opcode'sunun bank selector ve M alt türlerine çevrilen alias'lardır.
 - FCONV 0x5B olarak kalır; numeric conversion, ham XFER/BIT_COPY değildir.
 - LEA için primary opcode henüz atanmadı; scalar reserved 0x20–0x2F aralığından seçilecek ve RI/EXT adres hesaplama davranışı ayrıca tanımlanacaktır.
+### 5.5 Lx memory-domain transfer opcode'ları
+
+| OP | Mnemonic | Format |
+|---:|---|---|
+| 0x86 | XFER.MEM | MEMXFER |
+| 0x87 | XFER.START | MEMXFER |
+| 0x88 | XFER.WAIT | MEMXFER |
+
+MEMXFER, register bank XFER (0x85) ile aynı komut değildir. Kaynak/hedef L1–L4 domain'leri, RA içindeki byte adresleri ve RA içindeki byte uzunluğu ile CPU kontrollü kopyalama yapar. Synchronous XFER.MEM tamamlanana kadar bekler; XFER.START token üretir; XFER.WAIT token'ın tamamlanmasını bekler. Başlangıç validation, completion, kaynak sabitliği, hedefin geçerliliği ve runtime-fault kuralları Encoding §4.14'te tanımlıdır.
+
 ## 5.3 Little-endian bellek ve register-grup sıralaması
 
 NEXSUS CPU, veri belleği ve SPM byte erişimlerinde **little-endian** kullanır. En düşük bellek adresi, çok byte'lı değerin en düşük anlamlı byte'ını taşır.
