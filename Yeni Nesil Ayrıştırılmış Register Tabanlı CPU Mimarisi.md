@@ -997,3 +997,83 @@ işlem yollarını birbirinden mümkün olduğunca ayırarak **daha düşük mem
 
 Bu nedenle mimari klasik stack-merkezli ve tek tip register yaklaşımından farklı olarak, **ayrıştırılmış register bankları + ayrıştırılmış bellek + paralel execution path** prensibine dayanmaktadır.
 ----
+
+---
+
+# 22. Çoklu Execution Unit Yapısı
+
+CPU çekirdeği tek bir ALU ve tek bir scalar işlem yoluna bağlı kalmaz. Her çekirdekte birbirinden bağımsız yürütme birimleri bulunur.
+
+## 22.1 ALU kümesi
+
+Her çekirdeğin temel yapılandırması **2 ALU** olacak; tasarım/ürün varyantında **3 ALU** seçeneği desteklenecektir.
+
+- ALU0 ve ALU1: temel paralel integer/mantıksal yürütme.
+- ALU2: 3-ALU yapılandırmasında ek integer yürütme kapasitesi.
+- ALU'lar mümkün olduğunca bağımsız komutları aynı anda işleyebilir.
+- Operand bağımlılığı, register portları veya kaynak çakışması paralelliği sınırlayabilir.
+- ALU sayısı komut sayısının otomatik olarak aynı oranda hızlanacağı anlamına gelmez.
+
+ALU işlem kapsamı: toplama/çıkarma, çarpma-bölme (uygulama seçimine göre ayrı çok çevrimli birim olabilir), karşılaştırma, mantıksal işlemler, bit işlemleri, shift/rotate ve adres hesaplamaları.
+
+## 22.2 FPU kümesi
+
+Her çekirdekte **en az 2 bağımsız FPU** bulunacaktır.
+
+- FPU0 ve FPU1, floating-point komutlarını ayrı yürütme kaynakları olarak kabul edilir.
+- FP32 ve FP64 temel işlem biçimleridir.
+- FP128 desteği ISA/type sisteminde tanımlanabilir; fiziksel throughput ve latency ayrıca mikro-mimari kararla belirlenir.
+- FPU sayısı, aynı çekirdekte bağımsız FP komutlarının eşzamanlı yürütülmesini hedefler.
+- FPU'lar ALU'ların yerine geçmez; integer ve floating-point yürütme yolları ayrıdır.
+
+## 22.3 512-bit Matrix Engine
+
+Her çekirdeğe **1 adet 512-bit Matrix Engine (ME)** eklenir.
+
+- ME, scalar ALU ve FPU'lardan ayrı yürütme birimidir.
+- 512-bit, motorun veri/işlem yolu genişliğini belirtir.
+- MA register bankı 256-bit fiziksel registerlardan oluştuğu için 512-bit operand/sonuç, iki MA registerı veya tanımlı birleşik operand biçimiyle taşınabilir.
+- 512-bit motorun tek komutta 512-bit veri alması, iki 256-bit registerın eşleştirilmesi veya özel operand formatıyla sağlanabilir; encoding/port tasarımı ISA aşamasında netleştirilecektir.
+- Element genişliği ve matris şekli opcode/format tarafından belirlenir; 512-bit yol tek başına sabit 512×512 matris anlamına gelmez.
+- Matrix multiply, multiply-accumulate ve uygun vector/matrix işlemleri bu birimin hedef kapsamıdır.
+
+## 22.4 Çekirdek başına başlangıç kaynak tablosu
+
+| Execution Unit | Çekirdek başına | Durum |
+|---|---:|---|
+| Integer / Logic ALU | 2 | Temel |
+| Integer / Logic ALU | 3. ALU | Opsiyonel genişletme |
+| FPU | 2 veya daha fazla | Minimum 2 |
+| Matrix Engine | 1 × 512-bit | Temel hedef |
+
+## 22.5 Register ve SPM bağlantısı
+
+- RA/RB/RC/RD görünümleri scalar ALU'ların operand ve sonuç alanıdır.
+- DA bankı data transfer ve staging görevini sürdürür.
+- MA bankı vector/matrix operand ve sonuçlarını taşır.
+- SPM0/SPM1, register pressure ve ara değerler için doğrudan adreslenebilir çalışma alanıdır.
+- SPM erişimi execution unit'lere ortak bir kaynak olarak sunulur; aynı çevrimdeki erişim sayısı port/bank tasarımıyla belirlenecektir.
+
+## 22.6 Paralel yürütme ilkesi
+
+Bağımsız komutlar, kaynaklar uygun olduğunda aşağıdaki birimlerde eşzamanlı ilerleyebilir:
+
+```text
+Core
+ ├─ ALU0 ─┐
+ ├─ ALU1 ──┼─ Integer / Logic
+ ├─ ALU2* ─┘
+ ├─ FPU0 ──┐
+ ├─ FPU1 ──┴─ Floating Point
+ └─ ME512 ──── Matrix / Vector
+```
+
+`ALU2*` yalnızca 3-ALU yapılandırmasında bulunur. Gerçek issue width, register portları, forwarding, dependency çözümü ve execution latency sonraki mikro-mimari belgesinde tanımlanacaktır.
+
+## 22.7 Instruction Set belgesi
+
+Komut aileleri ve ilk operand tablosu için:
+**[NEXSUS CPU Instruction Set — Execution Unit Table](NEXSUS-CPU-ISA-001.md)**
+
+SPM adresleme, kısmi yazma ve register görünüm ayrıntıları:
+**[NEXSUS CPU — SPM ve Register Görünümleri](NEXSUS%20CPU%20%E2%80%94%20SPM,%20Register%20G%C3%B6r%C3%BCn%C3%BCmleri%20ve%20Do%C4%9Frudan%20Alan%20Eri%C5%9Fimi.md)**
