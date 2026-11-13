@@ -897,7 +897,7 @@ OP alanı 8-bit olduğundan 256 primary opcode değeri sunar. İlk aşamada opco
 | 0x10–0x2F | Integer / scalar ALU | Aile aralığı ayrıldı; bireysel atamalar açık |
 | 0x30–0x3F | Bit / Boolean / shift | Aile aralığı ayrıldı; bireysel atamalar açık |
 | 0x40–0x4F | Load/store / address | Aile aralığı ayrıldı; bireysel atamalar açık |
-| 0x50–0x5F | Floating point / conversion | Aile aralığı ayrıldı; bireysel atamalar açık |
+| 0x50–0x5F | Floating point / conversion | 0x50–0x5B atandı; 0x5C–0x5F ayrıldı |
 | 0x60–0x83 | Vector / Matrix / ME512 | Alt aile aralığı ayrıldı; aşağıda 0x60–0x82 atandı |
 | 0x84–0x93 | Register transfer / bank move | Aile aralığı ayrıldı; bireysel atamalar açık |
 | 0x94–0xA3 | SPM access / SPM control | Aile aralığı ayrıldı; bireysel atamalar açık |
@@ -905,7 +905,7 @@ OP alanı 8-bit olduğundan 256 primary opcode değeri sunar. İlk aşamada opco
 | 0xC4–0xEF | Reserved / future extensions | Ayrılmış |
 | 0xF0–0xFF | Escape / EXT / implementation-defined | Ayrılmış; EXT için bireysel değer açık |
 
-Primary opcode, FMT ile birlikte komut tanımını seçer. Aşağıda sayısal değer verilen Vector/Matrix komutları bu revizyonda atanmıştır; diğer ailelerin aralıkları yalnızca rezerve edilmiştir.
+Primary opcode, FMT ile birlikte komut tanımını seçer. Aşağıda Vector/Matrix ve Floating-point ailelerinin sayısal atamaları verilmiştir; diğer ailelerin aralıkları ayrılmış ancak bireysel opcode atamaları henüz yapılmamıştır.
 
 ### 8.1 Vector ve Matrix primary opcode atamaları
 
