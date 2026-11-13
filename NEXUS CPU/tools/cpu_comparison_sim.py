@@ -699,8 +699,8 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
         if is_nexus:
             st["fetch"] = CommandFetchModel(
                 bool(features["p0"]),
-                p0_capacity_bytes=int(features.get("p0_capacity_kb", 8)) * 1024,
-                p0_refill_latency=int(features.get("p0_refill_latency", 8)),
+                p0_capacity_bytes=int(features.get("p0_capacity_kb", 16)) * 1024,
+                p0_refill_latency=int(features.get("p0_refill_latency", 48)),
                 conventional_capacity_bytes=int(features.get("conventional_icache_kb", 32)) * 1024,
                 conventional_refill_latency=int(features.get("conventional_refill_latency", 32)),
             )
@@ -905,6 +905,12 @@ def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=N
                 "refills": sum(x["fetch"].refills for x in per_core if x["fetch"] is not None),
                 "refill_bytes": sum(x["fetch"].refill_bytes for x in per_core if x["fetch"] is not None),
                 "wait_cycles": sum(x["fetch"].wait_cycles for x in per_core if x["fetch"] is not None),
+                "bank_switches": sum(x["fetch"].bank_switches for x in per_core if x["fetch"] is not None),
+                "ready_boundaries": sum(x["fetch"].ready_boundaries for x in per_core if x["fetch"] is not None),
+                "boundary_waits": sum(x["fetch"].boundary_waits for x in per_core if x["fetch"] is not None),
+                "useful_bytes": sum(x["fetch"].useful_bytes for x in per_core if x["fetch"] is not None),
+                "pool_hits": sum(x["fetch"].pool_hits for x in per_core if x["fetch"] is not None),
+                "pool_misses": sum(x["fetch"].pool_misses for x in per_core if x["fetch"] is not None),
                 "mode": ("P0" if p.name.startswith("NEXSUS CPU") and
                          (nexus_features is None or nexus_features.get("p0", True))
                          else "conventional I-cache")
@@ -914,7 +920,7 @@ def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=N
     total_cycles = sum(v["cycles"] for v in results.values())
     total_ops = sum(v["ops"] for v in results.values())
     return {"cpu": p.name, "cores_configured": cores, "clock_ghz": p.frequency_ghz,
-            "nexus_features": ({"spm": True, "p0": True, "p0_capacity_kb": 16, "p0_buffer_kb": 8, "p0_refill_latency": 128} if nexus_features is None else nexus_features) if p.name.startswith("NEXSUS CPU") else None,
+            "nexus_features": ({"spm": True, "p0": True, "p0_capacity_kb": 16, "spm0_kb": 4, "spm0_bank_kb": 2, "p0_refill_latency": 48} if nexus_features is None else nexus_features) if p.name.startswith("NEXSUS CPU") else None,
             "register_architecture": ({"RA": {"count": 32, "width_bits": 64}, "FA": {"count": 32, "width_bits": 64}, "DA": {"count": 32, "width_bits": 64}, "MA": {"count": 32, "width_bits": 256}, "selector_bits": 5, "total_physical_bytes": 1792} if p.name.startswith("NEXSUS CPU") else None),
             "cpu_ram_reference_clock_ghz": p.frequency_ghz,
             "aggregate_dram_bytes_per_cycle": aggregate_dram_bandwidth,
@@ -1007,7 +1013,7 @@ def run_fetch_latency_sweep(workloads, conventional_latencies=(8, 16, 24, 32),
                             p0_latencies=(64, 96, 128, 160), p0_capacity_kb=16):
     """Compare reference I-cache refill assumptions with NEXSUS P0 refill assumptions."""
     target = {"p0_starvation": workloads["p0_starvation"]}
-    rows = {"amd_9950x": {}, "intel_285k_p": {}, "intel_285k_e": {},
+    rows = {"amd_9950x3d2": {}, "intel_xeon_698x": {}, "apple_m6": {},
             "nexus_conventional": {}, "nexus_p0": {}}
     for key in ("amd_9950x", "intel_285k_p", "intel_285k_e"):
         for latency in conventional_latencies:
@@ -1060,8 +1066,8 @@ def main():
     ap.add_argument("--nexus-cores", type=int, default=8)
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--ablation", action="store_true", help="run four-way NEXSUS SPM/P0 ablation")
-    ap.add_argument("--p0-capacity-kb", type=int, default=16, help="NEXSUS P0+P1 total capacity in KiB")
-    ap.add_argument("--p0-refill-cycles", type=int, default=128, help="provisional 8-KiB P0/P1 refill latency")
+    ap.add_argument("--p0-capacity-kb", type=int, default=16, help="PX P0-P7 code pool capacity in KiB; SPM0 is 4 KiB (2x2 KiB)")
+    ap.add_argument("--p0-refill-cycles", type=int, default=48, help="provisional 2-KiB PX-to-SPM0 refill latency")
     ap.add_argument("--p0-sweep", action="store_true", help="run 4/8/16/32 KiB P0 capacity sweep")
     ap.add_argument("--fetch-sweep", action="store_true", help="compare conventional I-cache and P0 refill latency sensitivity")
     args = ap.parse_args()
@@ -1101,7 +1107,7 @@ def main():
                     row["cycles"]["N-NO-P0"], row["cycles"]["N-BASE"], row["interaction_cycles"]))
         return
     profiles = {}
-    for key in ("amd_9950x","intel_285k_p","intel_285k_e"):
+    for key in ("amd_9950x3d2", "intel_xeon_698x", "apple_m6"):
         profiles[key] = simulate_cpu(workloads, PROFILES[key])
     for key in ("nexus_balanced_128",):
         profiles[key] = simulate_cpu(
@@ -1112,8 +1118,8 @@ def main():
     if args.json:
         print(json.dumps(profiles, indent=2))
         return
-    print("NEXSUS CPU COMPOSITE WORKLOAD — CONTROLLED 8-CORE MODEL v0.2.4-dev")
-    print("All targets: exactly 8 modeled cores, one thread/core, 3.0 GHz reference clock, 120-cycle DRAM latency, 32 B/cycle chip-wide DRAM ceiling; identical logical workload graphs.")
+    print("NEXSUS CPU COMPOSITE WORKLOAD — NATIVE PROFILE MODEL v0.3.0-dev")
+    print("Native modeled cores: AMD 16, Intel Xeon 698X 86, Apple M6 12, NEXSUS 8; one hardware thread/core. Clock and memory parameters are explicit model assumptions.")
     print("Parallelism: lockstep cores; NEXSUS private L1 and shared L2/2-core, L3/4-core, L4/8-core groups; shared DRAM banks and aggregate bus; coherence remains unmodeled.")
     print(f"{'CPU profile':48} {'cycles':>12} {'ops':>10} {'IPC':>8} {'time ms*':>12}")
     for result in profiles.values():
@@ -1137,7 +1143,7 @@ def main():
                   f"{c['execution_unit_blocked_op_cycles']:10d} {c['frontend_limited_cycles']:9d} "
                   f"{c['rob_full_cycles']:8d} {c['branch_recovery_cycles']:10d} "
                   f"{c['memory_latency_exposure_cycles']:10d}")
-    print("*Time uses configured reference clock, not measured sustained turbo. Reference cache sharing/port behavior and front-end details are approximations; NEXSUS P0 is separately modeled.")
+    print("*Simulated architecture profiles, not silicon measurements. Apple M6 heterogeneous cores are represented by a weighted homogeneous approximation; vendor-private microarchitecture details are assumptions. NEXSUS PX pool feeds SPM0-A/B (2x2 KiB).")
 
 if __name__ == "__main__":
     main()
