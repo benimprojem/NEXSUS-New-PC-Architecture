@@ -137,3 +137,12 @@ Define PX allocation policy and arbitration:
 - fairness and starvation prevention.
 
 This document establishes the resource roles and correctness contract, not final silicon timing.
+
+
+## 10. Clarification — equal shared physical slots
+
+**Correction to the provisional wording in Sections 1–4:** P0 is not a permanently designated active page. P0–P7 are eight equal physical slots in one shared, dynamically managed pool. A task may execute from any valid mapped slot; the instruction PC and logical-page mapping identify the next code location. No mandatory promotion or copy into P0 is required.
+
+The earlier state label ACTIVE should be interpreted as a page currently referenced by instruction fetch, not as a special privilege exclusive to P0. Multiple slots may be fetch-referenced over a task's execution stream, subject to the fetch implementation's mapping rules. The OS requests allocation/mapping/release; hardware enforces permissions, generation checks, in-flight reference draining, and atomic mapping publication.
+
+For the OS command family, descriptor fields, context handoff, and dispatch protocol, see [OS / PX / Context Control Interface](NEXSUS-CPU-OS-PX-CONTEXT-INTERFACE-001.md). That document supersedes any implication here that P0 alone is the active execution destination.
