@@ -706,7 +706,7 @@ CPU ile ilgili teknik belgeler `NEXUS CPU/` klasöründe merkezi olarak tutulur.
 - [OS / PX / Context Control Interface](NEXUS%20CPU/NEXSUS-CPU-OS-PX-CONTEXT-INTERFACE-001.md) — Proposed privileged commands, OS/CPU responsibility split, PX page descriptors, context operations, and task-switch protocol.
 - [SPM0 Dual-Bank PX Code Feed](NEXUS%20CPU/NEXSUS-CPU-PX-MANAGER-001.md) — 4 KiB SPM0, two 2 KiB ping-pong code banks, and PX Manager-only PX_NEXT/PX_END metadata.
 - [Full Architecture Benchmark](NEXUS%20CPU/NEXSUS-CPU-FULL-ARCHITECTURE-BENCHMARK-001.md) — Shared workload suite and fair comparison plan for current AMD Zen 5, Intel Xeon Redwood Cove+, Apple ARM M6, and NEXSUS.
-- [CPU Comparison Simulator source](NEXUS%20CPU/tools/cpu_comparison_sim.py) — v0.3.2 davranışsal/çevrim modeli; PX çift banka, PX_NEXT/PX_END, branch sweep, SIMD/AMX/ME512 ve 4 mimari profili.
+- [CPU Comparison Simulator source](NEXUS%20CPU/tools/cpu_comparison_sim.py) — v0.3.2 davranışsal/çevrim modeli; PX çift banka, PX_NEXT/PX_END, branch sweep, SIMD/AMX/ME512, atomics, IRQ servis proxy'si ve 4 mimari profili.
 - [CPU Simulator Architecture](NEXUS%20CPU/NEXSUS-CPU-SIMULATOR-ARCHITECTURE-001.md) — NEXSUS, güncel AMD/Intel/ARM referansları, native/8-core karşılaştırma ve PX/SPM0/ME512 test altyapısı.
 
 ### Exception ve kesme sistemi
