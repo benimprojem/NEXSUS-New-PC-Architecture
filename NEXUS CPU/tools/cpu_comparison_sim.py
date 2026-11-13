@@ -158,6 +158,32 @@ def build_composite_workload(scale: int = 1) -> Dict[str, List[Op]]:
         d = add_op(ops, "STORE", (c,), 0x3800000 + task*4096, 64, "task output")
         add_op(ops, "CTX", (d,), label="task context save/restore")
     result["parallel_tasks"] = ops
+
+    # F) Independent integer throughput: isolates ALU issue/resource capacity.
+    ops = []
+    for i in range(512*n):
+        add_op(ops, "INT", label="independent integer throughput")
+    result["integer_throughput"] = ops
+
+    # G) Independent FP throughput: isolates floating-point execution resources.
+    ops = []
+    for i in range(512*n):
+        add_op(ops, "FP", label="independent floating-point throughput")
+    result["fp_throughput"] = ops
+
+    # H) Independent vector throughput. This is a generic vector-unit test;
+    # it is not yet a faithful ME512 matrix instruction model.
+    ops = []
+    for i in range(256*n):
+        add_op(ops, "VEC", label="independent vector throughput")
+    result["vector_throughput"] = ops
+
+    # I) Branch-heavy independent control flow to expose recovery penalties.
+    ops = []
+    for i in range(256*n):
+        add_op(ops, "BR", label="independent branch stress")
+    result["branch_stress"] = ops
+
     return result
 
 class LRU:
