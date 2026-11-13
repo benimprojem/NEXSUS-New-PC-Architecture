@@ -152,3 +152,26 @@ Primary benchmark specification:
 
 Simulator source:
 [tools/cpu_comparison_sim.py](tools/cpu_comparison_sim.py)
+
+
+## 12. L0I pipeline design update — pending simulation
+
+After the first full comparison run, the application-code path is extended as a design proposal:
+
+```text
+App RAM -> L0I (64 KiB) -> PX (8 x 2 KiB) -> SPM0 (4 KiB; 2 x 2 KiB)
+```
+
+L0I is progressively filled from App RAM in chunks under OS task-aware priorities. L0I-to-PX transfers select logical pages by task and code mapping, including non-contiguous App RAM source addresses; they are not required to follow physical address order. The baseline App-code lane is one 64-bit (8-byte) read path. Four parallel 64-bit lanes are a future sensitivity experiment only.
+
+This design is **not included in the published numerical results above**. The existing PX capacity experiment used a provisional direct App-RAM source-miss penalty and did not model L0I, chunk-validity, task-aware non-contiguous staging or three independent transfer queues.
+
+The next simulator revision must separately measure:
+- App RAM -> L0I chunk-fill latency and queueing;
+- L0I hit/miss and partial-valid behavior;
+- OS task/page request scheduling;
+- L0I -> PX page transfer and PX slot pressure;
+- PX -> SPM0 dual-bank refill overlap;
+- total dispatch code-ready time and front-end stalls.
+
+Do not reinterpret the existing 47-test run or its cycle counts as evidence for the new L0I path. Re-run correctness and performance tests after implementation, then publish a new result revision with configuration and assumptions.
