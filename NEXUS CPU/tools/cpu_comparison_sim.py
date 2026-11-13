@@ -195,36 +195,70 @@ class LRU:
         if hit:
             self.lines.move_to_end(line)
         else:
-            self.lines[line] = None
-            if len(self.lines) > self.capacity:
-                self.lines.popitem(last=False)
+            self.insert(line)
         return hit
+    def insert(self, line: int):
+        if line in self.lines:
+            self.lines.move_to_end(line)
+            return
+        self.lines[line] = None
+        if len(self.lines) > self.capacity:
+            self.lines.popitem(last=False)
 
 class CacheHierarchy:
-    def __init__(self, p: CoreProfile):
+    def __init__(self, p: CoreProfile, shared_l2=None, shared_l3=None, shared_l4=None):
         self.line = p.line_bytes
         self.l1 = LRU(p.l1_kb*1024, self.line)
-        self.l2 = LRU(p.l2_kb*1024, self.line)
-        self.l3 = LRU(p.l3_kb*1024, self.line)
-        self.l4 = LRU(p.l4_kb*1024, self.line) if p.l4_kb else None
+        self.l2 = shared_l2 if shared_l2 is not None else LRU(p.l2_kb*1024, self.line)
+        self.l3 = shared_l3 if shared_l3 is not None else LRU(p.l3_kb*1024, self.line)
+        self.l4 = shared_l4 if shared_l4 is not None else (LRU(p.l4_kb*1024, self.line) if p.l4_kb else None)
         self.p = p
-    def access(self, address: int) -> Tuple[int, str]:
+
+    def probe(self, address: int) -> Tuple[int, str]:
+        """Lookup only; cache allocation is deferred until the access completes."""
         line = address // self.line
         if self.l1.touch(line):
             return self.p.l1_lat, "L1"
         if self.l2.touch(line):
-            self.l1.touch(line)
             return self.p.l2_lat, "L2"
         if self.l3.touch(line):
-            self.l2.touch(line); self.l1.touch(line)
             return self.p.l3_lat, "L3"
         if self.l4 and self.l4.touch(line):
-            self.l3.touch(line); self.l2.touch(line); self.l1.touch(line)
             return self.p.l4_lat, "L4"
-        if self.l4:
-            self.l4.touch(line)
-        self.l3.touch(line); self.l2.touch(line); self.l1.touch(line)
         return self.p.dram_lat, "DRAM"
+
+    def fill(self, address: int, level: str):
+        """Install a completed demand line along the modeled inclusive fill path."""
+        line = address // self.line
+        if level == "DRAM" and self.l4:
+            self.l4.insert(line)
+        if level in ("DRAM", "L4"):
+            if self.l3:
+                self.l3.insert(line)
+        if level in ("DRAM", "L4", "L3"):
+            self.l2.insert(line)
+        self.l1.insert(line)
+
+    def access(self, address: int) -> Tuple[int, str]:
+        """Single-core convenience path: probe and immediately complete/fill."""
+        latency, level = self.probe(address)
+        self.fill(address, level)
+        return latency, level
+
+
+def build_cache_hierarchies(p: CoreProfile, core_count: int) -> List[CacheHierarchy]:
+    """Private L1 plus NEXSUS shared cache groups; reference CPUs stay per-core approximations."""
+    if not p.name.startswith("NEXSUS CPU"):
+        return [CacheHierarchy(p) for _ in range(core_count)]
+    line = p.line_bytes
+    l2_groups = [LRU(p.l2_kb * 1024, line) for _ in range(math.ceil(core_count / 2))]
+    l3_groups = [LRU(p.l3_kb * 1024, line) for _ in range(math.ceil(core_count / 4))]
+    l4_groups = [LRU(p.l4_kb * 1024, line) for _ in range(math.ceil(core_count / 8))] if p.l4_kb else []
+    return [
+        CacheHierarchy(p, l2_groups[i // 2], l3_groups[i // 4],
+                       l4_groups[i // 8] if l4_groups else None)
+        for i in range(core_count)
+    ]
 
 def profile_from_dict(d: dict) -> CoreProfile:
     return CoreProfile(**d)
@@ -477,7 +511,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
     states = []
     for shard in shards:
         states.append({
-            "ops": shard, "cache": CacheHierarchy(p),
+            "ops": shard, "cache": None,
             "ready_at": [0] * len(shard), "done": [False] * len(shard),
             "issued": [False] * len(shard), "dispatched": [False] * len(shard),
             "rob": deque(), "unit_busy": {k: [0] * v for k, v in p.units.items()},
@@ -491,12 +525,20 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                        "branch_recovery_cycles": 0,
                        "memory_latency_exposure_cycles": 0}
         })
+    cache_hierarchies = build_cache_hierarchies(p, len(states))
+    for core_id, st in enumerate(states):
+        st["cache"] = cache_hierarchies[core_id]
+    pending_fills = []
     controller = SharedMemoryController(
         bank_count=p.bank_count, beat_bytes=p.bank_beat_bytes,
         aggregate_bytes_per_cycle=aggregate_dram_bandwidth)
     cycle = 0
     limit = max(10000, sum(len(x) for x in shards) * 1000)
     while any(st["retired"] < len(st["ops"]) for st in states) and cycle < limit:
+        completed_fills = [x for x in pending_fills if x[0] <= cycle]
+        pending_fills = [x for x in pending_fills if x[0] > cycle]
+        for _, core_id, address, level in completed_fills:
+            states[core_id]["cache"].fill(address, level)
         pending_memory = []
         # Phase 1: complete and retire all cores at the same global cycle.
         for core_id, st in enumerate(states):
@@ -557,7 +599,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 mem_lat = 0
                 level = None
                 if op.kind in ("LOAD", "STORE"):
-                    mem_lat, level = st["cache"].access(op.address)
+                    mem_lat, level = st["cache"].probe(op.address)
                     st["hits"][level] += 1
                 item = {"core": core_id, "seq": seq, "slot": slot,
                         "latency": max(p.latency.get(op.kind, 1), mem_lat),
@@ -599,6 +641,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 latency = max(latency, p.dram_lat + service_delay)
             st["ready_at"][seq] = cycle + latency
             if item["memory"]:
+                pending_fills.append((cycle + latency, item["core"], st["ops"][seq].address, item["level"]))
                 st["stalls"]["memory_latency_exposure_cycles"] += max(0, latency - 1)
             if item["branch"]:
                 st["branch_number"] += 1
@@ -646,7 +689,7 @@ def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=N
             "stall_counters": {k: sum(x["stalls"][k] for x in per_core)
                                for k in stall_keys},
             "memory_controller": simulation["controller"],
-            "parallel_model": "lockstep multicore; private per-core caches; shared DRAM banks and work-conserving aggregate bus; shared L2/L3/L4 and coherence not yet modeled"
+            "parallel_model": "lockstep multicore; private L1; NEXSUS L2 shared per 2 cores, L3 per 4 and L4 per 8; reference CPU caches remain per-core approximations; shared DRAM banks and work-conserving aggregate bus; coherence not modeled"
         }
     total_cycles = sum(v["cycles"] for v in results.values())
     total_ops = sum(v["ops"] for v in results.values())
@@ -669,14 +712,14 @@ def main():
     profiles = {}
     for key in ("amd_9950x","intel_285k_p","intel_285k_e"):
         profiles[key] = simulate_cpu(workloads, PROFILES[key])
-    for key in ("nexus_candidate", "nexus_8l4s", "nexus_wide_balanced", "nexus_balanced_128"):
+    for key in ("nexus_balanced_128",):
         profiles[key] = simulate_cpu(workloads, PROFILES[key], max(8, args.nexus_cores))
     if args.json:
         print(json.dumps(profiles, indent=2))
         return
     print("NEXSUS CPU COMPOSITE WORKLOAD — CONTROLLED 8-CORE MODEL v0.2.4-dev")
     print("All targets: 8 cores, 3.0 GHz reference clock, 120-cycle DRAM latency, 32 B/cycle chip-wide DRAM ceiling; work-conserving shared controller.")
-    print("Parallelism: dependency components distributed across cores; lockstep cores share DRAM bank arbitration and aggregate bus. Shared L2/L3/L4 and coherence remain unmodeled.")
+    print("Parallelism: dependency components distributed across cores; lockstep cores share DRAM bank arbitration and aggregate bus. NEXSUS shared L2/L3/L4 groups are modeled; coherence remains unmodeled.")
     print(f"{'CPU profile':48} {'cycles':>12} {'ops':>10} {'IPC':>8} {'time ms*':>12}")
     for result in profiles.values():
         print(f"{result['cpu'][:48]:48} {result['total_cycles']:12d} {result['total_ops']:10d} "
