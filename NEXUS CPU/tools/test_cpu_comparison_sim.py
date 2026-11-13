@@ -224,7 +224,6 @@ class SpmP0ModelTests(unittest.TestCase):
         self.assertTrue(conventional.lines.lookup(0))
 
     def test_partition_builds_local_sequential_command_streams(self):
-        ops = [sim.add_op([], "INT") for _ in range(0)]
         workload = []
         for _ in range(32):
             sim.add_op(workload, "INT")
