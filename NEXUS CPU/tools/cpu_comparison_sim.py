@@ -34,9 +34,11 @@ class CoreProfile:
     l1_kb: int
     l2_kb: int
     l3_kb: int
+    l4_kb: int
     l1_lat: int
     l2_lat: int
     l3_lat: int
+    l4_lat: int
     dram_lat: int
     branch_penalty: int
     frequency_ghz: float
@@ -56,8 +58,8 @@ PROFILES = {
         "dispatch": 8, "issue": 8, "retire": 8, "rob": 448,
         "units": {"INT": 6, "FP": 4, "VEC": 2, "LOAD": 4, "STORE": 2, "BR": 1, "CTX": 1, "ATOM": 1},
         "latency": {"INT": 1, "FP": 3, "VEC": 3, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 8},
-        "l1_kb": 48, "l2_kb": 1024, "l3_kb": 32768,
-        "l1_lat": 4, "l2_lat": 14, "l3_lat": 48, "dram_lat": 220,
+        "l1_kb": 48, "l2_kb": 1024, "l3_kb": 32768, "l4_kb": 0,
+        "l1_lat": 4, "l2_lat": 14, "l3_lat": 48, "l4_lat": 0, "dram_lat": 220,
         "branch_penalty": 15, "frequency_ghz": 4.3,
         "dram_bytes_per_cycle": 32
     },
@@ -67,8 +69,8 @@ PROFILES = {
         "dispatch": 8, "issue": 8, "retire": 12, "rob": 576,
         "units": {"INT": 6, "FP": 4, "VEC": 2, "LOAD": 3, "STORE": 2, "BR": 1, "CTX": 1, "ATOM": 1},
         "latency": {"INT": 1, "FP": 3, "VEC": 3, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 8},
-        "l1_kb": 48, "l2_kb": 3072, "l3_kb": 36864,
-        "l1_lat": 4, "l2_lat": 17, "l3_lat": 84, "dram_lat": 230,
+        "l1_kb": 48, "l2_kb": 3072, "l3_kb": 36864, "l4_kb": 0,
+        "l1_lat": 4, "l2_lat": 17, "l3_lat": 84, "l4_lat": 0, "dram_lat": 230,
         "branch_penalty": 16, "frequency_ghz": 3.7,
         "dram_bytes_per_cycle": 32
     },
@@ -78,8 +80,8 @@ PROFILES = {
         "dispatch": 8, "issue": 8, "retire": 16, "rob": 416,
         "units": {"INT": 4, "FP": 2, "VEC": 2, "LOAD": 3, "STORE": 2, "BR": 1},
         "latency": {"INT": 1, "FP": 4, "VEC": 4, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 10, "CTX": 8},
-        "l1_kb": 32, "l2_kb": 1024, "l3_kb": 36864,
-        "l1_lat": 4, "l2_lat": 16, "l3_lat": 90, "dram_lat": 240,
+        "l1_kb": 32, "l2_kb": 4096, "l3_kb": 36864, "l4_kb": 0,
+        "l1_lat": 4, "l2_lat": 16, "l3_lat": 90, "l4_lat": 0, "dram_lat": 240,
         "branch_penalty": 17, "frequency_ghz": 3.2,
         "dram_bytes_per_cycle": 24
     },
@@ -89,8 +91,8 @@ PROFILES = {
         "dispatch": 4, "issue": 5, "retire": 4, "rob": 64,
         "units": {"INT": 2, "FP": 2, "VEC": 1, "LOAD": 2, "STORE": 1, "BR": 1, "CTX": 1, "ATOM": 1},
         "latency": {"INT": 1, "FP": 3, "VEC": 2, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 4},
-        "l1_kb": 128, "l2_kb": 1024, "l3_kb": 8192,
-        "l1_lat": 2, "l2_lat": 8, "l3_lat": 24, "dram_lat": 120,
+        "l1_kb": 128, "l2_kb": 1024, "l3_kb": 8192, "l4_kb": 65536,
+        "l1_lat": 2, "l2_lat": 8, "l3_lat": 24, "l4_lat": 64, "dram_lat": 120,
         "branch_penalty": 10, "frequency_ghz": 2.0,
         "dram_bytes_per_cycle": 64
     }
@@ -179,6 +181,7 @@ class CacheHierarchy:
         self.l1 = LRU(p.l1_kb*1024, self.line)
         self.l2 = LRU(p.l2_kb*1024, self.line)
         self.l3 = LRU(p.l3_kb*1024, self.line)
+        self.l4 = LRU(p.l4_kb*1024, self.line) if p.l4_kb else None
         self.p = p
     def access(self, address: int) -> Tuple[int, str]:
         line = address // self.line
@@ -190,6 +193,11 @@ class CacheHierarchy:
         if self.l3.touch(line):
             self.l2.touch(line); self.l1.touch(line)
             return self.p.l3_lat, "L3"
+        if self.l4 and self.l4.touch(line):
+            self.l3.touch(line); self.l2.touch(line); self.l1.touch(line)
+            return self.p.l4_lat, "L4"
+        if self.l4:
+            self.l4.touch(line)
         self.l3.touch(line); self.l2.touch(line); self.l1.touch(line)
         return self.p.dram_lat, "DRAM"
 
@@ -211,7 +219,7 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
     frontend_blocked_until = 0
     retired = 0
     max_rob = 0
-    hits = {"L1":0,"L2":0,"L3":0,"DRAM":0}
+    hits = {"L1":0,"L2":0,"L3":0,"L4":0,"DRAM":0}
     branch_misses = 0
     # Fixed, repeatable misprediction pattern: one in every four branch ops.
     branch_number = 0
