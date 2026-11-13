@@ -96,6 +96,28 @@ PROFILES = {
         "l1_lat": 2, "l2_lat": 8, "l3_lat": 24, "l4_lat": 64, "dram_lat": 120,
         "branch_penalty": 10, "frequency_ghz": 3.0,
         "bank_hash": "folded", "dram_bytes_per_cycle": 32
+    },
+    "nexus_8l4s": {
+        "name": "NEXSUS / 8L4S memory-focused candidate",
+        "core_count": 8, "core_type": "uniform", "frontend": 6,
+        "dispatch": 6, "issue": 8, "retire": 6, "rob": 128,
+        "units": {"INT": 3, "FP": 3, "VEC": 1, "LOAD": 8, "STORE": 4, "BR": 1, "CTX": 1, "ATOM": 1},
+        "latency": {"INT": 1, "FP": 3, "VEC": 2, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 4},
+        "l1_kb": 128, "l2_kb": 1024, "l3_kb": 8192, "l4_kb": 65536,
+        "l1_lat": 2, "l2_lat": 8, "l3_lat": 24, "l4_lat": 64, "dram_lat": 120,
+        "branch_penalty": 10, "frequency_ghz": 3.0,
+        "bank_hash": "folded", "dram_bytes_per_cycle": 32
+    },
+    "nexus_wide_balanced": {
+        "name": "NEXSUS / wide balanced candidate",
+        "core_count": 8, "core_type": "uniform", "frontend": 8,
+        "dispatch": 8, "issue": 10, "retire": 8, "rob": 192,
+        "units": {"INT": 4, "FP": 4, "VEC": 2, "LOAD": 8, "STORE": 4, "BR": 2, "CTX": 1, "ATOM": 1},
+        "latency": {"INT": 1, "FP": 3, "VEC": 2, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 4},
+        "l1_kb": 128, "l2_kb": 1024, "l3_kb": 8192, "l4_kb": 65536,
+        "l1_lat": 2, "l2_lat": 8, "l3_lat": 24, "l4_lat": 64, "dram_lat": 120,
+        "branch_penalty": 10, "frequency_ghz": 3.0,
+        "bank_hash": "folded", "dram_bytes_per_cycle": 32
     }
 }
 
@@ -247,6 +269,9 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
     max_rob = 0
     hits = {"L1":0,"L2":0,"L3":0,"L4":0,"DRAM":0}
     branch_misses = 0
+    stalls = {"dependency": 0, "issue_width": 0, "execution_unit": 0,
+              "frontend_bandwidth_cycles": 0, "rob_full_cycles": 0,
+              "branch_recovery_cycles": 0, "memory_operation_wait_cycles": 0}
     # Fixed, repeatable misprediction pattern: one in every four branch ops.
     branch_number = 0
     limit = max(10000, len(ops)*1000)
@@ -261,6 +286,11 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
             rob.popleft(); retired += 1; r += 1
 
         # Front-end dispatch, constrained by ROB space and branch recovery.
+        if next_frontend < len(ops):
+            if cycle < frontend_blocked_until:
+                stalls["branch_recovery_cycles"] += 1
+            elif len(rob) >= p.rob:
+                stalls["rob_full_cycles"] += 1
         d = 0
         while (next_frontend < len(ops) and d < p.dispatch and
                len(rob) < p.rob and cycle >= frontend_blocked_until):
@@ -272,6 +302,8 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
             rob.append(op.seq)
             next_frontend += 1; d += 1
         max_rob = max(max_rob, len(rob))
+        if next_frontend < len(ops) and cycle >= frontend_blocked_until and len(rob) < p.rob and d >= min(p.dispatch, p.frontend):
+            stalls["frontend_bandwidth_cycles"] += 1
 
         # Select ready operations oldest-first; dependencies may execute out of order.
         issued_this_cycle = 0
@@ -282,12 +314,17 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
                 continue
             op = ops[seq]
             if any(not done[x] for x in op.deps):
+                stalls["dependency"] += 1
+                continue
+            if issued_this_cycle >= p.issue:
+                stalls["issue_width"] += 1
                 continue
             kind = op.kind
             resource = "LOAD" if kind == "LOAD" else ("STORE" if kind == "STORE" else kind)
             slots = unit_busy.get(resource, [])
             slot = next((i for i,t in enumerate(slots) if t <= cycle), None)
             if slot is None:
+                stalls["execution_unit"] += 1
                 continue
             latency = p.latency.get(kind, 1)
             if kind in ("LOAD", "STORE"):
@@ -316,6 +353,8 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
             slots[slot] = cycle + 1
             issued[seq] = True
             ready_at[seq] = cycle + latency
+            if kind in ("LOAD", "STORE"):
+                stalls["memory_operation_wait_cycles"] += max(0, latency - 1)
             issued_this_cycle += 1
             if kind == "BR":
                 branch_number += 1
@@ -328,7 +367,7 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
     return {
         "cycles": cycle, "ops": len(ops), "ipc": round(len(ops)/max(1,cycle), 3),
         "max_rob_occupancy": max_rob, "branch_mispredicts": branch_misses,
-        "cache_accesses": hits
+        "cache_accesses": hits, "stall_counters": stalls
     }
 
 def partition_dependency_components(ops: List[Op], core_count: int) -> List[List[Op]]:
@@ -396,6 +435,8 @@ def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=N
             "max_rob_occupancy": max((x["max_rob_occupancy"] for x in per_core), default=0),
             "branch_mispredicts": sum(x["branch_mispredicts"] for x in per_core),
             "cache_accesses": cache_totals,
+            "stall_counters": {k: sum(x["stall_counters"][k] for x in per_core)
+                               for k in per_core[0]["stall_counters"]} if per_core else {},
             "parallel_model": "dependency-component multicore; private caches; shared-memory contention not yet modeled"
         }
     total_cycles = sum(v["cycles"] for v in results.values())
@@ -416,7 +457,8 @@ def main():
     profiles = {}
     for key in ("amd_9950x","intel_285k_p","intel_285k_e"):
         profiles[key] = simulate_cpu(workloads, PROFILES[key])
-    profiles["nexus_candidate"] = simulate_cpu(workloads, PROFILES["nexus_candidate"], max(8, args.nexus_cores))
+    for key in ("nexus_candidate", "nexus_8l4s", "nexus_wide_balanced"):
+        profiles[key] = simulate_cpu(workloads, PROFILES[key], max(8, args.nexus_cores))
     if args.json:
         print(json.dumps(profiles, indent=2))
         return
@@ -435,6 +477,15 @@ def main():
             print(f"{name:22} {kernel['cycles']:10d} {kernel['ops']:9d} "
                   f"{kernel['aggregate_ipc']:8.3f} {kernel['active_cores']:7d} "
                   f"{kernel['cache_accesses']['DRAM']:8d}")
+    print("\\nSTALL COUNTERS (cumulative operation/cycle events; not mutually exclusive wall-clock time)")
+    for key, result in profiles.items():
+        print(f"\\n[{result['cpu']}]")
+        print(f"{'kernel':22} {'dep':>9} {'issue':>9} {'unit':>9} {'front':>9} {'ROB':>9} {'branch':>9} {'mem-wait':>10}")
+        for name, kernel in result["kernels"].items():
+            c = kernel["stall_counters"]
+            print(f"{name:22} {c['dependency']:9d} {c['issue_width']:9d} {c['execution_unit']:9d} "
+                  f"{c['frontend_bandwidth_cycles']:9d} {c['rob_full_cycles']:9d} "
+                  f"{c['branch_recovery_cycles']:9d} {c['memory_operation_wait_cycles']:10d}")
     print("*Time uses configured reference clock, not measured sustained turbo.")
 
 if __name__ == "__main__":
