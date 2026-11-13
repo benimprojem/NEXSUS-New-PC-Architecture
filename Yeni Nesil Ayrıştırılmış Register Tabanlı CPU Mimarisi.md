@@ -1077,3 +1077,22 @@ Komut aileleri ve ilk operand tablosu için:
 
 SPM adresleme, kısmi yazma ve register görünüm ayrıntıları:
 **[NEXSUS CPU — SPM ve Register Görünümleri](NEXSUS%20CPU%20%E2%80%94%20SPM,%20Register%20G%C3%B6r%C3%BCn%C3%BCmleri%20ve%20Do%C4%9Frudan%20Alan%20Eri%C5%9Fimi.md)**
+
+
+---
+
+# 23. İlk Paralel Issue ve Port Planı
+
+ISA-001 belgesinde ilk kaynak/port hedefleri ve ME512 register pair eşlemesi tanımlanmıştır. Bu bölüm mimari özeti verir.
+
+- 2-ALU çekirdek: temel integer issue hedefi 2 bağımsız komut/çevrim.
+- 3-ALU konfigürasyonu: 3 bağımsız integer komut/çevrim hedefi.
+- FPU: en az 2 bağımsız FP komut kaynağı.
+- ME512: bir matrix/vector komut kaynağı; pipeline throughput ve latency ayrı belirlenir.
+- Integer + FP + matrix komutları operand bağımsızlığı ve kaynak uygunluğu varsa aynı çevrimde birlikte issue edilebilir.
+- MA00:MA01, MA02:MA03, ... MA30:MA31 biçiminde 16 adet 512-bit pair tanımlanır.
+- Pair komutu ilgili iki MA registerını operand/result süresince rezerve eder.
+- Register view alias ve write hazard kuralları scheduler/forwarding tarafından korunur.
+- Register portları, bank çatışmaları ve data-path arbitration kesin throughput'u sınırlar.
+
+Detaylı tablo: [NEXSUS-CPU-ISA-001.md](NEXSUS-CPU-ISA-001.md)
