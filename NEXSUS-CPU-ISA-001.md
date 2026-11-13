@@ -599,7 +599,7 @@ MA registerları 256-bit fiziksel genişliktedir. ME512 512-bit yürütme yoludu
 - 256-bit sonuç, desteklenen bütün VSUM ve VDOT genişliklerinde tam sonucu taşır; ara/sonuç taşması oluşmaz.
 - D, A veya B ile aynı MA selector'ı olabilir; kaynaklar komut başlangıcında snapshot edilir. D'nin tamamı tek commit ile güncellenir.
 - Signed/unsigned yorum opcode varyantıyla seçilir. Floating-point reduction/dot product bu komutların kapsamında değildir.
-- `VSUM` ve `VDOT` R3 formatını kullanır; D/A/B MA selector'larıdır, M=000 ve AUX=0 olmalıdır. Numeric opcode değerleri henüz atanmadı.
+- `VSUM` ve `VDOT` R3 formatını kullanır; D/A/B MA selector'larıdır, M=000 ve AUX=0 olmalıdır. Signed/unsigned varyantlarının numeric opcode değerleri Instruction Encoding belgesinin 8.1 bölümünde atanmıştır.
 
 ### 8.5 Vector işlem kapsamı ve henüz açık noktalar
 
@@ -646,7 +646,7 @@ Matrix komutları, vector lane komutlarından ayrı bir operand modeli kullanır
 - MMUL için D/A/B; MMAC için D/A/B/C operand tile grupları aynı N ve W parametrelerini kullanır. Grupların register aralıkları MA0–MA31 içinde kalmalıdır. İki operand aynı tile'ı kullanıyorsa tam alias geçerlidir; kısmi/örtüşen ama eşit olmayan aralıklar geçersizdir.
 - Tile boyutu veya W kombinasyonu desteklenmiyorsa, selector grubu hizasızsa ya da register aralığı MA31'i aşıyorsa `ILLEGAL_OPERAND_CONFIGURATION_FAULT` oluşur; hedef tile değişmez.
 - İlk sürümde rectangular matrix, transpose, mixed-precision, saturating matrix arithmetic, sparse matrix, tile mask, matrix load/store formatı ve matrix descriptor register'ı tanımlanmaz. Tile verisi MA register'larına mevcut register-transfer/vector-data yollarıyla yerleştirilir.
-- MMUL/MMAC numeric opcode değerleri henüz atanmadı.
+- MMUL/MMAC, MTRANS ve MREDUCE numeric opcode değerleri Instruction Encoding belgesinin 8.1 bölümünde atanmıştır.
 
 Örnek assembly gösterimleri:
 
