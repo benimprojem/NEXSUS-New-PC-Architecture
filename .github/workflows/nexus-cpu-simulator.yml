@@ -78,7 +78,10 @@ jobs:
           python - <<'PY'
           import json
           data = json.load(open("/tmp/nexus-p0-sweep.json", encoding="utf-8"))
-          print("P0 CAPACITY SENSITIVITY")
+          rows = list(data["results"].values())
+          assert len({row["total_ops"] for row in rows}) == 1
+          assert len({row["total_cycles"] for row in rows}) > 1, "PX pool capacity must affect miss cost"
+          print("PX POOL CAPACITY SENSITIVITY")
           for row in data["results"].values():
               starve = row["kernels"]["p0_starvation"]["cycles"]
               print(f'{row["capacity_kb"]} KiB: total_cycles={row["total_cycles"]} p0_starvation_cycles={starve} ops={row["total_ops"]}')
@@ -89,6 +92,8 @@ jobs:
           python - <<'PY'
           import json
           data = json.load(open("/tmp/nexus-fetch-sweep.json", encoding="utf-8"))
+          assert {"32", "34", "48"}.issubset(set(data["results"]["nexus_p0"]))
+          assert len({row["ops"] for group in data["results"].values() for row in group.values()}) == 1
           print("INSTRUCTION FETCH REFILL SENSITIVITY")
           for profile, rows in data["results"].items():
               for row in rows.values():
