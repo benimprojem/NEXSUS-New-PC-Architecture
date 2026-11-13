@@ -34,3 +34,5 @@ jobs:
         run: python "NEXUS CPU/tools/cpu_comparison_sim.py" --scale 1 --json > /tmp/nexus-cpu-results.json
       - name: Run four-way SPM P0 ablation
         run: python "NEXUS CPU/tools/cpu_comparison_sim.py" --ablation --scale 1
+      - name: Run P0 capacity sensitivity sweep
+        run: python "NEXUS CPU/tools/cpu_comparison_sim.py" --p0-sweep --scale 1 --json > /tmp/nexus-p0-sweep.json
