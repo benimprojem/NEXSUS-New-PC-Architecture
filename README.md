@@ -76,37 +76,26 @@ Her birimin **kendi doğal görev alanı** bulunur.
 
 # 3. NEXSUS CPU
 
-NEXSUS CPU sistemin genel amaçlı işlem merkezidir.
+NEXSUS CPU, genel amaçlı işlem ve kontrol akışını yürütür. Register organizasyonu dört bağımsız fiziksel bank üzerine kuruludur:
 
-Daha önce tanımlanan temel register organizasyonu:
+| Register bankı | Kayıt sayısı | Fiziksel genişlik | Görev |
+|---|---:|---:|---|
+| RA0–RA31 | 32 | 64 bit | Integer, adres ve scalar işlemler |
+| FA0–FA31 | 32 | 64 bit | Floating-point işlemler; FP128 için eşli kayıt |
+| DA0–DA31 | 32 | 64 bit | Veri yükleme/saklama ve açık transfer staging |
+| MA0–MA31 | 32 | 256 bit | Vector/matrix işlemleri; ME512 için eşli kayıt |
 
-```text
-RA00–RA63
-DA00–DA63
-MA00–MA31
-```
+RA'nın RB/RC/RD alt görünümleri sırasıyla 32/16/8-bit erişim sağlar; bunlar ayrı fiziksel bank değildir. FA, DA ve MA bağımsız banklardır.
 
-şeklindedir.
+CPU'nun komut kodu ve veri alanları ayrıdır. P0, App RAM'den getirilen 64-bit komut sözcüklerini tutan komut ön belleğidir. SPM0 ve SPM1–SPM7 ise yürütme sırasında kullanılan doğrudan adreslenebilir geçici çalışma alanlarıdır.
 
-RA genel amaçlı scalar işlemler için,
+Temel belgeler:
 
-DA veri işlemleri için,
+- [CPU ana mimarisi](Yeni%20Nesil%20Ayr%C4%B1%C5%9Ft%C4%B1r%C4%B1lm%C4%B1%C5%9F%20Register%20Tabanl%C4%B1%20CPU%20Mimarisi.md)
+- [ISA komut seti ve execution-unit eşlemesi](NEXSUS-CPU-ISA-001.md)
+- [Instruction Encoding Specification — 64-bit komut kodlaması](NEXSUS-CPU-INSTRUCTION-ENCODING-001.md)
+- [SPM ve register görünümleri](NEXSUS%20CPU%20%E2%80%94%20SPM,%20Register%20G%C3%B6r%C3%BCn%C3%BCmleri%20ve%20Do%C4%9Frudan%20Alan%20Eri%C5%9Fimi.md)
 
-MA ise yüksek paralellikli vektör/matris işlemleri için kullanılmaktadır.
-
-Burada CPU'nun görevi:
-
-- program yürütmek,
-- kontrol akışını yönetmek,
-- genel hesaplamaları gerçekleştirmek,
-- sistem kaynaklarını kullanmak,
-- diğer işlem birimleriyle koordinasyon kurmaktır.
-
-NEXSUS CPU bütün hesaplamaları kendisi yapmak zorunda değildir.
-
-Bu, mimarinin önemli farklarından biridir.
-
----
 
 # 4. FAPU
 
