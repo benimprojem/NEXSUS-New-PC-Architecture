@@ -728,7 +728,7 @@ W alanının yorumu opcode ailesine bağlıdır. Örneğin FADD için W=010 FP32
 - VMIN.S/U, VMAX.S/U, VDIV.S/U, VMOD.S/U ve VCMPLT/VCMPLE.S/U da R3 kullanır; D/A/B alanları MA selector'larıdır. Signedness opcode varyantından gelir.
 - VSUM.S/U ve VDOT.S/U R3 kullanır; D/A/B MA selector'larıdır. VSUM için W=8/16/32/64/128/256, VDOT için W=8/16/32/64 geçerlidir. M=000 ve AUX=0 olmalıdır.
 - VAND/VOR/VXOR için W=101 (256-bit) zorunludur. Diğer lane tabanlı komutlarda W ilgili lane genişliğini seçer.
-- VSUM/VDOT dahil Vector opcode değerleri 8.1 bölümünde atanmıştır. Bu bölüm operand alanlarının yorumunu tanımlar.
+- VSUM/VDOT dahil Vector opcode değerleri 8.3 bölümünde atanmıştır. Bu bölüm operand alanlarının yorumunu tanımlar.
 
 
 ### 6.5 Matrix komutlarının encoding eşlemesi
@@ -761,7 +761,7 @@ Matrix tile şekli, formatın M alanında; eleman genişliği W alanında kodlan
 - AUX alanı ilk sürümde sıfır olmalıdır. Ayrılmış M/W kodları, sıfır olmayan AUX veya ISA'daki MA grup sınır/alignment kurallarının ihlali illegal operand/encoding fault üretir.
 - Register grup uzunluğu `ceil(N × N × W / 256)` MA register'dır. Her başlangıç selector'ı bu grup uzunluğunun katı olmalı ve grup MA31'i aşmamalıdır.
 - Operandların aynı tile'ı kullanması tam alias olarak geçerlidir (ör. A=B veya D=A). Kısmi/örtüşen ama eşit olmayan tile grupları geçersizdir.
-- Numeric opcode değerleri 8.3 bölümünde atanmıştır; bu eşleme yalnızca format/operand kodlamasını tanımlar.
+- Numeric opcode değerleri 8.4 bölümünde atanmıştır; bu eşleme yalnızca format/operand kodlamasını tanımlar.
 
 Örnek sembolik gösterimler:
 
@@ -939,7 +939,6 @@ BR payload alanları: COND[3:0], TEST[4:0], RESERVED[10:0], DISP[31:0]. RESERVED
 - CALL: COND=ALWAYS; TEST link register selector'ıdır. Çağrı öncesi TEST alanındaki RA kaydının eski değeri kullanılmaz; başarılı kontrol akışı commit'inde return address bu kayda yazılır.
 - JMP/BR için TEST=0 zorunludur (koşullu BR'de TEST koşul kaynağıdır).
 - DISP signed 32-bit byte displacement'tir. Hedef adres `packet_start_PC + sign_extend(DISP)` olarak hesaplanır; DISP 8-byte hizalı olmalıdır. Hedef, 64-bit komut adres alanında ve geçerli instruction boundary üzerinde bulunmalıdır.
-- EXT ile genişletilmiş bir control-flow komutunda packet_start_PC, EXT prefix adresidir. DISP yine packet_start_PC'ye göredir.
 - JMP/BR/CALL tek-word biçiminde tanımlıdır; ilk sürümde EXT'li branch displacement desteklenmez.
 
 **CALL / RET return-address sözleşmesi**
