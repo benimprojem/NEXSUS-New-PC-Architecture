@@ -139,3 +139,38 @@ If the compiler cannot prove a register untouched, it must preserve it. Correctn
 **Not introduced:** new memory type, new register bank, new transfer mechanism, or automatic cache-like SPM migration.
 
 **Open:** exact KESP stack direction/CSR semantics; save-mask representation in compiler metadata; eager versus bank-dirty optimized full task save; FP status/control inventory; SPM ownership descriptor format.
+
+
+## 12. Existing instruction paths for save/restore
+
+The save/restore ABI reuses already specified ISA operations; it does not require new opcodes or a new transfer engine.
+
+- SPM.RD / SPM.WR can transfer supported widths directly between SPM and RA/FA/DA/MA register banks. SPM7 is used for the per-depth temporary workspace and initial prologue scratch.
+- MOV.DA.RA and MOV.RA.DA provide the existing 64-bit RA↔DA staging path.
+- MOV.DA.FA and MOV.FA.DA provide the existing FA↔DA path.
+- MOV.DA.MA and MOV.MA.DA provide the existing 256/512-bit MA↔DA group path.
+- Existing LOAD/STORE operations move DA staging groups to/from the protected Data RAM save-frame region.
+
+### 12.1 Safe bank ordering when DA is the transfer staging bank
+
+Because DA is the staging bank for memory LOAD/STORE and explicit bank transfers, the handler must not overwrite interrupted DA values before preserving them.
+
+**Save order:**
+1. Save every DA register selected by DA_MASK to the Data RAM frame first, using STORE while the original DA values are intact.
+2. Save selected RA registers: MOV.DA.RA to staging DA, then STORE to the frame.
+3. Save selected FA registers: MOV.DA.FA to staging DA, then STORE to the frame.
+4. Save selected MA registers/groups: MOV.DA.MA to staging DA, then STORE the 256/512-bit DA group to the frame.
+
+**Restore order:**
+1. Restore MA payloads: LOAD to DA staging, then MOV.MA.DA.
+2. Restore FA payloads: LOAD to DA staging, then MOV.FA.DA.
+3. Restore RA payloads: LOAD to DA staging, then MOV.RA.DA.
+4. Restore DA payloads last, so no subsequent staging operation can overwrite the restored DA values.
+
+SPM7 supplies the temporary prologue workspace and can preserve the initial scratch values while KESP/frame setup is performed. SPM7 is not used as an excuse to introduce a parallel register bank. The per-depth 1 KiB slice is bounded; if a prologue needs more temporary data, it must use the normal protected Data RAM frame rather than overwrite another depth's slice.
+
+This ordering is mandatory for correctness. The compiler may optimize transfers only when it proves the same preservation and ordering invariants.
+
+## 13. Save-frame size and SPM7 capacity
+
+The full architectural RA/FA/DA/MA payload is 1,792 bytes. A selective interrupt frame is smaller according to its masks, plus a 64-byte header and alignment. SPM7 remains 8 KiB total, partitioned into eight 1 KiB depth slices for temporary entry state; it is not the storage capacity for all nested full-register frames. Persistent frames use the protected Data RAM region. If the Data RAM frame stack reaches KELIMIT, the CPU enters the defined double-fault path; it must never silently truncate a save frame.
