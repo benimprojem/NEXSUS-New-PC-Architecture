@@ -694,8 +694,11 @@ CPU ile ilgili teknik belgeler `NEXUS CPU/` klasöründe merkezi olarak tutulur.
 
 ### Bellek ve erişim denetimi
 - [Memory Protection Domains](NEXUS%20CPU/NEXSUS-CPU-MEMORY-PROTECTION-DOMAINS-001.md) — App RAM/Data RAM sahipliği, görev izolasyonu ve paylaşım izinleri.
-- [Memory Access Control](NEXUS%20CPU/NEXSUS-CPU-MEMORY-ACCESS-CONTROL-001.md) — Fetch, LOAD/STORE, ATOM ve XFER doğrulama/commit akışı.\n- [Memory Bank Topology](NEXUS%20CPU/NEXSUS-CPU-MEMORY-BANK-TOPOLOGY-001.md) — 8×64-bit bank grubu, adres dağıtımı ve bank eşzamanlılığı.\n- [Bank Controller Behavior](NEXUS%20CPU/NEXSUS-CPU-BANK-CONTROLLER-001.md) — Bank kuyruğu, çoklu-bank kabulü, arbitration ve geniş erişim tamamlama kuralları.
-- [SPM and P0 Ablation Plan](NEXUS%20CPU/NEXSUS-CPU-SPM-P0-ABLATION-PLAN-001.md) — SPM ve P0'ın bağımsız/birleşik katkısını ölçmek için kontrollü deney profilleri, adil fallback yolları ve hedef kernel'ler.\n- [CPU Comparison Simulator](NEXUS%20CPU/NEXSUS-CPU-COMPARISON-SIMULATOR-001.md) — AMD Zen 5, Intel Arrow Lake P/E ve NEXSUS için ortak algoritma ve simülasyon modeli.
+- [Memory Access Control](NEXUS%20CPU/NEXSUS-CPU-MEMORY-ACCESS-CONTROL-001.md) — Fetch, LOAD/STORE, ATOM ve XFER doğrulama/commit akışı.
+- [Memory Bank Topology](NEXUS%20CPU/NEXSUS-CPU-MEMORY-BANK-TOPOLOGY-001.md) — 8×64-bit bank grubu, adres dağıtımı ve bank eşzamanlılığı.
+- [Bank Controller Behavior](NEXUS%20CPU/NEXSUS-CPU-BANK-CONTROLLER-001.md) — Bank kuyruğu, çoklu-bank kabulü, arbitration ve geniş erişim tamamlama kuralları.
+- [SPM and P0 Ablation Plan](NEXUS%20CPU/NEXSUS-CPU-SPM-P0-ABLATION-PLAN-001.md) — SPM ve P0'ın bağımsız/birleşik katkısını ölçmek için kontrollü deney profilleri, adil fallback yolları ve hedef kernel'ler.
+- [CPU Comparison Simulator](NEXUS%20CPU/NEXSUS-CPU-COMPARISON-SIMULATOR-001.md) — AMD Zen 5, Intel Arrow Lake P/E ve NEXSUS için ortak algoritma ve simülasyon modeli.
 - [CPU Comparison Simulator source](NEXUS%20CPU/tools/cpu_comparison_sim.py) — İlk çalıştırılabilir davranışsal simülatör prototipi.
 - [CPU Simulator Architecture](NEXUS%20CPU/NEXSUS-CPU-SIMULATOR-ARCHITECTURE-001.md) — NEXSUS ve referans CPU için ortak algoritma, fonksiyonel/çevrimsel simülasyon ve karşılaştırma planı.
 
