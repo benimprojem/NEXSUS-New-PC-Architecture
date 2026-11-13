@@ -76,8 +76,18 @@ Aşağıdakiler ISA'nın zorunlu görünür register'ları değildir:
 - Internal MAR/MDR kopyaları ve transaction ID'leri.
 - Branch prediction / recovery state.
 - Execution unit ara sonuçları ve forwarding buffer'ları.
+- Bellek-domain transferlerinin aktif transaction/descriptor, beat ilerleme ve completion state'i.
+- XFER.START tarafından üretilen, WAIT tüketene kadar yaşayan çekirdek-yerel token kayıtları.
 
 Bunların sayısı, genişliği ve yerleşimi mikro-mimariye bırakılır.
+
+### 6.1 Memory-domain transfer kaynakları
+
+- XFER.MEM ve XFER.START, mevcut bellek-domain/Fabric transaction ve arbitration yollarını kullanır; ayrı bir transfer register bankı veya yeni ISA-visible queue gerektirmez.
+- Aktif transfer, yalnızca çalıştığı süre boyunca gerekli transaction/descriptor ve beat kaynaklarını kullanır. Transfer tamamlandığında bu yürütme kaynakları serbest bırakılabilir.
+- XFER.START token kaydı ise transfer tamamlanmış olsa bile başarılı veya hatalı XFER.WAIT token'ı tüketene kadar ayrılmış kalır. Token kaydı ile aktif transfer kuyruğu kaydı aynı ömürlü kaynak değildir.
+- Token kayıtlarının sayısı sonlu ve implementation-defined'dır; platform/OS capability bilgisiyle bildirilir. Kayıt bulunmuyorsa START bekletilmez: MEMORY_ACCESS_FAULT / TRANSFER_RESOURCE_UNAVAILABLE üretir, transferi kabul etmez ve TRA'yı değiştirmez. Bu retry edilebilir kaynak hatasıdır.
+- Token kayıtları ve transaction state'i Internal Microarchitectural Registers kapsamındadır; yeni bir mimari register bankı, CSR veya yazılıma açık token-slot adresi oluşturulmaz.
 
 ## 7. Erişim ve koruma ilkeleri
 
