@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""NEXSUS CPU comparison simulator — native-profile model v0.3.0-dev (PX pool + dual-bank SPM0)
+"""NEXSUS CPU comparison simulator — native-profile model v0.3.1-dev (PX pool + dual-bank SPM0)
 
 This is an event/cycle-level teaching and design-space model, not RTL, gem5,
 or a vendor-certified replica. Unknown NEXSUS parameters are explicit inputs.
@@ -975,7 +975,7 @@ def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=N
                 "useful_bytes": sum(x["fetch"].useful_bytes for x in per_core if x["fetch"] is not None),
                 "pool_hits": sum(x["fetch"].pool_hits for x in per_core if x["fetch"] is not None),
                 "pool_misses": sum(x["fetch"].pool_misses for x in per_core if x["fetch"] is not None),
-                "mode": ("P0" if p.name.startswith("NEXSUS CPU") and
+                "mode": ("PX pool -> SPM0 2x2-KiB" if p.name.startswith("NEXSUS CPU") and
                          (nexus_features is None or nexus_features.get("p0", True))
                          else "conventional I-cache")
             },
@@ -1075,7 +1075,7 @@ def run_nexus_ablation(workloads: Dict[str, List[Op]], profile_dict: dict) -> di
     }
 
 
-def run_p0_capacity_sweep(workloads, profile_dict, capacities_kb=(4, 8, 16, 32), refill_latency=128):
+def run_p0_capacity_sweep(workloads, profile_dict, capacities_kb=(4, 8, 16, 32), refill_latency=48):
     """Sweep only P0 capacity; preserve the same operation graph and all other settings."""
     rows = {}
     for capacity_kb in capacities_kb:
@@ -1233,7 +1233,7 @@ def main():
     if args.json:
         print(json.dumps(profiles, indent=2))
         return
-    print("NEXSUS CPU COMPOSITE WORKLOAD — NATIVE PROFILE MODEL v0.3.0-dev")
+    print("NEXSUS CPU COMPOSITE WORKLOAD — NATIVE PROFILE MODEL v0.3.1-dev")
     print("Native modeled cores: AMD 16, Intel Xeon 698X 86, Apple M6 12, NEXSUS 8; one hardware thread/core. Clock and memory parameters are explicit model assumptions.")
     print("Parallelism: lockstep cores; NEXSUS private L1 and shared L2/2-core, L3/4-core, L4/8-core groups; shared DRAM banks and aggregate bus; coherence remains unmodeled.")
     print(f"{'CPU profile':48} {'cycles':>12} {'ops':>10} {'IPC':>8} {'time ms*':>12}")
