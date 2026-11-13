@@ -163,6 +163,21 @@ Protection must not serialize unrelated valid accesses unnecessarily:
 - Permission checks may be pipelined or replicated near the request sources/target ingress. The architecture specifies the result, not a mandatory centralized checker.
 - A failed request must not block unrelated requests unless they share a required resource or ordering dependency.
 
+
+## 10.1 Çakışan erişimler ve MEMXFER aralık rezervasyonu
+
+Domain controller, her isteğin tam byte aralığını ve erişim yönünü dikkate alır. LOAD/LOAD çakışmaları birlikte ilerleyebilir; STORE içeren çakışan normal erişimler ilgili domain coherence order içinde sıralanır. Kontrolsüz normal LOAD/STORE yarışları data race'tir; donanım sıralaması yazılım için belirli bir kazanan değer garantisi oluşturmaz. Normal erişim ile aynı aralığa ATOM erişiminin karıştırılması da synchronization gerektirir; normal STORE atomic handoff değildir.
+
+MEMXFER için mevcut domain controller/Fabric transaction metadata'sı üzerinde aralık rezervasyonu uygulanır; yeni register bankı, CSR, opcode veya global kilit eklenmez:
+
+1. XFER.MEM/XFER.START kabulünden önce, aynı aralıkta devam eden çakışan işlemler varsa istek bekletilmez; MEMORY_ACCESS_FAULT ve EXCINFO=TRANSFER_RANGE_BUSY ile reddedilir.
+2. Kabul edilen transferin kaynak aralığı read-reserved'dır. Kaynakla örtüşen normal LOAD serbesttir; STORE ve ATOM reddedilir.
+3. Hedef aralık write-reserved/unpublished'dır. Hedefle örtüşen LOAD, STORE ve ATOM reddedilir.
+4. Aynı domain'de kaynak-kaynak örtüşmesi birden fazla transfer için serbesttir. Bir transferin hedefi diğer aktif transferin kaynak veya hedef aralığıyla kesişirse sonraki transfer TRANSFER_RANGE_BUSY ile reddedilir; START token oluşturmaz, TRA değişmez ve payload hareketi başlamaz.
+5. Başarılı XFER.MEM completion'ında veya XFER.WAIT'in başarılı/başarısız terminal sonucunda ilgili rezervasyon kaldırılır. Başarısız transferin hedefi yine de invalid/unpublished kalır; kısmi fiziksel yazmalar rollback garantisi taşımaz.
+6. Rezervasyon byte-range ve domain kapsamındadır. Uygulama cache-line/bank/beat seviyesinde daha geniş iç arbitration yapabilir; mimari olarak ilgisiz aralıklara busy fault veremez.
+
+Normal LOAD/STORE aynı aralıkta XFER rezervasyonuyla çakışırsa fail-fast fault kullanılır; bekleme yapılmaz. Bu, aynı task'ın hedefi okumadan önce WAIT çalıştırmasını ve kaynak verisini transfer sürerken değiştirmemesini zorunlu kılar; WAIT'e ulaşmayı engelleyen deadlock riskini önler. Farklı aralık ve domain'lerdeki istekler paralel kalır.
 ## 11. Task switch and permission-state transition
 
 Before PL0 resumes for a new task, the scheduler must establish:
