@@ -18,13 +18,13 @@ The SPM role map and capacities are unchanged:
 
 | SPM | PL0 User | PL1 Supervisor | PL2 Machine | Access rule |
 |---|---|---|---|---|
-| SPM0 | Denied | CPU-internal/controlled only | CPU-internal/controlled only | Not a general software workspace |
+| SPM0 | Denied | Denied | Denied | CPU hardware only; no software-visible read, write, or address access at any privilege level |
 | SPM1 | Denied | Allowed | Allowed | OS-owned; syscall and I/O exchange data is mediated by the OS |
 | SPM2 | Allowed to current task only | Allowed for controlled save/restore and management | Allowed for controlled management | Ownership follows the currently executing task on that core |
 | SPM3–SPM6 | Denied | OS context-manager only | Controlled maintenance/debug only | No ordinary task or general-purpose user access |
-| SPM7 | Denied | Active exception-handler slice only | Hardware/firmware-controlled exception access | No general-purpose allocation or access to inactive slices |
+| SPM7 | Denied | Denied by default; exceptional diagnostic read-only access only when explicitly authorized | Denied to ordinary software; hardware exception machinery owns it | Exception-only; software writes are never permitted |
 
-PL2 is not an unrestricted bypass. Machine-level software must still respect bank ownership and active-slice rules except for explicitly defined reset, recovery, or debug procedures.
+PL2 is not an unrestricted bypass. No software privilege level can read or write SPM0. SPM7 is hardware-owned: ordinary OS and machine software do not access it. If a specific diagnostic/recovery operation genuinely requires inspection, a separately authorized path may expose only read-only data; it must never permit software writes or interfere with a live exception.
 
 ## 3. SPM1 — OS workspace
 
@@ -53,19 +53,17 @@ PL2 is not an unrestricted bypass. Machine-level software must still respect ban
 5. Slot ownership is validated using the existing task ID and generation metadata. A slot is not exposed until its complete context write is valid.
 6. Eviction follows the task-context rules: persist the full context to protected Data RAM and verify it before reusing the slot.
 
-## 6. SPM7 — exception-only workspace
+## 6. SPM7 — exception-hardware-only workspace
 
-1. SPM7 remains reserved for exception/IRQ entry and handler prologue/epilogue work.
+1. SPM7 is reserved exclusively for exception/IRQ entry and handler prologue/epilogue work performed by the CPU's exception machinery.
 2. Hardware selects the 1 KiB slice corresponding to the active ECS depth before the first handler instruction.
-3. PL0 access is always denied.
-4. PL1 exception-handler code may access only the currently active depth slice through the existing SPM transfer/access path.
-5. A handler must not address another active or inactive depth slice, and ordinary OS code must not allocate SPM7 for general work.
-6. PL2 firmware/recovery/debug access, where implemented, is controlled and must not overwrite a live exception slice.
-7. SPM7 contents are temporary. Persistent exception frames remain in protected Data RAM; IRET releases the slice and its contents become unspecified.
+3. No PL0, PL1, or PL2 software has normal direct read or write access to SPM7. The OS and exception handlers must not use SPM7 as their own workspace.
+4. If a specific diagnostic or recovery procedure genuinely needs to inspect SPM7 contents, the architecture may provide an explicitly authorized read-only inspection path. This is exceptional, not a general OS permission; it must not expose write access, permit slice selection that bypasses hardware ownership, or disturb a live exception.
+5. SPM7 contents are temporary. Persistent exception frames remain in protected Data RAM; IRET releases the slice and its contents become unspecified.
 
-## 7. SPM0 — CPU execution workspace
+## 7. SPM0 — CPU-exclusive execution workspace
 
-SPM0 is a CPU execution workspace, not a user or general OS scratch bank. PL0 access is denied. Any privileged software interaction must be explicitly defined as part of a CPU-controlled execution/prologue interface; this document does not grant ordinary PL1 or PL2 code unrestricted SPM0 access.
+SPM0 belongs exclusively to the CPU's internal execution machinery. No software at PL0, PL1, or PL2 may address, read, or write it. This is an absolute boundary, not merely a privilege restriction. Only CPU hardware may perform SPM0 operations.
 
 ## 8. Fault behavior and enforcement requirements
 
@@ -82,8 +80,8 @@ SPM0 is a CPU execution workspace, not a user or general OS scratch bank. PL0 ac
 1. PL0 directly accesses SPM2 only, and only while it owns the running task on that core.
 2. SPM1 is OS-owned and never directly user-accessible.
 3. SPM3–SPM6 are protected context storage, not general-purpose scratch.
-4. SPM7 is exception-only and depth-bounded.
-5. SPM0 remains CPU execution state, not user scratch.
+4. SPM7 is exception-hardware-only and depth-bounded; software access is denied except for a separately authorized read-only diagnostic inspection path.
+5. SPM0 is CPU-exclusive; all software read/write/address access is denied at every privilege level.
 6. Higher privilege does not silently erase ownership or lifetime rules.
 7. Existing SPM capacities, register banks, transfer instructions, and task-context format are unchanged.
 
