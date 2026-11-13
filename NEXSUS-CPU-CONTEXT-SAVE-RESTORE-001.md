@@ -8,7 +8,7 @@ This specification reuses the existing NEXSUS register banks and memory system. 
 - SPM7 is the depth-selected temporary workspace during exception entry.
 - Data RAM holds persistent privileged handler save frames and full task contexts when they must survive scheduling.
 - Existing RA/FA/DA/MA banks remain unchanged.
-- SPM0–SPM6 retain their existing execution-workspace roles by default. The OS may explicitly allocate currently available SPM1–SPM6 capacity as task-context residency slots; this is an ownership/allocation decision, not a permanent hardware reservation. Exception handling does not reserve them.
+- SPM0–SPM6 retain their existing execution-workspace roles by default. The OS may explicitly allocate currently available SPM3–SPM6 capacity as task-context residency slots; this is an ownership/allocation decision, not a permanent hardware reservation. Exception handling does not reserve them.
 - P0 is instruction prefetch storage and is not part of a software context save.
 
 ## 2. Register bank sizes
@@ -252,8 +252,8 @@ The baseline per-core SPM allocation is now explicitly partitioned by role. Each
 |---|---:|---|
 | SPM0 | 2 KiB | CPU execution workspace; existing role |
 | SPM1 | 8 KiB | OS-only workspace and OS-defined syscall/I/O exchange area |
-| SPM2 | 8 KiB | OS-managed resident task-context pool |
-| SPM3 | 8 KiB | User/programmer-addressable workspace |
+| SPM2 | 8 KiB | User/programmer-addressable workspace |
+| SPM3 | 8 KiB | OS-managed resident task-context pool |
 | SPM4 | 8 KiB | OS-managed resident task-context pool |
 | SPM5 | 8 KiB | OS-managed resident task-context pool |
 | SPM6 | 8 KiB | OS-managed resident task-context pool |
@@ -271,13 +271,13 @@ SPM1 is reserved to the OS. It provides temporary OS working storage and a fast 
 
 ### 14.2 SPM3 — user/programmer workspace
 
-SPM3 is directly addressable by user programs as a fast local working area. It is not a hardware-managed stack and imposes no push/pop or LIFO behavior. Programs may use it for explicitly addressed scratch data, temporary values, and runtime-defined workspace.
+SPM2 is directly addressable by user programs as a fast local working area. It is not a hardware-managed stack and imposes no push/pop or LIFO behavior. Programs may use it for explicitly addressed scratch data, temporary values, and runtime-defined workspace.
 
-SPM3 has one physical 8 KiB capacity per core. Its contents are owned by the currently scheduled execution context when that context is allowed to use it. On a task switch, the OS must preserve live task-owned SPM3 contents in that task's Data RAM context backing (or retain the task/core residency without reassigning SPM3). The next task's SPM3 image is restored before it resumes if that image is live. A program that does not require SPM3 contents to survive a yield may declare/release that workspace through the OS ABI. No implicit cross-core migration of SPM3 contents occurs.
+SPM2 has one physical 8 KiB capacity per core. Its contents are owned by the currently scheduled execution context when that context is allowed to use it. On a task switch, the OS must preserve live task-owned SPM2 contents in that task's Data RAM context backing (or retain the task/core residency without reassigning SPM3). The next task's SPM2 image is restored before it resumes if that image is live. A program that does not require SPM3 contents to survive a yield may declare/release that workspace through the OS ABI. No implicit cross-core migration of SPM3 contents occurs.
 
 ### 14.3 SPM2 and SPM4–SPM6 — resident task register-context slots
 
-Four banks are dedicated to the OS-managed fast task-context pool: SPM2, SPM4, SPM5, and SPM6. Their combined capacity is 32 KiB.
+Four banks are dedicated to the OS-managed fast task-context pool: SPM3, SPM4, SPM5, and SPM6. Their combined capacity is 32 KiB.
 
 A full RA/FA/DA/MA payload is 1,792 bytes. The existing 64-byte save-frame header brings the base frame to 1,856 bytes, which fits in a 2 KiB slot with 32-byte alignment. Therefore each 8 KiB bank contains four 2 KiB slots:
 
@@ -307,11 +307,28 @@ This overlap is an implementation opportunity, not a guarantee that context rest
 | Purpose | SPM capacity |
 |---|---:|
 | OS workspace + syscall exchange (SPM1) | 8 KiB |
-| User/programmer workspace (SPM3) | 8 KiB |
-| Resident task register-context pool (SPM2, SPM4–SPM6) | 32 KiB |
+| User/programmer workspace (SPM2) | 8 KiB |
+| Resident task register-context pool (SPM3–SPM6) | 32 KiB |
 | Execution workspace (SPM0) | 2 KiB |
 | Exception workspace (SPM7) | 8 KiB |
 | **Total per core** | **58 KiB** |
 
 This partition replaces the earlier flexible SPM1–SPM6 task-slot allocation proposal. The fixed role partition is the baseline; changing it requires an explicit OS/platform configuration rather than implicit sharing.
 
+
+
+## 15. Task-switch sequence and SPM2 user-workspace preservation
+
+The fixed allocation is SPM1=OS, SPM2=user workspace, SPM3–SPM6=resident task-context pool, and SPM7=exception workspace. The scheduler follows this order:
+
+1. Enter the privileged scheduler path using the existing exception/context-switch mechanism. SPM7 remains reserved for exception entry; SPM1 is available for OS scheduler bookkeeping and syscall exchange.
+2. Quiesce the outgoing task at a defined architectural boundary and prevent its state from being modified while it is being saved.
+3. Save the outgoing RA/FA/DA/MA architectural state to its assigned 2 KiB slot in SPM3–SPM6 if resident capacity is available; otherwise save it to the protected Data RAM context backing. The DA staging ordering rules in Section 12.1 remain mandatory.
+4. Preserve the outgoing task's live SPM2 user-workspace contents. The baseline safe path copies the live 8 KiB SPM2 image to that task's protected Data RAM context backing using existing SPM copy/read-write and Data RAM transfer paths. If the OS has a documented proof that the task does not need the contents after yield, it may mark the workspace non-live and omit the copy.
+5. Select the incoming task, validate its control block, address-space and memory-domain permissions, and locate its resident context slot or Data RAM backing.
+6. Restore the incoming RA/FA/DA/MA state from its SPM3–SPM6 slot or Data RAM backing. Restore its SPM2 user-workspace image before allowing user execution if that image is live.
+7. In parallel with steps 3–6 where the implementation's independent paths permit, invalidate/refill P0 from the incoming task's App RAM stream using its saved PC and address-space mapping. P0 is not saved as architectural task state.
+8. Install the incoming task's PC/STATUS and required execution-control state. Dispatch only when register state, SPM2 workspace, permissions, and the first required P0 command(s) are ready.
+9. Publish the handoff with the required release/acquire ordering. An IRQ or scheduler notification alone does not imply memory visibility.
+
+The OS must never treat SPM2 as an extra task-context slot. SPM2 is user-owned workspace while a task executes; SPM3–SPM6 are the OS-owned resident context pool. On task migration to another core, the outgoing SPM2 image and any live SPM-owned data must be explicitly transferred through supported mechanisms or reconstructed before the task resumes. No implicit SPM coherence or migration is assumed.
