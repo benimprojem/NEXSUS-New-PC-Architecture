@@ -402,3 +402,13 @@ KESP/KELIMIT are per-core. On a lower-to-higher privilege transition, hardware s
 
 Hardware automatically saves control/return metadata only. RA/FA/DA/MA register payloads are saved by compiler-generated or handwritten handler prologues according to the interrupt ABI and actual bank usage. IRET validates and pops exactly one ECS frame; it does not restore general register payloads. IRQEOI and IRET remain separate operations.
 
+
+
+| ID | Name | Access | Description |
+|---:|---|---|---|
+| 0x01C | ESCR0 | privileged R/W | Active ECS frame exception scratch word 0 |
+| 0x01D | ESCR1 | privileged R/W | Active ECS frame exception scratch word 1 |
+| 0x01E | ESCR2 | privileged R/W | Active ECS frame exception scratch word 2 |
+| 0x01F | ESCR3 | privileged R/W | Active ECS frame exception scratch word 3 |
+
+ESCR0–ESCR3 are four 64-bit scratch words physically associated with each ECS slot. CSRR/CSRW access the currently active top-frame window; nested exception entry selects a separate window. They are bootstrap storage for the handler prologue, not additional general-purpose registers.
