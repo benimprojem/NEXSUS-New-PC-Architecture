@@ -537,15 +537,30 @@ XFER L3:[RA20], L1:[RA10], 4096
 Buradaki register gösterimleri yalnızca adres operandı örneğidir; kesin operand encoding'i ve transfer buffer/throughput tasarımı henüz sabitlenmemiştir.
 
 
-### 22.12 P0 program komut belleği
+### 22.12 P0 program komut ön belleği ve sabit komut genişliği
 
-P0, program komutlarını ve yürütülebilir kodu tutan, L1–L4 veri belleklerinden fiziksel/mantıksal olarak ayrılmış program belleği domain'idir.
+P0, program komutlarını instruction-fetch birimine hazır tutan, L1–L4 veri belleklerinden ayrı bir **komut ön belleği (instruction cache)** domain'idir. Programın kalıcı/ana kod belleği ile P0 aynı şey değildir: P0, yürütülmesi beklenen komutların yakın ve hızlı kopyasını tutar.
 
-- Instruction fetch birimi komutları P0'dan getirir.
-- L1–L4 veri belleği olarak kullanılır; program kodu bu alanlarda varsayılan olarak tutulmaz.
-- P0'ın kapasitesi, bant genişliği, gecikmesi ve bank organizasyonu henüz açık tasarım parametreleridir.
-- P0 ile L1–L4 arasında otomatik kopyalama, cache fill veya migration yoktur.
-- Program yükleme, kod güncelleme, JIT/üretilebilir kod veya kodun başka bir alana aktarılması gibi durumlar açık CPU kontrollü aktarım/yükleme işlemleriyle yürütülür.
-- Komut belleğine yazma ve yürütme izinleri ayrı koruma/erişim kurallarıyla tanımlanmalıdır. Kodun değiştirildiği durumlarda instruction-fetch görünürlüğü ve senkronizasyonu açıkça sağlanmalıdır.
+- P0 kayıt genişliği **her zaman 64 bit**tir. Her kayıt tek bir 64-bit komut sözcüğünü temsil eder.
+- P0 kapasitesi başlangıç hedefi olarak **32 KiB / çekirdek** seçilir. Bu, 4.096 adet 64-bit komut kaydıdır.
+- 16 KiB (2.048 komut) daha küçük bir uygulama seçeneği; 64 KiB (8.192 komut) ise daha büyük komut çalışma kümeleri için ileride değerlendirilebilecek ölçeklerdir. İlk mimari hedef 32 KiB olarak tutulur.
+- Instruction-fetch birimi komutları P0'dan alır. P0, komutların yürütme öncesi hazır tutulduğu ön bellek katmanıdır.
+- P0, L1–L4 veri belleğinin parçası değildir; veri RAM'i olarak kullanılamaz.
+- P0 ile L1–L4 arasında otomatik kopyalama veya migration varsayılmaz. Program yükleme, kod güncelleme ve kodun başka bir domain'e taşınması CPU tarafından açıkça yönetilir.
+- P0'a yazma/yükleme, kod yürütme izni ve değiştirilen komutların fetch birimine görünür olması ayrı koruma ve senkronizasyon kuralları gerektirir.
 
-Bu ayrım, **program kodu belleği (P0)** ile **uygulama veri belleği (L1–L4)** arasında net bir bellek mimarisi sınırı oluşturur. P0, L1'in bir alt seviyesi veya cache'i değildir.
+### 22.13 P0 ve SPM0 görev ayrımı
+
+P0 ile SPM0 birbirinin yerine geçmez:
+
+| Bellek | İşlev | Kayıt genişliği | İlk kapasite hedefi |
+|---|---|---:|---:|
+| P0 | Instruction-fetch için program komut ön belleği | 64 bit sabit | 32 KiB / çekirdek |
+| SPM0 | Yürütme sırasında kullanılan geçici komut/kayıt alanı | 64 bit kayıt | 32 KiB / çekirdek |
+
+- P0, sıradaki komutları yürütme birimine önceden hazırlar.
+- SPM0, yürütülmekte olan komutların ve yürütme akışının ihtiyaç duyduğu geçici kayıtları tutar.
+- SPM0'ın mevcut 8 × 4 KiB sayfa düzeni korunursa toplam 32 KiB kapasite ve sayfa başına 512 adet 64-bit kayıt elde edilir.
+- P0'dan SPM0'a komut/iş kaydı alınması, fetch ve yürütme arasındaki kontrollü akışın parçasıdır; SPM0, P0'ın yerine geçen bir komut ön belleği değildir.
+
+P0'ın 32 KiB değeri ilk tasarım hedefidir. Gerçek komut çalışma kümeleri, fetch genişliği, dallanma davranışı ve çekirdek başına bant genişliği ölçüldükten sonra artırılıp azaltılabilir.
