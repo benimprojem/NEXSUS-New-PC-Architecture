@@ -142,12 +142,10 @@ def build_composite_workload(scale: int = 1) -> Dict[str, List[Op]]:
 
     # D) Streaming transform: sequential reads/writes, memory bandwidth pressure.
     ops = []
-    prev = None
     for i in range(192*n):
-        ld = add_op(ops, "LOAD", () if prev is None else (prev,),
-                    0x1000000 + i*64, 64, "stream read")
+        ld = add_op(ops, "LOAD", (), 0x1000000 + i*64, 64, "stream read")
         calc = add_op(ops, "INT", (ld,), label="stream transform")
-        prev = add_op(ops, "STORE", (calc,), 0x2000000 + i*64, 64, "stream write")
+        add_op(ops, "STORE", (calc,), 0x2000000 + i*64, 64, "stream write")
     result["streaming"] = ops
 
     # E) Parallel task/context workload: task-local compute and bounded context work.
@@ -214,6 +212,7 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
     rob = deque()
     unit_busy = {k: [0]*v for k,v in p.units.items()}
     bank_busy = [0] * p.bank_count
+    dram_next_cycle = 0
     next_frontend = 0
     cycle = 0
     frontend_blocked_until = 0
@@ -268,11 +267,22 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
                 mem_lat, level = cache.access(op.address)
                 hits[level] += 1
                 latency = max(latency, mem_lat)
-                bank = (op.address // p.bank_beat_bytes) % p.bank_count
-                # One local bank beat per cycle; no cross-bank global lock.
-                start = max(cycle, bank_busy[bank])
-                bank_busy[bank] = start + max(1, math.ceil(op.width / (p.bank_beat_bytes*8)))
-                latency = max(latency, start-cycle + mem_lat)
+                # DRAM/L4 traffic is split into 64-bit bank beats. A wide access
+                # may use several banks in parallel; repeated bank hits serialize locally.
+                if level == "DRAM" or (level == "L4" and p.l4_kb > 0):
+                    wait = 0
+                    beats = max(1, math.ceil(op.width / p.bank_beat_bytes))
+                    for beat in range(beats):
+                        beat_address = op.address + beat*p.bank_beat_bytes
+                        bank = (beat_address // p.bank_beat_bytes) % p.bank_count
+                        start = max(cycle, bank_busy[bank])
+                        wait = max(wait, start-cycle)
+                        bank_busy[bank] = start + 1
+                    bus_start = max(cycle, dram_next_cycle)
+                    bus_wait = bus_start-cycle
+                    bus_cycles = max(1, math.ceil(op.width / max(1, p.dram_bytes_per_cycle)))
+                    dram_next_cycle = bus_start + bus_cycles
+                    latency = max(latency, wait + mem_lat, bus_wait + mem_lat + bus_cycles)
             slots[slot] = cycle + 1
             issued[seq] = True
             ready_at[seq] = cycle + latency
