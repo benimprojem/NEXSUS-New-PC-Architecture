@@ -1276,10 +1276,13 @@ Bu assembly gösterimi semboliktir. Alan selector'larının bit yerleşimi ve op
 L1–L4 arası bellek aktarımı, register-bank `XFER` komutlarından ayrı bir **memory-domain transfer operation**'dır. Sembolik biçim:
 
 ```asm
-XFER L3:[RA20], L1:[RA10], 4096
+XFER.MEM L3:[RA20], L1:[RA10], length=RA5
+XFER.START token=RA6, L3:[RA20], L1:[RA10], length=RA5
+XFER.WAIT RA6
 ```
 
 - Kaynak ve hedef domain/adresleri ile byte uzunluğu açıkça belirtilir. Adresler kendi domain adres uzaylarında yorumlanır.
+- Kaynak ve hedef byte adresleri ayrı RA selector'larının gösterdiği 64-bit RA değerlerinden; byte uzunluğu ise LRA selector'ının gösterdiği 64-bit unsigned RA değerinden alınır. Uzunluk instruction içinde immediate değildir.
 - Kaynak ve hedef aralıkları aktarım başlamadan önce overflow, bounds, permission ve mapping bakımından doğrulanır. Doğrulama hatasında hedefe hiçbir byte yazılmaz.
 - Başarılı synchronous XFER, tamamlandığında hedef aralığın tamamının kaynak aralığın komut başlangıcındaki mantıksal snapshot'ıyla aynı olmasını garanti eder.
 - Aktarım sırasında kaynak aralığa başka çekirdek yazıyorsa, senkronizasyon olmadan alınan snapshot'ın hangi anı temsil edeceği garanti edilmez. Kaynak sabit tutulmalı veya producer/consumer synchronization ile korunmalıdır.
