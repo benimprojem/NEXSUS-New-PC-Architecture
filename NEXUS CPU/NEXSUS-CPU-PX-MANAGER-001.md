@@ -236,3 +236,8 @@ The marker metadata is validated before a bank is published READY. A malformed m
 
 The 4 KiB SPM0 size and 2×2 KiB bank organization are the current architecture proposal. Refill latency, copy bandwidth, source-memory contention, bank-switch latency, prefetch distance, and arbitration policy remain simulator/RTL parameters. The idealized 64 B/cycle transfer rate implies 32 payload cycles for 2 KiB, excluding all overhead; this is a lower-bound calculation, not a guaranteed refill time.
 
+
+
+### Full-page task termination
+
+If the final task page is exactly 2 KiB, it needs no PX_END marker. The code-region descriptor carries an explicit stream-end/final-page flag (`stream_end=true` or equivalent code-region length metadata). PX_END remains reserved for a partial final page. A full non-final page continues automatically to the next logical page.
