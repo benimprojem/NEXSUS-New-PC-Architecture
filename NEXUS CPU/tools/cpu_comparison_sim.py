@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""NEXSUS CPU comparison simulator — controlled 8-core model v0.2.5-dev (64-register + P0/P1)
+"""NEXSUS CPU comparison simulator — native-profile model v0.3.0-dev (PX pool + dual-bank SPM0)
 
 This is an event/cycle-level teaching and design-space model, not RTL, gem5,
 or a vendor-certified replica. Unknown NEXSUS parameters are explicit inputs.
@@ -50,6 +50,7 @@ class CoreProfile:
     dram_bytes_per_cycle: float = 32
     core_count: int = 1
     core_type: str = "uniform"
+    branch_predictor: str = "modern_assumed"
 
 # Publicly documented or independently measured values are marked in docs.
 # Unpublished/uncertain values are conservative model assumptions, not claims.
@@ -492,6 +493,23 @@ class SharedMemoryController:
         return result
 
 
+def branch_mispredict(op: Op, branch_number: int, predictor: str) -> bool:
+    """Deterministic branch-prediction sensitivity model; rates are assumptions."""
+    label = op.label.lower()
+    if predictor == "none":
+        rate = 0.50
+    elif "branch stress" in label or "p0 branch" in label:
+        rate = 0.50
+    elif "graph decision" in label:
+        rate = 0.20 if predictor == "small_2bit" else 0.15
+    elif "control branch" in label:
+        rate = 0.08 if predictor == "small_2bit" else 0.05
+    else:
+        rate = 0.04 if predictor == "small_2bit" else 0.02
+    mixed = (branch_number * 1103515245 + op.seq * 12345 + 0x9E3779B9) & 0xFFFFFFFF
+    return mixed % 10000 < int(rate * 10000)
+
+
 def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
     """Single hardware thread, OoO window, in-order retirement, shared unit limits."""
     cache = CacheHierarchy(p)
@@ -598,7 +616,7 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
             issued_this_cycle += 1
             if kind == "BR":
                 branch_number += 1
-                if branch_number % 4 == 0:
+                if branch_mispredict(op, branch_number, p.branch_predictor):
                     branch_misses += 1
                     frontend_blocked_until = max(frontend_blocked_until, cycle + p.branch_penalty)
         cycle += 1
@@ -853,7 +871,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 st["stalls"]["memory_latency_exposure_cycles"] += max(0, latency - 1)
             if item["branch"]:
                 st["branch_number"] += 1
-                if st["branch_number"] % 4 == 0:
+                if branch_mispredict(st["ops"][seq], st["branch_number"], p.branch_predictor):
                     st["branch_misses"] += 1
                     st["frontend_blocked_until"] = max(
                         st["frontend_blocked_until"], cycle + p.branch_penalty)
@@ -973,11 +991,11 @@ def run_nexus_ablation(workloads: Dict[str, List[Op]], profile_dict: dict) -> di
         "kernels": comparison,
         "full_runs": runs,
         "assumptions": {
-            "p0_enabled": "P0/P1 ping-pong: 2 x 8 KiB command buffers; 8-KiB block refill; 128-cycle provisional load at 512-bit/cycle; one refill engine/core",
+            "p0_enabled": "PX P0-P7: 8 x 2 KiB code pool; SPM0: 4 KiB as two 2 KiB ping-pong banks; 2 KiB refill modeled at 48 cycles (32 payload + 16 source/control overhead assumption)",
             "p0_disabled": "32 KiB conventional instruction cache; 64-byte line; 32-cycle provisional refill",
             "spm2_enabled": "8 KiB task workspace; 2-cycle provisional access; one modeled port per core",
             "spm2_disabled": "Tagged SPM2 accesses use normal cache/Data RAM path",
-            "scope": "SPM2 and P0 first stage only; SPM0, SPM1, SPM3-SPM7 remain unmodeled",
+            "scope": "SPM2 task workspace and PX-to-SPM0 instruction feed modeled; SPM1 and SPM3-SPM7 remain partially abstracted",
         },
     }
 
@@ -1015,7 +1033,7 @@ def run_fetch_latency_sweep(workloads, conventional_latencies=(8, 16, 24, 32),
     target = {"p0_starvation": workloads["p0_starvation"]}
     rows = {"amd_9950x3d2": {}, "intel_xeon_698x": {}, "apple_m6": {},
             "nexus_conventional": {}, "nexus_p0": {}}
-    for key in ("amd_9950x", "intel_285k_p", "intel_285k_e"):
+    for key in ("amd_9950x3d2", "intel_xeon_698x", "apple_m6"):
         for latency in conventional_latencies:
             run = simulate_cpu(target, PROFILES[key], 8,
                                {"conventional_refill_latency": latency})
