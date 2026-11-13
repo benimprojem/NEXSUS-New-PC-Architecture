@@ -190,11 +190,14 @@ class LRU:
     def __init__(self, capacity_bytes: int, line_bytes: int):
         self.capacity = max(1, capacity_bytes // line_bytes)
         self.lines = OrderedDict()
-    def touch(self, line: int) -> bool:
+    def lookup(self, line: int) -> bool:
         hit = line in self.lines
         if hit:
             self.lines.move_to_end(line)
-        else:
+        return hit
+    def touch(self, line: int) -> bool:
+        hit = self.lookup(line)
+        if not hit:
             self.insert(line)
         return hit
     def insert(self, line: int):
@@ -217,13 +220,13 @@ class CacheHierarchy:
     def probe(self, address: int) -> Tuple[int, str]:
         """Lookup only; cache allocation is deferred until the access completes."""
         line = address // self.line
-        if self.l1.touch(line):
+        if self.l1.lookup(line):
             return self.p.l1_lat, "L1"
-        if self.l2.touch(line):
+        if self.l2.lookup(line):
             return self.p.l2_lat, "L2"
-        if self.l3.touch(line):
+        if self.l3.lookup(line):
             return self.p.l3_lat, "L3"
-        if self.l4 and self.l4.touch(line):
+        if self.l4 and self.l4.lookup(line):
             return self.p.l4_lat, "L4"
         return self.p.dram_lat, "DRAM"
 
@@ -719,7 +722,7 @@ def main():
         return
     print("NEXSUS CPU COMPOSITE WORKLOAD — CONTROLLED 8-CORE MODEL v0.2.4-dev")
     print("All targets: 8 cores, 3.0 GHz reference clock, 120-cycle DRAM latency, 32 B/cycle chip-wide DRAM ceiling; work-conserving shared controller.")
-    print("Parallelism: dependency components distributed across cores; lockstep cores share DRAM bank arbitration and aggregate bus. NEXSUS shared L2/L3/L4 groups are modeled; coherence remains unmodeled.")
+    print("Parallelism: lockstep cores; NEXSUS private L1 and shared L2/2-core, L3/4-core, L4/8-core groups; shared DRAM banks and aggregate bus; coherence remains unmodeled.")
     print(f"{'CPU profile':48} {'cycles':>12} {'ops':>10} {'IPC':>8} {'time ms*':>12}")
     for result in profiles.values():
         print(f"{result['cpu'][:48]:48} {result['total_cycles']:12d} {result['total_ops']:10d} "
