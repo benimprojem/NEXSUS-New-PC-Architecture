@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""NEXSUS CPU comparison simulator — controlled 8-core model v0.2.3
+"""NEXSUS CPU comparison simulator — controlled 8-core model v0.2.4-dev
 
 This is an event/cycle-level teaching and design-space model, not RTL, gem5,
 or a vendor-certified replica. Unknown NEXSUS parameters are explicit inputs.
@@ -487,46 +487,195 @@ def partition_dependency_components(ops: List[Op], core_count: int) -> List[List
             shards.append(shard)
     return shards
 
+def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
+                               aggregate_dram_bandwidth: int) -> dict:
+    """Lockstep cores sharing one DRAM bank/bus controller.
+
+    Per-core pipelines, ROBs and caches remain private approximations. All
+    cores advance on one global cycle and submit DRAM misses as a same-cycle batch.
+    """
+    states = []
+    for shard in shards:
+        states.append({
+            "ops": shard, "cache": CacheHierarchy(p),
+            "ready_at": [0] * len(shard), "done": [False] * len(shard),
+            "issued": [False] * len(shard), "dispatched": [False] * len(shard),
+            "rob": deque(), "unit_busy": {k: [0] * v for k, v in p.units.items()},
+            "next_frontend": 0, "frontend_blocked_until": 0, "retired": 0,
+            "max_rob": 0, "hits": {"L1":0,"L2":0,"L3":0,"L4":0,"DRAM":0},
+            "branch_misses": 0, "branch_number": 0,
+            "stalls": {"dependency_blocked_op_cycles": 0,
+                       "issue_width_blocked_op_cycles": 0,
+                       "execution_unit_blocked_op_cycles": 0,
+                       "frontend_limited_cycles": 0, "rob_full_cycles": 0,
+                       "branch_recovery_cycles": 0,
+                       "memory_latency_exposure_cycles": 0}
+        })
+    controller = SharedMemoryController(
+        bank_count=p.bank_count, beat_bytes=p.bank_beat_bytes,
+        aggregate_bytes_per_cycle=aggregate_dram_bandwidth)
+    cycle = 0
+    limit = max(10000, sum(len(x) for x in shards) * 1000)
+    while any(st["retired"] < len(st["ops"]) for st in states) and cycle < limit:
+        pending_memory = []
+        # Phase 1: complete and retire all cores at the same global cycle.
+        for core_id, st in enumerate(states):
+            ops = st["ops"]
+            for op in ops:
+                if st["issued"][op.seq] and not st["done"][op.seq] and st["ready_at"][op.seq] <= cycle:
+                    st["done"][op.seq] = True
+            retired_now = 0
+            while st["rob"] and retired_now < p.retire and st["done"][st["rob"][0]]:
+                st["rob"].popleft()
+                st["retired"] += 1
+                retired_now += 1
+
+        # Phase 2: dispatch independently on each core.
+        for st in states:
+            ops = st["ops"]
+            if st["next_frontend"] < len(ops):
+                if cycle < st["frontend_blocked_until"]:
+                    st["stalls"]["branch_recovery_cycles"] += 1
+                elif len(st["rob"]) >= p.rob:
+                    st["stalls"]["rob_full_cycles"] += 1
+            dispatched_now = 0
+            while (st["next_frontend"] < len(ops) and dispatched_now < p.dispatch and
+                   dispatched_now < p.frontend and len(st["rob"]) < p.rob and
+                   cycle >= st["frontend_blocked_until"]):
+                op = ops[st["next_frontend"]]
+                st["dispatched"][op.seq] = True
+                st["rob"].append(op.seq)
+                st["next_frontend"] += 1
+                dispatched_now += 1
+            st["max_rob"] = max(st["max_rob"], len(st["rob"]))
+            if (st["next_frontend"] < len(ops) and
+                cycle >= st["frontend_blocked_until"] and len(st["rob"]) < p.rob and
+                dispatched_now >= min(p.dispatch, p.frontend)):
+                st["stalls"]["frontend_limited_cycles"] += 1
+
+        # Phase 3: choose per-core issue candidates. DRAM misses are deferred
+        # until every core has contributed its requests for this same cycle.
+        for core_id, st in enumerate(states):
+            ops = st["ops"]
+            issued_now = 0
+            for seq in list(st["rob"]):
+                if st["issued"][seq]:
+                    continue
+                op = ops[seq]
+                if any(not st["done"][dep] for dep in op.deps):
+                    st["stalls"]["dependency_blocked_op_cycles"] += 1
+                    continue
+                if issued_now >= p.issue:
+                    st["stalls"]["issue_width_blocked_op_cycles"] += 1
+                    continue
+                resource = "LOAD" if op.kind == "LOAD" else ("STORE" if op.kind == "STORE" else op.kind)
+                slots = st["unit_busy"].get(resource, [])
+                slot = next((i for i, available in enumerate(slots) if available <= cycle), None)
+                if slot is None:
+                    st["stalls"]["execution_unit_blocked_op_cycles"] += 1
+                    continue
+                mem_lat = 0
+                level = None
+                if op.kind in ("LOAD", "STORE"):
+                    mem_lat, level = st["cache"].access(op.address)
+                    st["hits"][level] += 1
+                item = {"core": core_id, "seq": seq, "slot": slot,
+                        "latency": max(p.latency.get(op.kind, 1), mem_lat),
+                        "level": level}
+                if level == "DRAM":
+                    item["request_id"] = f"{core_id}:{seq}"
+                    pending_memory.append({
+                        "id": item["request_id"], "core": core_id,
+                        "address": op.address, "width": op.width
+                    })
+                else:
+                    item["request_id"] = None
+                # Mark as selected now; completion timing is finalized below.
+                st["issued"][seq] = True
+                slots[slot] = cycle + 1
+                item["branch"] = op.kind == "BR"
+                item["memory"] = op.kind in ("LOAD", "STORE")
+                pending_memory.append({"_issue": item})
+                issued_now += 1
+
+        # Phase 4: one global arbitration call for all DRAM misses selected
+        # across all cores this cycle.
+        requests = [x for x in pending_memory if "_issue" not in x]
+        reservations = controller.reserve_batch(cycle, requests, p.bank_hash) if requests else {}
+        for entry in pending_memory:
+            if "_issue" not in entry:
+                continue
+            item = entry["_issue"]
+            st = states[item["core"]]
+            seq = item["seq"]
+            latency = item["latency"]
+            if item["request_id"] is not None:
+                reservation = reservations[item["request_id"]]
+                beats = max(1, math.ceil(st["ops"][seq].width / p.bank_beat_bytes))
+                bus_cycles = max(1, math.ceil(st["ops"][seq].width / max(1, aggregate_dram_bandwidth)))
+                service_delay = max(
+                    reservation["bank_wait"],
+                    reservation["bus_wait"] + bus_cycles
+                )
+                latency = max(latency, p.dram_lat + service_delay)
+            st["ready_at"][seq] = cycle + latency
+            if item["memory"]:
+                st["stalls"]["memory_latency_exposure_cycles"] += max(0, latency - 1)
+            if item["branch"]:
+                st["branch_number"] += 1
+                if st["branch_number"] % 4 == 0:
+                    st["branch_misses"] += 1
+                    st["frontend_blocked_until"] = max(
+                        st["frontend_blocked_until"], cycle + p.branch_penalty)
+
+        cycle += 1
+
+    if any(st["retired"] != len(st["ops"]) for st in states):
+        totals = [f"{st['retired']}/{len(st['ops'])}" for st in states]
+        raise RuntimeError(f"multicore simulation did not drain at cycle {cycle}: {totals}")
+    return {"cycles": cycle, "cores": states,
+            "controller": {"bank_count": p.bank_count,
+                           "aggregate_dram_bytes_per_cycle": aggregate_dram_bandwidth,
+                           "bank_busy_until": controller.bank_busy,
+                           "bus_next_cycle": controller.bus_next_cycle}}
+
+
 def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=None) -> dict:
     cores = core_count or profile_dict.get("core_count", 1)
-    # Profile bandwidth is a chip-wide aggregate ceiling. Until the simulator
-    # has a lockstep global controller, divide it into a conservative fixed
-    # per-core share so N independent core simulations cannot each consume
-    # the full chip-wide bandwidth.
     core_profile_dict = dict(profile_dict)
     aggregate_dram_bandwidth = int(profile_dict.get("dram_bytes_per_cycle", 32))
-    per_core_dram_bandwidth = aggregate_dram_bandwidth / max(1, cores)
-    core_profile_dict["dram_bytes_per_cycle"] = per_core_dram_bandwidth
     p = profile_from_dict(core_profile_dict)
     results = {}
     for name, ops in workloads.items():
         shards = partition_dependency_components(ops, cores)
-        per_core = [simulate_stream(shard, p) for shard in shards]
-        elapsed_cycles = max((x["cycles"] for x in per_core), default=0)
-        total_ops = sum(x["ops"] for x in per_core)
-        summed_cycles = sum(x["cycles"] for x in per_core)
-        cache_totals = {k: sum(x["cache_accesses"][k] for x in per_core)
+        simulation = simulate_multicore_streams(shards, p, aggregate_dram_bandwidth)
+        per_core = simulation["cores"]
+        elapsed_cycles = simulation["cycles"]
+        total_ops = sum(x["retired"] for x in per_core)
+        cache_totals = {k: sum(x["hits"][k] for x in per_core)
                         for k in ("L1", "L2", "L3", "L4", "DRAM")}
+        stall_keys = list(per_core[0]["stalls"]) if per_core else []
         results[name] = {
             "cycles": elapsed_cycles, "ops": total_ops,
             "aggregate_ipc": round(total_ops/max(1, elapsed_cycles), 3),
-            "core_cycles_sum": summed_cycles,
+            "core_cycles_sum": elapsed_cycles * len(per_core),
             "active_cores": len(per_core),
-            "per_core_cycles": [x["cycles"] for x in per_core],
-            "max_rob_occupancy": max((x["max_rob_occupancy"] for x in per_core), default=0),
-            "branch_mispredicts": sum(x["branch_mispredicts"] for x in per_core),
+            "per_core_cycles": [elapsed_cycles for _ in per_core],
+            "max_rob_occupancy": max((x["max_rob"] for x in per_core), default=0),
+            "branch_mispredicts": sum(x["branch_misses"] for x in per_core),
             "cache_accesses": cache_totals,
-            "stall_counters": {k: sum(x["stall_counters"][k] for x in per_core)
-                               for k in per_core[0]["stall_counters"]} if per_core else {},
-            "parallel_model": "dependency-component multicore; private caches/banks; static equal-share DRAM bandwidth cap; global bank arbitration not yet modeled"
+            "stall_counters": {k: sum(x["stalls"][k] for x in per_core)
+                               for k in stall_keys},
+            "memory_controller": simulation["controller"],
+            "parallel_model": "lockstep multicore; private per-core caches; shared DRAM banks and work-conserving aggregate bus; shared L2/L3/L4 and coherence not yet modeled"
         }
     total_cycles = sum(v["cycles"] for v in results.values())
     total_ops = sum(v["ops"] for v in results.values())
     return {"cpu": p.name, "cores_configured": cores, "clock_ghz": p.frequency_ghz,
             "cpu_ram_reference_clock_ghz": p.frequency_ghz,
             "aggregate_dram_bytes_per_cycle": aggregate_dram_bandwidth,
-            "per_core_dram_bytes_per_cycle": per_core_dram_bandwidth,
-            "dram_bandwidth_policy": "static equal share across configured cores; not work-conserving",
+            "per_core_dram_bytes_per_cycle": None,
+            "dram_bandwidth_policy": "shared lockstep controller; work-conserving aggregate bus; no static per-core quota",
             "kernels": results, "total_cycles": total_cycles, "total_ops": total_ops,
             "aggregate_ipc": round(total_ops/max(1,total_cycles),3),
             "time_ms_at_configured_clock": round(total_cycles/(p.frequency_ghz*1e6),6)}
@@ -546,9 +695,9 @@ def main():
     if args.json:
         print(json.dumps(profiles, indent=2))
         return
-    print("NEXSUS CPU COMPOSITE WORKLOAD — CONTROLLED 8-CORE MODEL v0.2.3")
-    print("All targets: 8 cores, 3.0 GHz reference clock, 120-cycle DRAM latency, 32 B/cycle chip-wide DRAM ceiling (4 B/cycle/core static share).")
-    print("Parallelism: dependency components distributed across cores; fixed aggregate bandwidth cap applied, but global bank arbitration/shared queues remain unmodeled.")
+    print("NEXSUS CPU COMPOSITE WORKLOAD — CONTROLLED 8-CORE MODEL v0.2.4-dev")
+    print("All targets: 8 cores, 3.0 GHz reference clock, 120-cycle DRAM latency, 32 B/cycle chip-wide DRAM ceiling; work-conserving shared controller.")
+    print("Parallelism: dependency components distributed across cores; lockstep cores share DRAM bank arbitration and aggregate bus. Shared L2/L3/L4 and coherence remain unmodeled.")
     print(f"{'CPU profile':48} {'cycles':>12} {'ops':>10} {'IPC':>8} {'time ms*':>12}")
     for result in profiles.values():
         print(f"{result['cpu'][:48]:48} {result['total_cycles']:12d} {result['total_ops']:10d} "
