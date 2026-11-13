@@ -94,10 +94,10 @@ NEXSUS CPU dört bağımsız register bankı kullanır:
 
 | Bank | Kayıt aralığı | Kayıt sayısı | Fiziksel genişlik | Görev |
 |---|---|---:|---:|---|
-| RA | RA0–RA31 | 32 | 64 bit | Integer, adres ve scalar state |
-| FA | FA0–FA31 | 32 | 64 bit | Floating-point state |
-| DA | DA0–DA31 | 32 | 64 bit | Data staging / transfer |
-| MA | MA0–MA31 | 32 | 256 bit | Vector / matrix operands |
+| RA | RA0–RA63 | 64 | 64 bit | Integer, adres ve scalar state |
+| FA | FA0–FA63 | 32 | 64 bit | Floating-point state |
+| DA | DA0–DA63 | 32 | 64 bit | Data staging / transfer |
+| MA | MA0–MA63 | 64 | 256 bit | Vector / matrix operands |
 
 ### 4.1 RA alt genişlik görünümleri
 
@@ -130,12 +130,12 @@ FA kayıtları 64-bit fiziksel genişliktedir. FP32 ve FP64 tek kayıt kullanır
 
 ### 4.3 Register banklarının toplam kapasitesi
 
-- RA: 32 × 64 bit = 256 byte
-- FA: 32 × 64 bit = 256 byte
-- DA: 32 × 64 bit = 256 byte
-- MA: 32 × 256 bit = 1 KiB
+- RA: 64 × 64 bit = 256 byte
+- FA: 64 × 64 bit = 256 byte
+- DA: 64 × 64 bit = 256 byte
+- MA: 64 × 256 bit = 1 KiB
 
-Toplam fiziksel register kapasitesi **1.75 KiB**'tır. SPM kapasitesi bu toplama dahil değildir.
+Toplam fiziksel register kapasitesi **3.5 KiB**'tır. SPM kapasitesi bu toplama dahil değildir.
 ## 5. Donanım Destekli Kısmi Yazma
 
 SPM, 64 bitlik kayıtların tamamını yeniden yazmak zorunda kalmadan seçilen alanları güncelleyebilecek biçimde tasarlanır.
