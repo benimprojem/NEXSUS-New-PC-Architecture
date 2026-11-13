@@ -1348,3 +1348,20 @@ EXT, normal komutun önüne gelen bir prefix'tir; hedef opcode'un veya operandla
 - EXT kullanılmayan komutlar tek 64-bit word olarak kalır; normal komutların kodlanması ve yürütülmesi değişmez.
 
 Bu mekanizma MOVI64 gibi geniş sabit yükleme işlemlerinin yanı sıra, ileride opcode bazında tanımlanacak geniş displacement ve adres operandları için de ortak taşıma yolu sağlar. Numeric EXT opcode değeri ve opcode başına literal yorumları ISA taslağında henüz dondurulmamıştır.
+
+## System / CSR / IRQ commands (baseline)
+
+System-control primary opcodes are assigned in `NEXSUS-CPU-INSTRUCTION-ENCODING-001.md`:
+
+| OP | Mnemonic | Role |
+|---:|---|---|
+| 0x94 | CSRR | Read privileged/authorized CSR into RA |
+| 0x95 | CSRW | Write RA to CSR |
+| 0x96 | CSRS | Atomic CSR bit-set |
+| 0x97 | CSRC | Atomic CSR bit-clear |
+| 0x98 | IRQON | Enable global asynchronous IRQ acceptance (STATUS.IE) |
+| 0x99 | IRQOFF | Disable global asynchronous IRQ acceptance |
+| 0x9A | WFI | Wait for eligible interrupt/event wake source |
+| 0x9B | IRET | Privileged exception/IRQ return |
+
+CSR IDs and privilege, exception, vector and IRQ state are defined in `NEXSUS-CPU-CSR-001.md`. IRQCLAIM and IRQEOI are side-effecting CSR interface operations; they are not payload transfers. WFI wakeup is distinct from IRQ acceptance and handler entry. RET remains the ordinary call return instruction.
