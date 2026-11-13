@@ -1157,6 +1157,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--scale", type=int, default=1)
     ap.add_argument("--nexus-cores", type=int, default=8)
+    ap.add_argument("--normalized-8core", action="store_true", help="run all four architectures with exactly eight active cores")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--ablation", action="store_true", help="run four-way NEXSUS SPM/P0 ablation")
     ap.add_argument("--branch-sweep", action="store_true", help="compare NEXSUS predictor-off and compact predictor")
@@ -1166,6 +1167,17 @@ def main():
     ap.add_argument("--fetch-sweep", action="store_true", help="compare conventional I-cache and P0 refill latency sensitivity")
     args = ap.parse_args()
     workloads = build_composite_workload(args.scale)
+    if args.normalized_8core:
+        normalized = {}
+        for key in ("amd_9950x3d2", "intel_xeon_698x", "apple_m6", "nexus_balanced_128"):
+            normalized[key] = simulate_cpu(workloads, PROFILES[key], 8)
+        if args.json:
+            print(json.dumps(normalized, indent=2))
+        else:
+            print("NORMALIZED 8-CORE ARCHITECTURE COMPARISON")
+            for key, result in normalized.items():
+                print(f'{key}: cycles={result["total_cycles"]} ops={result["total_ops"]} IPC={result["aggregate_ipc"]}')
+        return
     if args.fetch_sweep:
         result = run_fetch_latency_sweep(workloads)
         if args.json:
