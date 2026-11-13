@@ -11,6 +11,8 @@
 
 ---
 
+> **Register-width revision (2026-11-13):** Each RA/FA/DA/MA bank now has 64 entries (selector width 6 bits). The legacy per-format bit diagrams below were drafted for 32-entry banks and are **not encoding-frozen**; all operand field widths/positions, reserved-bit budgets and format payloads must be audited/repacked before an executable binary ABI is finalized. The 64-bit instruction word and OP8/FMT4/PAYLOAD52 envelope remain the current top-level proposal.
+
 ## 3. Little-endian byte ve word sıralaması
 
 NEXSUS CPU'nun bellek byte sıralaması **little-endian**'dır. Bu karar veri belleği, SPM byte erişimleri, komut sözcüklerinin bellekte/P0'da temsil edilmesi ve çok sözcüklü literal dizileri için geçerlidir.
@@ -31,7 +33,7 @@ Little-endian, bit alanlarının instruction word içindeki konumunu değiştirm
 
 1. Her temel instruction word tam **64 bit** olmalıdır.
 2. P0 komut ön belleği 64-bit kayıtlar tuttuğundan komut sözcüğü P0 kayıt genişliğiyle birebir eşleşmelidir.
-3. RA, FA, DA ve MA banklarının her birinde 32 kayıt bulunduğu için register seçimi **5 bit** olmalıdır.
+3. RA, FA, DA ve MA banklarının her birinde 64 kayıt bulunduğu için register seçimi **6 bit** olmalıdır.
 4. Register bankları bağımsızdır; komut ailesi varsayılan operand bankını belirler.
 5. Immediate, displacement ve register-transfer işlemleri tek bir ortak formata zorlanmamalıdır.
 6. 64-bit adres alanı korunmalıdır. Büyük immediate/adres sabitleri gerektiğinde ek 64-bit literal word kullanılabilmelidir.
@@ -51,12 +53,12 @@ Bütün temel komutlar 64-bit word olarak kodlanır. İlk taslakta üst bitler o
 
 ### 2.1 Register selector
 
-Her bank 32 kayıt içerir. Dolayısıyla her register operandı 5-bit selector ile kodlanır:
+Her bank 64 kayıt içerir. Dolayısıyla her register operandı 6-bit selector ile kodlanır:
 
 | Bank | Kod (taslak) | Selector |
 |---|---:|---:|
-| RA | 00 | 5 bit |
-| FA | 01 | 5 bit |
+| RA | 00 | 6 bit |
+| FA | 01 | 6 bit |
 | DA | 10 | 5 bit |
 | MA | 11 | 5 bit |
 
@@ -595,7 +597,7 @@ Normal MOV.* XFER komutlarında M/AUX alanları ilgili transfer opcode tanımın
 - İlk branch koşulları: ALWAYS, ZERO, NONZERO, SIGNED_LT_ZERO, SIGNED_GE_ZERO. Ayrılmış COND kodları illegal encoding üretir.
 - BR.Z ve BR.NZ, TEST register'ının tüm 64-bit değerini sıfırla karşılaştırır. Signed/unsigned zero koşulları aynı bit deseninde eşdeğerdir; ayrı kodlara gerek yoktur.
 - Karşılaştırma komutları global flags/condition-code register'ı değiştirmez. CMP.* sonucu hedef RA register'ına 64-bit 0 veya 1 yazar; branch bu register'ı açık operand olarak okur. Bu tasarım multi-issue sırasında global flag write/read çakışmalarını önler.
-- TEST selector'ı RA0–RA31 aralığındadır. JMP için TEST=0 ve COND=ALWAYS zorunludur.
+- TEST selector'ı RA0–RA63 aralığındadır. JMP için TEST=0 ve COND=ALWAYS zorunludur.
 ### 4.14 SYS — System ve kontrol komutları
 
 SYS formatı privilege, system state, interrupt, synchronization ve özel kontrol komutları için ayrılmıştır. Alt alan yerleşimi her komut sınıfı için ayrı tabloda tanımlanacaktır. Henüz system register bankı veya CSR sayısı kesinleştirilmemiştir.
@@ -770,7 +772,7 @@ W alanının yorumu opcode ailesine bağlıdır. Örneğin FADD için W=010 FP32
 
 - FP32 ve FP64 tek FA kaydı kullanır.
 - FP128 iki ardışık FA kaydı kullanır.
-- Pair başlangıcı çift indisli olmalıdır: FA0:FA1, FA2:FA3, …, FA30:FA31.
+- Pair başlangıcı çift indisli olmalıdır: FA0:FA1, FA2:FA3, …, FA62:FA63.
 - Encoding içindeki FA selector, pair'in ilk kaydını gösterir.
 - FA pair komutunda selector'ın LSB biti 0 olmalıdır; aksi durumda illegal-instruction exception oluşur.
 
@@ -789,7 +791,7 @@ W alanının yorumu opcode ailesine bağlıdır. Örneğin FADD için W=010 FP32
 
 - MA kayıtları 256-bit'tir.
 - 512-bit ME512 işlemi iki ardışık MA kaydı kullanır.
-- Pair başlangıcı çift indisli olmalıdır: MA0:MA1, MA2:MA3, …, MA30:MA31.
+- Pair başlangıcı çift indisli olmalıdır: MA0:MA1, MA2:MA3, …, MA62:MA63.
 - Encoding içindeki MA selector, pair'in ilk kaydını gösterir.
 - 512-bit pair komutunda selector'ın LSB biti 0 olmalıdır.
 
@@ -951,7 +953,7 @@ MOVI64 sembolik assembly gösterimidir; temel MOVI opcode'u 0x10'dur ve literal 
 
 | Alan | Kural |
 |---|---|
-| D | Hedef RA0–RA31 selector'ı |
+| D | Hedef RA0–RA63 selector'ı |
 | A | 0 olmalıdır (kullanılmıyor) |
 | W | İlk sürümde 64-bit kodu; diğer genişlikler ayrılmıştır |
 | M | `000` olmalıdır |
@@ -1022,7 +1024,7 @@ BR payload alanları: COND[3:0], TEST[4:0], RESERVED[10:0], DISP[31:0]. RESERVED
 | 0111–1111 | Reserved | Illegal encoding |
 
 - JMP: COND=ALWAYS ve TEST=0 zorunludur.
-- BR: COND=0001–0110; TEST herhangi bir RA0–RA31 selector'ı olabilir.
+- BR: COND=0001–0110; TEST herhangi bir RA0–RA63 selector'ı olabilir.
 - CALL: COND=ALWAYS; TEST link register selector'ıdır. Çağrı öncesi TEST alanındaki RA kaydının eski değeri kullanılmaz; başarılı kontrol akışı commit'inde return address bu kayda yazılır.
 - JMP için TEST=0 zorunludur. Koşullu BR'de TEST, karşılaştırılacak RA register selector'ıdır.
 - DISP signed 32-bit byte displacement'tir. Hedef adres `packet_start_PC + sign_extend(DISP)` olarak hesaplanır; DISP 8-byte hizalı olmalıdır. Hedef, 64-bit komut adres alanında ve geçerli instruction boundary üzerinde bulunmalıdır.
@@ -1249,7 +1251,7 @@ Aşağıdaki durumlar illegal instruction veya ilgili erişim exception'ı üret
 
 - Reserved FMT veya opcode kullanımı.
 - Reserved alanlarda sıfır dışında değer bulunması.
-- Register selector'ın 0–31 aralığı dışında olması (5-bit selector zaten bu aralığı sağlar; pair/group taşması ayrıca kontrol edilir).
+- Register selector'ın 0–31 aralığı dışında olması (6-bit selector zaten bu aralığı sağlar; pair/group taşması ayrıca kontrol edilir).
 - FP128 için tek numaralı FA pair başlangıcı.
 - 512-bit ME512 için tek numaralı MA pair başlangıcı.
 - DA 4-register group erişiminin DA31 sınırını aşması veya hizalama şartını ihlal etmesi.
