@@ -460,7 +460,10 @@ def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=N
     total_cycles = sum(v["cycles"] for v in results.values())
     total_ops = sum(v["ops"] for v in results.values())
     return {"cpu": p.name, "cores_configured": cores, "clock_ghz": p.frequency_ghz,
-            "cpu_ram_reference_clock_ghz": p.frequency_ghz,\n            "aggregate_dram_bytes_per_cycle": aggregate_dram_bandwidth,\n            "per_core_dram_bytes_per_cycle": per_core_dram_bandwidth,\n            "dram_bandwidth_policy": "static equal share across configured cores; not work-conserving",
+            "cpu_ram_reference_clock_ghz": p.frequency_ghz,
+            "aggregate_dram_bytes_per_cycle": aggregate_dram_bandwidth,
+            "per_core_dram_bytes_per_cycle": per_core_dram_bandwidth,
+            "dram_bandwidth_policy": "static equal share across configured cores; not work-conserving",
             "kernels": results, "total_cycles": total_cycles, "total_ops": total_ops,
             "aggregate_ipc": round(total_ops/max(1,total_cycles),3),
             "time_ms_at_configured_clock": round(total_cycles/(p.frequency_ghz*1e6),6)}
