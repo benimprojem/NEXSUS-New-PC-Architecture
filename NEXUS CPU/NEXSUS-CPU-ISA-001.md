@@ -24,10 +24,10 @@
 
 | Register | Fiziksel yapı | Rol |
 |---|---|---|
-| RA0–RA31 | 32 × 64-bit | Integer, adres ve scalar state |
-| FA0–FA31 | 32 × 64-bit | Floating-point state; FP32/FP64 ve eşli FP128 |
-| DA0–DA31 | 32 × 64-bit | Data staging / transfer |
-| MA0–MA31 | 32 × 256-bit | Vector/matrix operands |
+| RA0–RA63 | 64 × 64-bit | Integer, adres ve scalar state |
+| FA0–FA63 | 64 × 64-bit | Floating-point state; FP32/FP64 ve eşli FP128 |
+| DA0–DA63 | 64 × 64-bit | Data staging / transfer |
+| MA0–MA63 | 64 × 256-bit | Vector/matrix operands |
 | RBn | RAn alt 32-bit görünümü | 32-bit integer erişim |
 | RCn | RAn alt 16-bit görünümü | 16-bit integer erişim |
 | RDn | RAn alt 8-bit görünümü | 8-bit integer erişim |
@@ -38,17 +38,17 @@ RA/RB/RC/RD aynı RA fiziksel kaydının alt-bit görünümleridir; küçük gö
 
 ### 2.1 Register bank ve operand kuralları
 
-- RA0–RA31: integer/scalar/address operandları; integer ve bitwise komutların varsayılan bankı.
-- FA0–FA31: floating-point operandları; FP32/FP64 tek kayıt, FP128 çift kayıt.
-- DA0–DA31: load/store staging ve açık register-bank transferleri.
-- MA0–MA31: 256-bit vector/matrix operandları; 512-bit ME512 işlemlerinde çift MA kaydı.
+- RA0–RA63: integer/scalar/address operandları; integer ve bitwise komutların varsayılan bankı.
+- FA0–FA63: floating-point operandları; FP32/FP64 tek kayıt, FP128 çift kayıt.
+- DA0–DA63: load/store staging ve açık register-bank transferleri.
+- MA0–MA63: 256-bit vector/matrix operandları; 512-bit ME512 işlemlerinde çift MA kaydı.
 - RBn/RCn/RDn: yalnızca RAn kayıtlarının 32/16/8-bit alt görünümleri; FA/DA/MA için alias değildir.
 - Komut mnemonic'i ve operand bankı birlikte operand türünü belirler. Bir bankın operandı başka bankın operandı yerine örtük kullanılamaz.
 - FCONV sayısal integer↔floating dönüşümünü yapar; MOV.* transferleri yalnızca tanımlı register bit aktarımı/paketleme işlevlerini yapar.
 
 ## 3. Scalar / Integer / Logic komutları
 
-Bu bölümdeki scalar/integer komutlarının kaynak ve hedef operandları RA0–RA31 bankındadır. RB/RC/RD, ilgili RA kaydının 32/16/8-bit alt görünümünü seçer. FA, DA ve MA operandları bu komutların örtük alternatifleri değildir.
+Bu bölümdeki scalar/integer komutlarının kaynak ve hedef operandları RA0–RA63 bankındadır. RB/RC/RD, ilgili RA kaydının 32/16/8-bit alt görünümünü seçer. FA, DA ve MA operandları bu komutların örtük alternatifleri değildir.
 
 | Mnemonic (taslak) | Operand biçimi | İşlev | Unit |
 |---|---|---|---|
@@ -482,7 +482,7 @@ SPM0, 256 adet 64-bit temel kayıt üzerinden doğrudan adreslenir; SPM1–SPM7 
 
 ## 7. Floating-point komutları
 
-Bu bölümdeki tüm FP kaynak ve hedef operandları FA0–FA31 bankındadır. FP32 (IEEE 754 binary32) ve FP64 (binary64) değerler tek FA kaydında tutulur. FP128 (binary128) değerler iki ardışık FA kaydını kullanır; pair başlangıcı çift indisli olmalıdır (FA00:FA01, FA02:FA03, …, FA30:FA31). Pair'in düşük 64 biti ilk kayıtta, yüksek 64 biti sonraki kayıttadır. Tek FA kaydına yazan FP32/FP64 işlemleri pair'in diğer kaydını etkilemez.
+Bu bölümdeki tüm FP kaynak ve hedef operandları FA0–FA63 bankındadır. FP32 (IEEE 754 binary32) ve FP64 (binary64) değerler tek FA kaydında tutulur. FP128 (binary128) değerler iki ardışık FA kaydını kullanır; pair başlangıcı çift indisli olmalıdır (FA00:FA01, FA02:FA03, …, FA62:FA63). Pair'in düşük 64 biti ilk kayıtta, yüksek 64 biti sonraki kayıttadır. Tek FA kaydına yazan FP32/FP64 işlemleri pair'in diğer kaydını etkilemez.
 
 ### 7.1 Komut ailesi
 
@@ -577,7 +577,7 @@ FCONV, RA'daki integer değeri FA formatına veya FA'daki floating-point değeri
 
 ## 8. Vector ve Matrix komutları
 
-Bu bölümdeki vektör/matris kaynak ve hedef operandları MA0–MA31 bankındadır. DA yalnızca açık veri hazırlama/çıkarma transferinde kullanılır.
+Bu bölümdeki vektör/matris kaynak ve hedef operandları MA0–MA63 bankındadır. DA yalnızca açık veri hazırlama/çıkarma transferinde kullanılır.
 
 MA registerları 256-bit fiziksel genişliktedir. ME512 512-bit yürütme yoludur; iki MA registerı veya tanımlı 512-bit birleşik operand biçimi kullanılabilir.
 
@@ -666,7 +666,7 @@ Matrix komutları, vector lane komutlarından ayrı bir operand modeli kullanır
 
 - Her MA register'ı 256 bit'tir. Tile verisi, MA register'ları boyunca ardışık ve kesintisiz biçimde paketlenir.
 - Bir tile'ın MA register sayısı: `ceil(N × N × element_width / 256)`. Tile başlangıç selector'ı, bu register grubunun ilk MA register'ını gösterir.
-- Tile register grubu MA0–MA31 sınırını aşamaz. Operand grupları aynı tile'ı paylaşacaksa başlangıç selector'ları ve aralıkları tamamen aynı olmalıdır; bu, A=B gibi kaynak alias'larına ve D'nin bir kaynakla tam alias olmasına izin verir. Kısmi/örtüşen ama eşit olmayan aralıklar geçersizdir.
+- Tile register grubu MA0–MA63 sınırını aşamaz. Operand grupları aynı tile'ı paylaşacaksa başlangıç selector'ları ve aralıkları tamamen aynı olmalıdır; bu, A=B gibi kaynak alias'larına ve D'nin bir kaynakla tam alias olmasına izin verir. Kısmi/örtüşen ama eşit olmayan aralıklar geçersizdir.
 - Gruplar, kendi register sayılarının katı olan selector'lardan başlatılır. Örneğin 8-register tile grubu MA0, MA8, MA16 veya MA24'ten başlayabilir. Bu kural operand gruplarının sınırlarını ve decoder kontrolünü sadeleştirir.
 - 8×8 tile için 64-bit eleman genişliği ilk sürümde desteklenmez. Bu sınır, MA register dosyasına sığan açık operand grupları ve MMAC'in dört ayrı tile operandı gerektirmesi dikkate alınarak konmuştur. Daha geniş elemanlar ileride farklı tile aktarım/operand modeliyle değerlendirilebilir.
 - Tile elemanları row-major sıralanır: önce satır 0'ın sütunları, ardından satır 1 ve devamı. İlk eleman bit aralığı tile'ın en düşük anlamlı bitleridir. Son MA register'ında kullanılmayan yüksek bitler yazımda sıfırlanır.
@@ -687,7 +687,7 @@ Matrix komutları, vector lane komutlarından ayrı bir operand modeli kullanır
 - Her çıktı elemanının ara birikimi, ürünlerin toplamını kayıpsız tutacak genişlikte hesaplanır: `2×W + ceil(log2(N))` bit. MMAC'teki C elemanı bu genişliğe signed/unsigned varyantına göre genişletilerek eklenir.
 - Sonuç, hedef tile'da W bit'e modulo `2^W` daraltılarak yazılır. İlk sürümde saturating sonuç, ayrı high-half sonuç veya overflow fault yoktur.
 - Kaynak tile'lar komut başlangıcında snapshot edilir. D, A/B/C ile aynı başlangıç MA selector'ını kullanabilir; sonuç bütün hedef tile için tek mimari commit olarak yazılır. Fault oluşursa hedef tile'ın hiçbir register'ı değiştirilmez.
-- MMUL için D/A/B; MMAC için D/A/B/C operand tile grupları aynı N ve W parametrelerini kullanır. Grupların register aralıkları MA0–MA31 içinde kalmalıdır. İki operand aynı tile'ı kullanıyorsa tam alias geçerlidir; kısmi/örtüşen ama eşit olmayan aralıklar geçersizdir.
+- MMUL için D/A/B; MMAC için D/A/B/C operand tile grupları aynı N ve W parametrelerini kullanır. Grupların register aralıkları MA0–MA63 içinde kalmalıdır. İki operand aynı tile'ı kullanıyorsa tam alias geçerlidir; kısmi/örtüşen ama eşit olmayan aralıklar geçersizdir.
 - Tile boyutu veya W kombinasyonu desteklenmiyorsa, selector grubu hizasızsa ya da register aralığı MA31'i aşıyorsa `ILLEGAL_OPERAND_CONFIGURATION_FAULT` oluşur; hedef tile değişmez.
 - İlk sürümde rectangular matrix, transpose, mixed-precision, saturating matrix arithmetic, sparse matrix, tile mask, matrix load/store formatı ve matrix descriptor register'ı tanımlanmaz. Tile verisi MA register'larına mevcut register-transfer/vector-data yollarıyla yerleştirilir.
 - MMUL/MMAC, MTRANS ve MREDUCE numeric opcode değerleri Instruction Encoding belgesinin 8.1 bölümünde atanmıştır.
@@ -705,7 +705,7 @@ MMUL.U.N8.W16 MA16, MA0, MA4
 MMAC.S.N8.W32 MA24, MA0, MA8, MA16
 ```
 
-Son örnekte dört tile grubu MA0–MA31 aralığını tam olarak kullanır. Bu bir ISA operand örneğidir; ME512'nin tek çevrimde 8×8×32-bit MMAC tamamladığı anlamına gelmez.
+Son örnekte dört tile grubu MA0–MA63 aralığını tam olarak kullanır. Bu bir ISA operand örneğidir; ME512'nin tek çevrimde 8×8×32-bit MMAC tamamladığı anlamına gelmez.
 
 ### 8.7 Matrix transpose
 
@@ -997,7 +997,7 @@ ME512'nin veri yolu genişliği 512-bit, MA registerlarının fiziksel genişli�
 - `MA00:MA01` → 512-bit birleşik operand (pair index 0)
 - `MA02:MA03` → pair index 1
 - ...
-- `MA30:MA31` → pair index 15
+- `MA62:MA63` → pair index 15
 - Pair başlangıcı çift MA index olmalıdır.
 - `MA[2p]` düşük 256-bit; `MA[2p+1]` yüksek 256-bit dilim olarak tanımlanır.
 - 512-bit sonuç aynı pair'e yazılır.
@@ -1027,10 +1027,10 @@ Bu örnek sadece 512-bit operand/result register eşlemesini gösterir; matris s
 
 | Register bank | Read port hedefi | Write port hedefi | Açıklama |
 |---|---:|---:|---|
-| RA (32 × 64-bit) | 4 × 64-bit | 2 × 64-bit | Integer ALU operandları ve scalar/adres state |
-| FA (32 × 64-bit) | 4 × 64-bit | 2 × 64-bit | İki FPU için FP operandları; FP128 pair iki kayıt dilimi tüketir |
-| DA (32 × 64-bit) | 4 × 64-bit | 2 × 64-bit | Load/store ve açık data staging |
-| MA (32 × 256-bit) | 4 × 256-bit | 2 × 256-bit | ME512 pair ve vector data |
+| RA (64 × 64-bit) | 4 × 64-bit | 2 × 64-bit | Integer ALU operandları ve scalar/adres state |
+| FA (64 × 64-bit) | 4 × 64-bit | 2 × 64-bit | İki FPU için FP operandları; FP128 pair iki kayıt dilimi tüketir |
+| DA (64 × 64-bit) | 4 × 64-bit | 2 × 64-bit | Load/store ve açık data staging |
+| MA (64 × 256-bit) | 4 × 256-bit | 2 × 256-bit | ME512 pair ve vector data |
 | SPM0 | 2 × 64-bit | 1 × 64-bit | 64-bit temel kayıt erişimi; 8–512-bit geniş erişimler çok kayıtlı olabilir |
 | SPM1–SPM7 | 2 variable-width | 1 variable-width | 8–512-bit byte/field access; bank implementation TBD |
 
