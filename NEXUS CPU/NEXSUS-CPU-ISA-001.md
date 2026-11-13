@@ -1253,7 +1253,7 @@ Bu değerler ilk mimari hedeflerdir; nihai silikon kapasitesi değildir. Her bas
 - Aktarım tamamlanmadan hedefteki kopya geçerli kabul edilmez. Başarılı tamamlanma, hata ve kısmi aktarım davranışı ISA tarafından raporlanmalıdır.
 - Kaynak ve hedef aralıklarının çakışma/alias durumu kontrol edilir. Aynı domain içindeki örtüşen aralıklar için COPY/MOVE semantiği ayrıca tanımlanır.
 - Bu işlem çekirdekler arası zero-copy zone paylaşımından farklıdır: aynı zone adresini paylaşmak kopya gerektirmez; farklı Lx domain'ine taşımak ise gerçek bir CPU kontrollü veri aktarımıdır.
-- `XFER`, CPU'nun başlattığı çok çevrimli bir aktarım işlemidir. Aktarım sabit boyutlu/ sınırlı beat'ler halinde ilerler; tek çevrimde tüm aralığın taşınması gerekmez.
+- `XFER`, CPU'nun başlattığı çok çevrimli bir aktarım işlemidir. Aktarım donanımın seçtiği sınırlı beat'ler halinde ilerler; tek çevrimde tüm aralığın taşınması gerekmez. ISA sabit küçük bir maksimum uzunluk koymaz; LRA unsigned 64-bit byte uzunluğudur ve geçerli domain/aralık sınırlarıyla kısıtlanır.
 - CPU, aktarım beat'lerini kaynak domain'den okuyup hedef domain'e yazar. Ayrı ve bağımsız bir DMA motoru varsayılmaz.
 - Aktarım devam ederken kaynakları çakışmayan ALU/FPU/ME işlemleri yürütülebilir. Bellek portu, register veya bağımlılık çakışması varsa ilgili işlem bekler.
 - Büyük/asenkron aktarım için `XFER.START` bir token üretir; `XFER.WAIT token` ilgili aktarım tamamlanana kadar bekler. Bağımlı kod, aktarım tamamlanmadan hedef veriyi kullanmamalıdır.
@@ -1277,7 +1277,7 @@ Bu assembly gösterimi semboliktir. Alan selector'larının bit yerleşimi ve op
 - XFER.START kaynak adresi, hedef adresi ve uzunluk değerlerini komut başlangıcında snapshot eder. TRA'nın DRA, SRA veya LRA ile aynı RA selector'ı olması geçerlidir; token yazımı bütün kaynak snapshot'ları alındıktan sonra yapılır.
 - Başarılı XFER.WAIT, token'ı tüketir ve TRA'nın gösterdiği RA'yı 0 yapar. Aynı token ikinci kez beklenemez; geçersiz veya daha önce tüketilmiş token illegal-token fault üretir.
 - Runtime transfer hatasında XFER.WAIT senkron transfer fault'u üretir. Hatalı token donanım tarafından terminal olarak tüketilir; faulting WAIT komutunun TRA yazımı precise-exception ilkesi gereği commit edilmez ve eski token bitleri RA'da kalır. Exception handler bu artık-geçersiz değeri yazılımla temizler/üzerine yazar. Hatalı hedef aralık geçerli veri değildir.
-- Token çekirdeğe özeldir ve başka çekirdekte kullanılamaz. Token sayısı ve maksimum transfer boyutu mikro-mimari kapasite sınırlarıdır; bu sınırlar ISA'nın tamamlanma ve görünürlük garantilerini değiştiremez.
+- Token çekirdeğe özeldir ve başka çekirdekte kullanılamaz. Her kabul edilmiş START için token kaydı başarılı veya hatalı WAIT ile tüketilene kadar tutulur. Token kaydı sayısı sonlu ve implementation-defined'dır; platform/OS capability bilgisiyle bildirilir. Kayıt yoksa START, MEMORY_ACCESS_FAULT / TRANSFER_RESOURCE_UNAVAILABLE üretir; transfer kabul edilmez, payload hareket etmez ve TRA değişmez. Bu durum retry edilebilir; START token kaydı için süresiz bekletilmez. Sıfır uzunluklu START da WAIT'a kadar bir token kaydı kullanır.
 
 ### 22.16 Lx domain'leri için XFER tamamlanma sözleşmesi
 
@@ -1290,19 +1290,19 @@ XFER.WAIT RA6
 ```
 
 - Kaynak ve hedef domain/adresleri ile byte uzunluğu açıkça belirtilir. Adresler kendi domain adres uzaylarında yorumlanır.
-- Kaynak ve hedef byte adresleri ayrı RA selector'larının gösterdiği 64-bit RA değerlerinden; byte uzunluğu ise LRA selector'ının gösterdiği 64-bit unsigned RA değerinden alınır. Uzunluk instruction içinde immediate değildir.
-- Kaynak ve hedef aralıkları aktarım başlamadan önce overflow, bounds, permission ve mapping bakımından doğrulanır. Doğrulama hatasında hedefe hiçbir byte yazılmaz.
+- Kaynak ve hedef byte adresleri ayrı RA selector'larının gösterdiği 64-bit RA değerlerinden; byte uzunluğu ise LRA selector'ının gösterdiği 64-bit unsigned RA değerinden alınır. Uzunluk instruction içinde immediate değildir. Nonzero transfer için son byte adresi 64-bit alanda temsil edilebilmelidir; taşma ADDRESS_OVERFLOW_FAULT üretir. ISA sabit küçük bir transfer üst sınırı koymaz; donanım isteği dahili beat'lere bölebilir.
+- Kaynak ve hedef aralıkları aktarım başlamadan önce overflow, bounds, permission ve mapping bakımından doğrulanır. Doğrulama hatasında hedefe hiçbir byte yazılmaz. Kabul anında hedef aralık transfer için münhasır olarak ayrılır; aktarım sürerken okunamaz, değiştirilemez, yayımlanamaz veya geri alınamaz.
 - Başarılı synchronous XFER, tamamlandığında hedef aralığın tamamının kaynak aralığın komut başlangıcındaki mantıksal snapshot'ıyla aynı olmasını garanti eder.
 - Aktarım sırasında kaynak aralığa başka çekirdek yazıyorsa, senkronizasyon olmadan alınan snapshot'ın hangi anı temsil edeceği garanti edilmez. Kaynak sabit tutulmalı veya producer/consumer synchronization ile korunmalıdır.
 - Kaynak ve hedef aynı domain içinde örtüşüyorsa işlem `MOVE` semantiğindedir; örtüşme güvenli şekilde desteklenir. Farklı domain'ler doğal olarak ayrı adres uzaylarıdır.
 - Transferin mimari commit noktası tamamlanma anıdır. Hedef, tamamlanma bildirilmeden tüketici tarafından geçerli veri olarak kullanılmamalıdır.
 - Synchronous biçim, tamamlanana kadar komut akışını bekletir. Asynchronous biçim `XFER.START` ile token üretir; `XFER.WAIT token` tamamlanmayı bekler. Token, yalnızca başlatan çekirdeğin ilgili transferi için geçerlidir.
 - Asynchronous aktarım sürerken hedef aralığa erişmek veya hedefi yeniden kullanmak, WAIT tamamlanmadan geçerli değildir. Kaynak aralık da transfer tamamlanana kadar değiştirilemez.
-- Başlangıçta doğrulanan erişim hataları hedefi değiştirmez. Çalışma sırasında beklenmeyen donanım hatası oluşursa hedef aralık geçersiz/undefined kabul edilir; yazılım başarı durumu almadan hedefi kullanamaz. Kısmi hedef içeriği mimari olarak geçerli veri sayılmaz.
+- Başlangıçta doğrulanan erişim hataları hedefi değiştirmez. Çalışma sırasında beklenmeyen donanım hatası oluşursa fiziksel olarak daha önce yazılmış beat'lerin geri alınması garanti edilmez; buna rağmen hedef aralığın tamamı mantıksal olarak invalid/unpublished kalır. Yazılım hedef allocation'ı atmalı veya tamamını yeniden başarıyla yazmadan yayımlamamalıdır. Kısmi hedef içeriği mimari olarak geçerli veri sayılmaz.
 - XFER atomic değildir ve aynı anda başka çekirdeklerin hedef aralığı okumasına karşı eski/yeni verinin karışık görünmesini engellemez. Paylaşılan hedefi yayınlamadan önce transferin tamamlanması ve release/acquire synchronization uygulanması gerekir.
 - XFER, Lx seviyeleri arasında otomatik coherence veya sürekli alias oluşturmaz. İşlem sonrasında kaynak ve hedef bağımsız kopyalardır.
 
-**Açık mikro-mimari konuları:** beat boyutu, transfer buffer kapasitesi, aynı anda aktif token sayısı, arbiter öncelikleri ve beklenmeyen runtime fault'un raporlanma register/interface biçimi. Bunlar ISA'nın yukarıdaki tamamlanma ve görünürlük sözleşmesini değiştiremez.
+**Açık mikro-mimari konuları:** beat boyutu, transfer buffer kapasitesi, aynı anda tutulabilecek token kaydı sayısı ve arbiter öncelikleri. Token kapasitesi platform/OS capability bilgisinde raporlanır. Bunlar ISA'nın yukarıdaki tamamlanma ve görünürlük sözleşmesini değiştiremez; runtime bellek hataları mevcut fault sınıfları ve EXCINFO ile raporlanır.
 
 
 
