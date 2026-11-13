@@ -107,11 +107,20 @@ LOAD ve STORE veri belleği ile DA bankı arasında çalışır. Bellek domain'i
 | MOV.DA.RA | DA, RA | RA'dan DA staging'e 64-bit aktarım | Register path |
 | MOV.FA.DA | FA, DA | DA bitlerini FA kayıt konteynerine aktarma | Register path |
 | MOV.DA.FA | DA, FA | FA kayıt bitlerini DA staging'e aktarma | Register path |
-| MOV.MA.DA | MA, DAx:DAx+3 | Dört ardışık DA kaydındaki 256-bit veriyi MA'ya yükleme | Matrix data path |
-| MOV.DA.MA | DAx:DAx+3, MA | MA'daki 256-bit veriyi dört ardışık DA kaydına alma | Matrix data path |
+| MOV.MA.DA | MA, DA group | 256-bit (1 MA + 4 DA) veya 512-bit (MA pair + 8 DA) veriyi MA'ya yükleme | Matrix data path |
+| MOV.DA.MA | DA group, MA | MA'daki 256/512-bit veriyi sırasıyla 4/8 DA kaydına alma | Matrix data path |
 | COPY | dst, src, length | Bellek alanı/blok kopyalama | Transfer path (TBD) |
 
-DAx:DAx+3 gösterimi dört ardışık 64-bit DA kaydını, toplam 256-bit veri grubunu ifade eder. LOAD/STORE için DA selector, erişimin kullandığı ilk kaydı gösterir. Gerekli DA kayıt sayısı W=8/16/32/64 için 1, W=128 için 2, W=256 için 4 ve W=512 için 8'dir. DA aralığı DA31'i aşamaz; MEM erişimlerinde 128/256/512-bit grup başlangıcına ek selector hizalaması ilk taslakta zorunlu değildir.
+DAx:DAx+3 dört ardışık 64-bit DA kaydını, toplam 256-bit grubu ifade eder. XFER ile 256-bit MA aktarımında DA başlangıç selector'ı 4'ün katı olmalıdır (0,4,…,28). 512-bit MA pair aktarımında sekiz DA kaydı kullanılır; DA başlangıcı 8'in katı olmalıdır (0,8,16,24) ve MA pair başlangıcı çift selector olmalıdır. Bu hizalama yalnızca tam MA register/pair XFER işlemleri içindir. LOAD/STORE'da DA selector ilk kaydı gösterir; W=8/16/32/64 için 1, W=128 için 2, W=256 için 4, W=512 için 8 kayıt kullanılır. MEM erişimlerinde DA başlangıcı için ek selector hizalaması aranmaz; DA aralığının DA31'i aşmaması yeterlidir.
+
+### 5.2 DA↔MA çoklu kayıt XFER kuralları
+
+- 256-bit aktarımda bir MA kaydı ile dört DA kaydı eşleşir. DA başlangıcı 4'ün katı olmalıdır: DA0:DA3, DA4:DA7, …, DA28:DA31.
+- 512-bit aktarımda çift indisli MA pair'i ile sekiz DA kaydı eşleşir. DA başlangıcı 8'in katı olmalıdır: DA0:DA7, DA8:DA15, DA16:DA23 veya DA24:DA31.
+- 256-bit transfer için DA selector değerleri 0,4,8,12,16,20,24,28; 512-bit için 0,8,16,24 ile sınırlıdır.
+- 512-bit transferde MA selector pair'in ilk kaydını gösterir ve çift olmalıdır. DA ve MA aralıklarının sonu kendi bank sınırlarını aşamaz.
+- Kaynak/hedef yönü hizalama kuralını değiştirmez; hem MOV.MA.DA hem MOV.DA.MA aynı grup kurallarını uygular.
+- Bu selector hizalaması LOAD/STORE'a uygulanmaz. Bellek erişiminde doğal byte hizalaması ile DA aralık sınırı ayrı kurallardır.
 
 ### 5.1 LOAD/STORE genişlik ve domain semantiği
 
