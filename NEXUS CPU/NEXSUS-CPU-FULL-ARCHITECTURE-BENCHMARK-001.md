@@ -309,3 +309,10 @@ Vendor disclosures define core counts, supported instruction families and memory
 ### 14.4 IRQ/exception modeling scope
 
 The current IRQ kernel is a deterministic service-latency proxy that schedules an IRQ service operation and a context-frame operation in the dependency graph. It does not yet model asynchronous event arrival, priority preemption, nested exceptions, interrupt masking or full OS handler dispatch. Those require a dedicated event-router/scheduler model before interrupt-latency claims are publishable.
+
+
+### 14.5 Instruction-fetch sensitivity model assumptions
+
+The current conventional reference front-end uses a 32 KiB instruction cache, 64-byte lines, an 8-cycle modeled lower-level line fill, a 16-line sequential prefetch window and up to 32 outstanding line fills. These are common comparison assumptions, not claimed exact AMD/Intel/Apple predictor or I-cache implementations.
+
+PX capacity/refill sensitivity is isolated on one core using an 8,192-instruction (64 KiB) sequential code stream. The first pages up to the configured PX pool capacity are staged before dispatch; a page outside the resident pool pays a provisional 120-cycle App-RAM source-miss penalty in addition to PX-to-SPM0 transfer time. The source-miss penalty is configurable and must be swept before conclusions about optimal PX capacity are frozen.
