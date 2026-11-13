@@ -54,11 +54,13 @@ Bu bölümdeki scalar/integer komutlarının kaynak ve hedef operandları RA0–
 |---|---|---|---|
 | MOV | dst, src | Register kopyalama | Register path |
 | MOVI | dst, imm | Signed 36-bit immediate veya EXT ile tam 64-bit literal yükleme | ALU / immediate path |
-| ADD | dst, src1, src2 | Integer toplama | ALU |
-| SUB | dst, src1, src2 | Integer çıkarma | ALU |
+| ADD | dst, src1, src2 | W genişliğinde modulo toplama | ALU |
+| ADDI | dst, src, imm | Signed 36-bit immediate ile toplama | ALU / immediate path |
+| SUB | dst, src1, src2 | W genişliğinde modulo çıkarma | ALU |
+| SUBI | dst, src, imm | Signed 36-bit immediate çıkarma | ALU / immediate path |
 | MUL | dst, src1, src2 | Integer çarpma | ALU / multiply pipeline |
-| DIV | dst, src1, src2 | Integer bölme | ALU / divide pipeline |
-| MOD | dst, src1, src2 | Kalan | ALU / divide pipeline |
+| DIV.S / DIV.U | dst, src1, src2 | Signed / unsigned integer bölme | ALU / divide pipeline |
+| MOD.S / MOD.U | dst, src1, src2 | Signed / unsigned kalan | ALU / divide pipeline |
 | NEG | dst, src | İki'nin tümleyeni işaret değiştirme | ALU |
 | INC | dst | +1 | ALU |
 | DEC | dst | -1 | ALU |
@@ -68,6 +70,55 @@ Bu bölümdeki scalar/integer komutlarının kaynak ve hedef operandları RA0–
 | ABS | dst, src | Mutlak değer | ALU |
 
 
+### 3.2 Scalar integer aritmetik semantiği
+
+Bu bölüm, scalar integer komutlarının ilk ISA sürümündeki ortak davranışını tanımlar.
+
+**İşlem genişliği ve register görünümü**
+
+- Her integer komutu açık `W` genişliğiyle çalışır: 8, 16, 32 veya 64 bit. W belirtilmeyen assembly biçiminde assembler varsayılanı W64'tür; kodlama yine W alanını açıkça taşır.
+- W8/W16/W32 işlemleri RA register'ının düşük ilgili bit alanını okur ve yalnızca bu alana yazar. Üst bitler korunur. W64 tüm register'ı değiştirir.
+- Signed/unsigned ayrımı yalnızca işlemin yorumunu etkiler; register içinde saklanan bit deseni değişmez.
+- ADD, SUB, MUL, NEG, INC ve DEC sonuçları seçili W genişliğinde modulo 2^W hesaplanır. Taşma sonucu düşük W bit korunur; otomatik trap veya global flag üretimi yoktur.
+- MUL ilk sürümde düşük W bitlik çarpım sonucunu yazar. Tam çift genişlikli ürün için MUL.WIDE ailesi daha sonra ayrı tanımlanacaktır.
+
+**Signed ve unsigned işlemler**
+
+- DIV.S ve MOD.S operandları W-bit two's-complement signed değer olarak yorumlar.
+- DIV.U ve MOD.U operandları unsigned W-bit değer olarak yorumlar.
+- Bölme sıfır kontrolü tüm DIV/MOD türlerinde yapılır. Bölen sıfırsa `INTEGER_DIVIDE_BY_ZERO_FAULT` oluşur; hedef register değişmez.
+- Signed minimum değer / -1 durumu matematiksel sonuç W-bit signed aralığına sığmadığından `INTEGER_OVERFLOW_FAULT` üretir; hedef register değişmez.
+- MOD.S, signed bölümün sıfıra doğru yuvarlandığı tanımla uyumlu kalanı üretir. MOD.U unsigned kalanı üretir.
+- MIN/MAX ve CMP.LT/LE/GT/GE komutlarında signedness mnemonic ile açıkça belirtilir. CMP.EQ/NE bit desenlerinin eşitliğini karşılaştırır; signedness gerektirmez.
+- ABS için W-bit signed minimum değerin mutlak değeri temsil edilemez; bu durumda `INTEGER_OVERFLOW_FAULT` oluşur ve hedef korunur.
+
+**Immediate aritmetik**
+
+- ADDI/SUBI/ANDI/ORI/XORI, RI formatındaki signed 36-bit immediate alanını kullanır.
+- Aritmetik immediate önce 64-bit'e sign-extend edilir, ardından seçili W genişliğine göre işlem uygulanır.
+- Mantıksal immediate aynı şekilde sign-extend edilmiş bit deseni olarak kullanılır ve W genişliğine göre maskelenir.
+- Immediate sığmıyorsa assembler EXT literal paketini veya register tabanlı alternatif komut dizisini üretir; sessiz kesme yapılmaz.
+
+**Karşılaştırma sonucu**
+
+- CMP.* hedef RA register'ının seçili W görünümüne 0 veya 1 yazar; W<64 ise hedefin üst bitleri korunur. İstenen tam 64-bit boolean için W64 kullanılır.
+- CMP.EQ/NE eşitlik/eşitsizlik; CMP.LT/LE/GT/GE ise .S veya .U ekiyle signed/unsigned sıralama yapar.
+- Karşılaştırma komutları global condition flags değiştirmez.
+
+**Hata atomikliği**
+
+- Fault veren aritmetik komut hedef register'ı değiştirmez.
+- Normal modulo taşma fault değildir; yalnızca tanımlanmış bölme ve ABS sınır durumları fault üretir.
+
+Örnekler:
+
+```asm
+ADD.W32  RA1, RA2, RA3
+ADDI.W64 RA4, RA5, -24
+DIV.S.W32 RA6, RA7, RA8
+MOD.U.W16 RA9, RA10, RA11
+CMP.LT.S.W64 RA12, RA13, RA14
+```
 ### 3.1 MOVI immediate yükleme semantiği
 
 `MOVI RA[d], imm`, RA hedef register'ına sabit değer yükler.
@@ -91,9 +142,9 @@ MOVI64 RA4, 0x123456789ABCDEF0
 
 | Mnemonic | Operand | İşlev | Unit |
 |---|---|---|---|
-| AND | dst, a, b | Bitwise AND | ALU |
-| OR | dst, a, b | Bitwise OR | ALU |
-| XOR | dst, a, b | Bitwise XOR | ALU |
+| AND / ANDI | dst, a, b veya dst, src, imm | Bitwise AND; ANDI signed 36-bit immediate kullanır | ALU |
+| OR / ORI | dst, a, b veya dst, src, imm | Bitwise OR; ORI signed 36-bit immediate kullanır | ALU |
+| XOR / XORI | dst, a, b veya dst, src, imm | Bitwise XOR; XORI signed 36-bit immediate kullanır | ALU |
 | NOT | dst, src | Bitwise NOT | ALU |
 | SHL | dst, src, count | Logical left shift | ALU |
 | SHR | dst, src, count | Logical right shift | ALU |
@@ -106,6 +157,24 @@ MOVI64 RA4, 0x123456789ABCDEF0
 | BEXT | dst, src, start, width | Seçilen bit aralığını çıkarır; sonuç zero-extend edilir | ALU |
 | BINS | dst, src, start, width | Kaynağın düşük bitlerini hedefte seçilen aralığa yerleştirir; diğer bitleri korur | ALU |
 
+### 4.2 Shift, rotate ve bit komutları
+
+- SHL/SHR/SAR/ROL/ROR işlemleri seçili W genişliğinde çalışır; W yalnızca 8/16/32/64 olabilir.
+- SHL düşük W bitlik sonucu üretir; dışarı taşan bitler atılır. SHR sıfırla doldurur. SAR, W genişliğindeki operandın işaret bitini çoğaltır.
+- Shift count, kaynak RA register'ının düşük 6 bitinden alınır. Count W'den büyük veya eşitse SHL/SHR sonucu sıfır olur; SAR sonucu işaret bitiyle tamamen doldurulur.
+- Rotate count, W genişliğine göre modulo W uygulanarak normalize edilir. Böylece ROL/ROR için W veya katları kadar kaydırma kaynak değeri değiştirmez.
+- W8/W16/W32 sonuçları yalnızca hedefin düşük W bitini değiştirir; RA üst bitleri korunur.
+- BSET/BCLR/BTST bit indeksi 0 tabanlıdır ve seçili W aralığında olmalıdır. Geçersiz bit indeksi `ILLEGAL_OPERAND_FAULT` üretir; hedef değişmez.
+- BTST, bitin durumunu hedef RA register'ına 0/1 olarak yazan `BTST dst, src, bit` biçiminde tanımlanır. Bu nedenle hedef operandı vardır.
+
+Örnekler:
+
+```asm
+SHL.W32 RA1, RA2, RA3
+SAR.W64 RA4, RA5, RA6
+ROL.W16 RA7, RA8, RA9
+BTST.W8 RA10, RA11, 3
+```
 ### 4.1 BEXT / BINS bit-field semantiği
 
 - `start` sıfır tabanlı bit konumudur; `width` 1–64 arası bit sayısıdır.
