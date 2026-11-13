@@ -280,3 +280,48 @@ A short branch target distance does not remove branch prediction's value. Mispre
 NEXSUS candidate: compact 2-bit direction predictor plus a small BTB, with static fallback. Predictor/BTB tags use logical PC, not physical SPM0-A/B bank addresses. Same-page and cross-page targets must both work. PX_NEXT/PX_END remain PX Manager metadata and are not CPU instructions.
 
 The simulator's current branch prediction model uses deterministic workload-class miss-rate assumptions for sensitivity only. It is not a cycle-accurate 2-bit predictor or a claim about vendor predictor accuracy. Next implementation stage: per-branch predictor state, BTB capacity/associativity, aliasing, warm-up, and branch-outcome traces. Compare NEXSUS predictor-off and compact-predictor variants against the reference profiles.
+
+
+## 16. L0I task-aware streaming model
+
+The current simulator architecture must add a 64 KiB L0I application-code staging/cache level before the PX pool. L0I is filled incrementally from App RAM in chunks and selected by task/page identity, not by assuming one contiguous sequential instruction stream.
+
+Baseline path:
+
+```text
+App RAM -> L0I (64 KiB) -> PX P0–P7 (8 x 2 KiB) -> SPM0 (4 KiB; 2 x 2 KiB)
+```
+
+The baseline App-code read lane is 64-bit (8 bytes), one instruction word per transfer beat. Beat service rate, number of outstanding reads, source latency and arbitration are configurable. The initial model uses one lane. A four-lane (4 x 64-bit / 256-bit aggregate) option is a separate future sensitivity profile and must not be treated as existing hardware.
+
+### 16.1 Functional state
+
+Each L0I chunk/page entry tracks task ID, task generation, code-region ID, logical page ID, source address/range, valid-byte/chunk bitmap, permissions, state and in-flight references. Partial chunks may be present, but PX may consume only bytes proven valid for the requested logical page. L0I is not a direct execution path; all executable code continues through PX and SPM0.
+
+### 16.2 Timing resources
+
+Implement independent resource queues for:
+- App RAM -> L0I chunk fills;
+- L0I -> PX page transfers;
+- PX -> inactive SPM0 bank refills.
+
+Represent queue wait, service time, transfer beats, arbitration, contention, backpressure and overlap. Permit concurrent work across stages when dependencies and source validity allow. Do not serialize all stages into one latency number and do not assume full L0I residency before PX requests can start.
+
+### 16.3 OS/hardware boundary
+
+OS policy events enqueue task-aware requests with priority/deadline and logical page/source mapping. Hardware validates permissions and generations, tracks residency, allocates physical PX slots, completes transfers and publishes READY atomically. A simulator event must distinguish OS request time, L0I source-ready time, PX page-ready time and SPM0 bank-ready time.
+
+### 16.4 Correctness invariants
+
+- no PX transfer reads invalid or partially filled L0I bytes;
+- no task can consume another task's private code without an explicit valid shared-code permission;
+- stale generation requests cannot publish READY;
+- no L0I entry is evicted while an in-flight PX transfer references it;
+- PX_NEXT/PX_END metadata never counts as instruction bytes and never reaches SPM0;
+- full 2 KiB pages continue automatically; partial-page markers and valid_bytes are checked;
+- no SPM0 bank becomes ACTIVE before all declared valid bytes and metadata are complete;
+- task scheduling and page selection are OS policy, while hardware enforces safety and atomicity.
+
+### 16.5 Simulation outputs
+
+Add L0I hit/miss, partial-valid hit, chunk-fill queue occupancy, App RAM transfer beats, L0I-to-PX queue occupancy, PX page-ready latency, SPM0 refill overlap, end-to-end dispatch code-ready latency, useful/overfetch bytes and starvation/fairness metrics.
