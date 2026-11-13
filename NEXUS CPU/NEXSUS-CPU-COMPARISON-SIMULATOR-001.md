@@ -56,7 +56,7 @@ The simulator now advances all active core shards on one global cycle. Each core
 4. Collects all selected DRAM misses from every core into one same-cycle request batch.
 5. Calls one shared controller to arbitrate bank beats and aggregate bus service, then assigns completion times.
 
-The shared controller models one 64-bit beat per bank per cycle and a chip-wide aggregate DRAM bus ceiling. Same-bank requests serialize; different banks may overlap. Bus service is work-conserving: there is no static per-core bandwidth quota, so an active core may use otherwise-idle bandwidth. Core arbitration rotates between batches.
+The shared controller models one 64-bit beat per bank per cycle and a chip-wide aggregate DRAM bus ceiling. Same-bank requests serialize; different banks may overlap. Unaligned accesses reserve every touched 64-bit bank beat, including an additional beat when a wide access crosses a beat boundary. Bus service is work-conserving: there is no static per-core bandwidth quota, so an active core may use otherwise-idle bandwidth. Core arbitration rotates between batches.
 
 Only actual DRAM misses consume the physical bank/bus model. L4 is still treated as a cache level in the current simulator, not as a physical DRAM bank. This distinction avoids conflating logical cache hierarchy with physical memory topology.
 
