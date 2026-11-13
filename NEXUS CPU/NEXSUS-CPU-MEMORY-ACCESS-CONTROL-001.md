@@ -101,6 +101,8 @@ For XFER.MEM or XFER.START with a nonzero length:
 6. Do not begin payload movement until both endpoints pass validation.
 7. For asynchronous transfers, preserve source stability and target-not-valid-until-completion. A permission grant or allocation cannot be reclaimed while an accepted transfer still uses it; revocation must wait for completion or defined cancellation.
 
+**Acceptance and fault point:** XFER.START performs all validation before acceptance. If validation fails, it raises the corresponding synchronous fault, creates no token, starts no payload movement, and leaves TRA unchanged. XFER.MEM reports both validation faults and runtime transfer faults at the XFER.MEM instruction itself. A synchronous transfer that faults before full completion leaves its destination invalid; it does not expose a partially written destination as valid data.
+
 **Zero-length special case:** If the selected length is zero, XFER.MEM is a successful no-op and XFER.START creates an already-completed token. No memory range, mapping, or permission checks are performed because no byte is accessed. Instruction format, domain selectors, and RA selectors must still be valid. No payload movement occurs.
 
 **WAIT/token behavior:**
