@@ -680,3 +680,9 @@ Bu nedenle sonraki aşamada yapılması gereken en önemli çalışma, her bir y
 - [CPU Special Register Architecture — SRA-001](NEXSUS-CPU-SRA-001.md) — PC, SR, CR, SPM page/offset, AGU ve internal register ayrımı.
 - [CPU Instruction Set — ISA-001](NEXSUS-CPU-ISA-001.md) — ALU, FPU, Matrix Engine, transfer, SPM ve control-flow komut tabloları.
 - [SPM ve Register Görünümleri](NEXSUS%20CPU%20%E2%80%94%20SPM,%20Register%20G%C3%B6r%C3%BCn%C3%BCmleri%20ve%20Do%C4%9Frudan%20Alan%20Eri%C5%9Fimi.md) — SPM0/SPM1, page-offset ve RA/RB/RC/RD view sistemi.
+- [CPU Memory Protection Domains](NEXSUS-CPU-MEMORY-PROTECTION-DOMAINS-001.md) — App RAM/Data RAM sahipliği, görev izolasyonu ve açık paylaşım izinleri.
+- [CPU Memory Access Control Flow](NEXSUS-CPU-MEMORY-ACCESS-CONTROL-001.md) — Fetch, LOAD/STORE, ATOM ve XFER erişim doğrulama/commit sırası.
+- [CPU Context Save/Restore](NEXSUS-CPU-CONTEXT-SAVE-RESTORE-001.md) — Register ve SPM bağlamlarının korunması.
+- [CPU Task Scheduling / SPM Residency](NEXSUS-CPU-TASK-SCHEDULING-SPM-RESIDENCY-001.md) — Görev durumları, bağlam yuvaları ve SPM2 sahipliği.
+- [CPU SPM Access Protection](NEXSUS-CPU-SPM-ACCESS-PROTECTION-001.md) — SPM0–SPM7 ayrıcalık ve erişim sınırları.
+
