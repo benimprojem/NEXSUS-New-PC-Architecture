@@ -22,42 +22,34 @@ Bir register'ın özel olması, mutlaka programcı tarafından yazılabilir olma
 | PC | Sonraki komut adresi | Kontrollü/özel | Branch/call/return mekanizması günceller |
 | SR | Aritmetik ve karşılaştırma durumları | Okuma; sınırlı yazma | Flag/predicate alt yapısı kararlaştırılacak |
 | CR | CPU çalışma ve kontrol durumu | Ayrıcalıklı/özel | OS'ye özgü olmayan donanım kontrol alanları da içerebilir |
-| SPR | SPM0 page seçimi | Normal kodda erişilebilir | SPM0 erişim bağlamı |
-| SPO | SPM0 record offset | Normal kodda erişilebilir | Page içindeki 64-bit record index'i |
-| SPB | SPM1 byte address/page context | Normal kodda erişilebilir | SPM1 byte-addressed erişim |
+| SPR | SPM0 page seçimi | Yazılım erişimi yok; CPU-internal | CPU'nun özel SPM0 erişim bağlamı |
+| SPO | SPM0 record offset | Yazılım erişimi yok; CPU-internal | Page içindeki 64-bit record index'i; yalnızca CPU donanımı kullanır |
+| SPB | SPM1 byte address/page context | PL0 erişemez; PL1/PL2 kontrollü OS erişimi | OS-owned SPM1 byte-addressed erişim |
 | AG0, AG1 | Adres üretim birimi için base/index state | Normal kodda erişilebilir | Load/store adres üretiminde kullanılabilir |
 | MAR0, MAR1 | Başlatılmış memory transaction adresi | Donanım kontrollü | Programın doğrudan yazması şart değil |
 | MDR0, MDR1 | Memory transaction veri tamponu | Donanım kontrollü | DA/register path ile aktarım |
 | CAUSE | Son trap/fault nedeni | Salt okunur/özel | Fault modeliyle birlikte tanımlanacak |
 | EPC | Trap/fault dönüş komut adresi | Özel | Kontrol akışı tasarımına bağlı |
 
-PC, SR, CR, SPR/SPO/SPB ve AG0/AG1 mimari adaylardır. MAR/MDR, CAUSE/EPC'nin bir kısmı donanım kontrollü veya implementation-defined olabilir. Nihai erişim yetkileri privilege modelinden bağımsız olarak ISA'da açıkça tanımlanmalıdır.
+PC, SR, CR, SPB ve AG0/AG1 mimari adaylardır. SPR/SPO CPU-internal durumdur ve yazılıma açık değildir. MAR/MDR, CAUSE/EPC'nin bir kısmı donanım kontrollü veya implementation-defined olabilir. SPM erişim yetkileri NEXSUS-CPU-SPM-ACCESS-PROTECTION-001.md ile uyumlu uygulanır.
 
 ## 3. SPM adres register'ları
 
 ### 3.1 SPM0
 
-SPM0, page + record-offset modelini kullanır:
+SPM0, page + record-offset modelini CPU donanımı içinde kullanır:
 
 - SPR: seçili page kimliği.
 - SPO: seçili page içindeki 64-bit record offset'i (0..511).
 - Birleşik adres gösterimi: [SPR:SPO].
-- SPR/SPO yazımı yalnızca adresleme state'ini değiştirir; SPM içeriğine erişmez.
-- SPM erişim komutu adres register'larının o anki değerini transaction başlangıcında örnekler. Sonraki SPR/SPO değişikliği devam eden transaction'ın adresini değiştirmez.
-
-Örnek taslak:
-
-```asm
-MOV SPR, 3
-MOV SPO, 128
-SPM.RD RA05, [SPR:SPO]
-```
+- SPR/SPO yalnızca CPU-internal adresleme state'idir; PL0, PL1 ve PL2 yazılımı bunları okuyamaz, yazamaz veya SPM0'a doğrudan erişemez.
+- SPM0 üzerindeki bütün okuma/yazma işlemlerini yalnızca CPU donanımı gerçekleştirir. Bu alan için yazılıma açık SPM.RD/SPM.WR yolu yoktur.
 
 ### 3.2 SPM1
 
 SPM1 byte-addressed olduğundan SPB bir byte offset veya page+byte-offset bileşimini temsil eder. SPM1 kapasitesi, page boyutu ve fiziksel bank mapping henüz sabitlenmediği için SPB bit genişliği/alanları daha sonra belirlenir.
 
-SPM0 ve SPM1 adres register'ları ayrı tutulur; böylece bir SPM alanına erişim hazırlanırken diğerinin adres bağlamı bozulmaz.
+SPB yalnızca OS'nin kontrollü PL1/PL2 çalışma bağlamında kullanılabilir; PL0 doğrudan okuyamaz veya yazamaz. SPM0'ın CPU-internal SPR/SPO state'i ile SPM1'in OS-controlled SPB state'i birbirinden ayrıdır.
 
 ## 4. Address Generation Unit (AGU)
 
@@ -90,7 +82,7 @@ Bunların sayısı, genişliği ve yerleşimi mikro-mimariye bırakılır.
 ## 7. Erişim ve koruma ilkeleri
 
 1. Genel amaçlı kodun değiştirmemesi gereken register'lar donanım tarafından salt okunur veya özel komutla erişilebilir yapılır.
-2. SPM adres register'ları normal program akışında kullanılabilir; bunlar OS'ye ayrılmış register değildir.
+2. SPM0 adres state'i tamamen CPU-internal'dir ve hiçbir privilege seviyesindeki yazılıma açılmaz. SPM1 SPB ise yalnızca yetkili PL1/PL2 OS kodu tarafından kontrollü biçimde kullanılabilir; PL0 erişimi yasaktır.
 3. Bir memory/SPM transaction başladığında adres ve kontrol alanları transaction'a latch edilir.
 4. Birden fazla in-flight transaction için tek MAR/MDR çifti yeterli olmayabilir; gerçek tasarımda queue/entry tabanlı internal state tercih edilebilir.
 5. Özel register erişim komutları, privilege/exception semantiğiyle çakışmayacak şekilde tanımlanır.
