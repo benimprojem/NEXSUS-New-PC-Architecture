@@ -405,3 +405,6 @@ Hardware automatically saves control/return metadata only. SPM7 provides eight 1
 
 
 CSR IDs 0x01C–0x01F remain reserved in this baseline. Exception-entry scratch storage uses the SPM7 depth-banked workspace; no additional scratch CSR bank is defined.
+
+
+Context save/restore details and the required DA staging order are defined in **NEXSUS-CPU-CONTEXT-SAVE-RESTORE-001.md**. KESP/KELIMIT delimit protected Data RAM software frames; SPM7 is a separate depth-selected temporary workspace accessed through existing SPM.RD/SPM.WR operations. No additional context-save CSR bank is introduced.
