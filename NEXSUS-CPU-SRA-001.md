@@ -101,3 +101,8 @@ Bunların sayısı, genişliği ve yerleşimi mikro-mimariye bırakılır.
 - [CPU ISA-001](NEXSUS-CPU-ISA-001.md)
 - [CPU ana mimarisi](Yeni%20Nesil%20Ayr%C4%B1%C5%9Ft%C4%B1r%C4%B1lm%C4%B1%C5%9F%20Register%20Tabanl%C4%B1%20CPU%20Mimarisi.md)
 - [SPM ve register views](NEXSUS%20CPU%20%E2%80%94%20SPM,%20Register%20G%C3%B6r%C3%BCn%C3%BCmleri%20ve%20Do%C4%9Frudan%20Alan%20Eri%C5%9Fimi.md)
+
+
+## 9. Memory access-control integration
+
+AGU address generation and the existing load/store transaction path participate in the validation contract defined by `NEXSUS-CPU-MEMORY-ACCESS-CONTROL-001.md`. Address generation, full-range validation, ownership/permission checks, and request issue must complete before architectural commit. This does not make AG0/AG1 or MAR/MDR new architectural requirements; their exact implementation remains subject to the SRA/microarchitecture decision.
