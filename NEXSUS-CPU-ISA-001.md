@@ -490,7 +490,7 @@ FP aritmetik komutlarında bütün kaynaklar komut başlangıcında okunmuş kab
 
 ### 7.5 FP karşılaştırma
 
-FCMP'nin hedefi RA bankındadır; kaynakları FA bankındadır. FCMP.<cond> RA_dst, FA_a, FA_b karşılaştırması hedef RA'nın 64-bit değerini 0 veya 1 yapar. Bu komut global condition flag üretmez; branch komutları sonuç RA register'ını açıkça test eder.
+FCMP'nin hedefi RA bankındadır; kaynakları FA bankındadır. FCMP.<cond> RA_dst, FA_a, FA_b karşılaştırması hedef RA'nın 64-bit değerini 0 veya 1 yapar. Bu komut global condition flag üretmez; branch komutları sonuç RA register'ını açıkça test eder. FCMP primary opcode'u 0x5A'dır; koşul kodu R3 AUX[3:0] alanında taşınır (kod tablosu Instruction Encoding belgesindedir).
 
 | Condition | Sonuç 1 olduğunda |
 |---|---|
@@ -517,7 +517,7 @@ FCONV, RA'daki integer değeri FA formatına veya FA'daki floating-point değeri
   - FCONV FA3, RA7, i64, f64: RA7'deki signed 64-bit integer değerini FA3'e FP64 olarak dönüştürür.
   - FCONV RA7, FA3, f64, i32: FA3'teki FP64 değerini signed 32-bit integer'a dönüştürerek RA7'nin alt 32-bit görünümüne yazar.
   - FCONV FA4:FA5, RA8, i64, f128: RA8'deki signed 64-bit integer değerini FP128'e dönüştürüp FA4:FA5 pair'ine yazar.
-- FCONV bir bit aktarımı değildir; MOV.RA.DA veya MOV.FA.DA ile aynı semantiğe sahip değildir.
+- FCONV bir bit aktarımı değildir; MOV.RA.DA veya MOV.FA.DA ile aynı semantiğe sahip değildir. FCONV primary opcode'u 0x5B olarak atanmıştır.
 - FCONV'nin ROUND alanı nearest-ties-to-even, toward-zero, toward-negative-infinity veya toward-positive-infinity seçeneklerinden birini seçer. Bu seçim yalnızca dönüşüm komutuna aittir.
 - FCONV NaN/infinity kaynakları, integer hedefe taşma, saturating ve trap flag'lerinin kesin sonuçları henüz tam tanımlı değildir; encoding belgesindeki açık karar maddesi olarak kalır.
 - Encoding alanları, tür kodları, rounding ve conversion flags NEXSUS-CPU-INSTRUCTION-ENCODING-001.md içindeki FCONV alt bölümünde tanımlanır. FP128 kullanıldığında FA pair başlangıcı çift indisli olmalıdır.
