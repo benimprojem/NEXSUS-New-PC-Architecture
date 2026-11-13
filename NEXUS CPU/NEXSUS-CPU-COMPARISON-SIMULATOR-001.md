@@ -41,7 +41,7 @@ The target model is an event/cycle-driven CPU model with these components:
 6. L1/L2/L3/L4/DRAM access classification and per-bank serialization.
 7. Multicore task scheduling and shared-cache/memory contention (planned after v0.1).
 
-The v0.2 script partitions independent dependency components across eight cores, simulates each core's pipeline, and uses the slowest participating core to determine kernel completion. It includes dependency tracking, issue-resource limits, in-order retirement, branch stalls, deterministic LRU private-cache approximations and local bank serialization. Shared LLC contention, a globally shared memory controller/bank queue, inter-core coherence traffic and SMT are still pending; current multicore results are therefore an intermediate model, not final throughput predictions.
+The v0.2 script partitions independent dependency components across eight cores, simulates each core's pipeline, and uses the slowest participating core to determine kernel completion. The text report also provides a per-kernel breakdown (cycles, operations, IPC, active cores and DRAM access count) alongside the composite total. It includes dependency tracking, issue-resource limits, in-order retirement, branch stalls, deterministic LRU private-cache approximations and local bank serialization. Shared LLC contention, a globally shared memory controller/bank queue, inter-core coherence traffic and SMT are still pending; current multicore results are therefore an intermediate model, not final throughput predictions.
 
 ## 4. Known public reference points and model assumptions
 
@@ -73,7 +73,7 @@ NEXSUS dispatch/retire width, scheduling model, branch predictor, ROB-equivalent
 The first architecture-isolation experiment uses:
 - Exactly 8 active cores for AMD, Intel P-core, Intel E-core reference and NEXSUS.
 - Exactly 3.0 GHz common reference clock for CPU pipeline and modeled memory timing.
-- Identical DRAM latency (120 reference cycles) and aggregate modeled bandwidth (32 bytes/reference cycle).
+- Identical DRAM latency (120 reference cycles) and aggregate modeled bandwidth (32 bytes/reference cycle) for every profile, including NEXSUS.
 - Identical workload graph, input sizes and branch-event pattern.
 - One hardware thread per core; SMT is disabled in this phase.
 
@@ -84,7 +84,7 @@ The Intel E-core profile is reported separately as an 8-core E-core reference, n
 ## 6. Fairness and measurement rules
 
 - All CPU profiles receive the same logical algorithm, input sizes, dependency graph and deterministic branch pattern.
-- Compare single-thread performance separately from multicore throughput.
+- Compare single-thread performance separately from multicore throughput. Review each kernel independently; a composite score can hide opposing strengths and bottlenecks.
 - Report cycles, elapsed time under a stated frequency assumption, IPC/operations per cycle, cache-level accesses, branch recoveries, resource utilization and memory stalls.
 - Do not compare a peak boost clock as if it were sustained all-core frequency. Time conversion in v0.1 is only a configured-clock estimate.
 - Do not convert the model's cycle counts into power or energy without a calibrated energy-per-operation and memory-energy model.
