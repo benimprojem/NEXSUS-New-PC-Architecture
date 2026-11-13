@@ -330,6 +330,14 @@ class CrossArchitectureComparisonTests(unittest.TestCase):
                 self.assertGreater(results[key]["kernels"]["same_algorithm"]["p0_counters"]["refills"], 0)
         self.assertEqual({r["total_ops"] for r in results.values()}, {8})
 
+    def test_p0_starvation_stream_is_sequential_64kib_code(self):
+        workload = sim.build_composite_workload(scale=1)["p0_starvation"]
+        self.assertEqual(len(workload), 8192)
+        self.assertEqual(workload[0].command_address, 0)
+        self.assertEqual(workload[-1].command_address, (8192 - 1) * 8)
+        self.assertTrue(all(workload[i].command_address + 8 == workload[i+1].command_address
+                            for i in range(len(workload)-1)))
+
     def test_p0_capacity_is_configurable_and_sweep_preserves_work(self):
         workloads = {"p0_starvation": [sim.Op(i, "INT", command_address=i*8)
                                        for i in range(2048)]}
