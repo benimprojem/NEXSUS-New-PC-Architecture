@@ -232,6 +232,37 @@ class SpmP0ModelTests(unittest.TestCase):
             self.assertEqual([op.command_address for op in shard],
                              [i*8 for i in range(len(shard))])
 
+class CrossArchitectureComparisonTests(unittest.TestCase):
+    def test_all_architectures_retire_the_same_logical_work_on_eight_cores(self):
+        workloads = {
+            "same_algorithm": [
+                sim.Op(0, "LOAD", address=0x1000, width=64),
+                sim.Op(1, "INT", deps=(0,)),
+                sim.Op(2, "FP", deps=(1,)),
+                sim.Op(3, "STORE", deps=(2,), address=0x2000, width=64),
+                sim.Op(4, "BR", deps=(3,)),
+                sim.Op(5, "INT"),
+                sim.Op(6, "VEC"),
+                sim.Op(7, "ATOM"),
+            ]
+        }
+        results = {}
+        for key in ("amd_9950x", "intel_285k_p", "intel_285k_e", "nexus_balanced_128"):
+            results[key] = sim.simulate_cpu(workloads, sim.PROFILES[key])
+            self.assertEqual(results[key]["cores_configured"], 8)
+            self.assertEqual(results[key]["kernels"]["same_algorithm"]["ops"], 8)
+        self.assertEqual({r["total_ops"] for r in results.values()}, {8})
+
+    def test_p0_capacity_is_configurable_and_sweep_preserves_work(self):
+        workloads = {"p0_small": [sim.Op(i, "INT", command_address=(i % 1024)*8)
+                                  for i in range(256)]}
+        sweep = sim.run_p0_capacity_sweep(workloads, sim.PROFILES["nexus_balanced_128"])
+        self.assertEqual(set(sweep["results"]), {"4", "8", "16", "32"})
+        self.assertEqual({r["total_ops"] for r in sweep["results"].values()}, {256})
+        self.assertEqual({r["kernels"]["p0_small"]["ops"]
+                          for r in sweep["results"].values()}, {256})
+
+
 class FourWayAblationTests(unittest.TestCase):
     def test_four_profiles_preserve_operation_count_and_report_interaction(self):
         ops = [sim.Op(i, "LOAD", address=(i % 8)*64, width=64,
