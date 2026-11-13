@@ -699,15 +699,15 @@ CPU ile ilgili teknik belgeler `NEXUS CPU/` klasöründe merkezi olarak tutulur.
 - [Bank Controller Behavior](NEXUS%20CPU/NEXSUS-CPU-BANK-CONTROLLER-001.md) — Bank kuyruğu, çoklu-bank kabulü, arbitration ve geniş erişim tamamlama kuralları.
 - [SPM and P0 Ablation Plan](NEXUS%20CPU/NEXSUS-CPU-SPM-P0-ABLATION-PLAN-001.md) — SPM ve P0'ın bağımsız/birleşik katkısını ölçmek için kontrollü deney profilleri, adil fallback yolları ve hedef kernel'ler.
 - [SPM and P0 Initial Ablation Results](NEXUS%20CPU/NEXSUS-CPU-SPM-P0-ABLATION-RESULTS-001.md) — İlk dört profilli deneyin sonuçları, kernel bazlı çevrimler ve model varsayımları.
-- [CPU Comparison Simulator](NEXUS%20CPU/NEXSUS-CPU-COMPARISON-SIMULATOR-001.md) — AMD Zen 5, Intel Arrow Lake P/E ve NEXSUS için ortak algoritma ve simülasyon modeli.
-- [Cross-Architecture Comparison Results](NEXUS%20CPU/NEXSUS-CPU-CROSS-ARCHITECTURE-RESULTS-001.md) — Aynı 8 çekirdekli algoritma testinin AMD/Intel/NEXSUS sonuçları, P0 kapasite taraması ve sınırlamalar.
+- [CPU Comparison Simulator](NEXUS%20CPU/NEXSUS-CPU-COMPARISON-SIMULATOR-001.md) — AMD Ryzen 9 9950X3D2, Intel Xeon 698X, Apple M6 ARM ve NEXSUS için ortak algoritma ve v0.3.2 çevrim modeli.
+- [Cross-Architecture Comparison Results](NEXUS%20CPU/NEXSUS-CPU-CROSS-ARCHITECTURE-RESULTS-001.md) — Önceki 8 çekirdekli AMD/Intel/NEXSUS deneylerinin tarihsel sonuçları; yeni 4 mimarili v0.3.2 karşılaştırmasının yerine kullanılmamalıdır.
 - [CPU Architecture Revision — 2026-11-13](NEXUS%20CPU/NEXSUS-CPU-ARCHITECTURE-REVISION-2026-11-13.md) — 32-entry register banks and 64 B/cycle DRAM bandwidth; the earlier P0/P1 buffer proposal is superseded by the P0–P7 shared 8×2 KiB PX page pool.
 - [PX Manager — P0–P7 Instruction Page Pool](NEXUS%20CPU/NEXSUS-CPU-PX-MANAGER-001.md) — Eight equal 2 KiB executable-code slots, dynamically allocated from a shared pool.
 - [OS / PX / Context Control Interface](NEXUS%20CPU/NEXSUS-CPU-OS-PX-CONTEXT-INTERFACE-001.md) — Proposed privileged commands, OS/CPU responsibility split, PX page descriptors, context operations, and task-switch protocol.
 - [SPM0 Dual-Bank PX Code Feed](NEXUS%20CPU/NEXSUS-CPU-PX-MANAGER-001.md) — 4 KiB SPM0, two 2 KiB ping-pong code banks, and PX Manager-only PX_NEXT/PX_END metadata.
 - [Full Architecture Benchmark](NEXUS%20CPU/NEXSUS-CPU-FULL-ARCHITECTURE-BENCHMARK-001.md) — Shared workload suite and fair comparison plan for current AMD Zen 5, Intel Xeon Redwood Cove+, Apple ARM M6, and NEXSUS.
-- [CPU Comparison Simulator source](NEXUS%20CPU/tools/cpu_comparison_sim.py) — İlk çalıştırılabilir davranışsal simülatör prototipi.
-- [CPU Simulator Architecture](NEXUS%20CPU/NEXSUS-CPU-SIMULATOR-ARCHITECTURE-001.md) — NEXSUS ve referans CPU için ortak algoritma, fonksiyonel/çevrimsel simülasyon ve karşılaştırma planı.
+- [CPU Comparison Simulator source](NEXUS%20CPU/tools/cpu_comparison_sim.py) — v0.3.2 davranışsal/çevrim modeli; PX çift banka, PX_NEXT/PX_END, branch sweep, SIMD/AMX/ME512 ve 4 mimari profili.
+- [CPU Simulator Architecture](NEXUS%20CPU/NEXSUS-CPU-SIMULATOR-ARCHITECTURE-001.md) — NEXSUS, güncel AMD/Intel/ARM referansları, native/8-core karşılaştırma ve PX/SPM0/ME512 test altyapısı.
 
 ### Exception ve kesme sistemi
 - [Exception Frame](NEXUS%20CPU/NEXSUS-CPU-EXCEPTION-FRAME-001.md) — Exception giriş/çıkış bağlamı ve frame düzeni.
