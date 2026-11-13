@@ -437,7 +437,7 @@ CALL/RET'nin return state ve parametre yönetimi RA/SPM/context mekanizmasıyla 
 | Mnemonic | İşlev | Durum |
 |---|---|---|
 | NOP | İşlem yapmadan ilerleme | Taslak |
-| FENCE | Bellek/işlem sıralama bariyeri | Semantik gerekli |
+| FENCE | L1–L4 veri erişimleri için memory ordering bariyeri | Taslak semantik tanımlandı |
 | WAIT | Event/interrupt bekleme | System |
 | HALT | Çekirdek durdurma | Privileged |
 | SYSCALL | OS/runtime geçişi | Privileged |
@@ -446,6 +446,68 @@ CALL/RET'nin return state ve parametre yönetimi RA/SPM/context mekanizmasıyla 
 | PREFETCH | Önceden veri getirme | Hint/taslak |
 
 Thread komutları (SPAWN, SEND, RECEIVE/LISTEN, DONE vb.) CPU çekirdek ISA'sına otomatik olarak eklenmez; Thread Runtime/Library ve system interface kapsamında ayrı tasarlanacaktır.
+
+### 10.1 FENCE — Bellek sıralama bariyeri
+
+`FENCE`, normal bellek erişimleri ile atomic işlemler arasında açık sıralama kurar. L1–L4 birbirinden ayrı domain'ler olduğundan komut, hangi domain'leri sıraladığını açıkça belirtir.
+
+**Scope**
+
+| Scope | Etki alanı |
+|---|---|
+| L1 | Yalnızca issuing core'un private L1 domain'i |
+| L2 | İlgili iki-core shared domain |
+| L3 | İlgili dört-core shared domain |
+| L4 | İlgili sekizli/geniş shared domain |
+| SYSTEM | Issuing core'un erişebildiği tüm L1–L4 data domain'leri |
+
+L2/L3/L4 scope'ları birbirinden bağımsızdır. Örneğin `FENCE.RELEASE.L3`, L3'e yapılan önceki yazmaları L3 scope'unda release sıralamasına alır; L1 veya L2 erişimlerini otomatik olarak aynı bariyere dahil etmez. Birden fazla domain'e yayılan koordinasyon gerekiyorsa SYSTEM scope seçilir.
+
+**Ordering türleri**
+
+| Tür | Garantisi |
+|---|---|
+| ACQUIRE | Bariyerden sonraki bellek erişimleri bariyerden önceye taşınamaz |
+| RELEASE | Bariyerden önceki bellek erişimleri bariyerden sonraya taşınamaz |
+| ACQ_REL | Acquire ve release garantilerinin ikisi |
+| SEQ_CST | Seçilen scope içindeki SEQ_CST fence ve SEQ_CST atomic işlemler için tek tutarlı sıralama |
+
+RELAXED fence yoktur; ek sıralama sağlamayan bir bariyer gereksizdir ve encoding'de reserved kabul edilir.
+
+**Normal LOAD/STORE ile ATOM ilişkisi**
+
+- RELEASE bariyerinden önce tamamlanmış normal STORE işlemleri, bariyerden sonra yapılan publish/atomic release işleminden sonra görünür olacak şekilde sıralanır.
+- ACQUIRE bariyerinden sonra başlayan normal LOAD işlemleri, bariyerden önceki acquire synchronization noktasının arkasında tutulur.
+- Producer/consumer akışında tipik kullanım: üretici payload'ı shared zone'a yazar, `FENCE.RELEASE.L3` uygular ve ardından hazır bilgisini release atomic store ile yayımlar. Tüketici hazır bilgisini acquire atomic load ile alır ve payload'ı okur; ayrıca bir acquire fence gerekiyorsa protokol açıkça bunu kullanır.
+- Bir release fence ile onu izleyen atomic işlemin, veya bir atomic işlemi izleyen acquire fence'in eşleştirilmesi için ilgili atomic nesne ve aynı synchronization scope kullanılmalıdır. Yalnızca iki tarafta fence çalıştırmak, aralarında synchronization event/atomic handoff yoksa veri yarışı çözmez.
+- FENCE bellek erişimi değildir ve atomicity sağlamaz. Aynı konuma eşzamanlı erişim kuralları ATOM ve data-race kurallarına tabidir.
+
+**Sınırlar**
+
+- İlk sürümde FENCE yalnızca L1–L4 data LOAD/STORE ve ATOM işlemlerini kapsar. P0 instruction fetch, SPM0–SPM7, register transferleri ve MMIO/device erişimleri kapsam dışıdır.
+- FENCE veri taşımaz, Lx domain'leri arasında kopyalama yapmaz, zone ownership/lifetime yönetmez ve tek başına coherence oluşturmaz.
+- Scope, paylaşım kapsamını genişletmez veya erişim izni vermez. L1 başka çekirdeğe açılmaz; L2/L3/L4 visibility davranışı ilgili shared domain'in coherence/visibility protokolüyle sağlanmalıdır.
+- SEQ_CST total order yalnızca aynı seçilmiş scope içindeki SEQ_CST fence ve SEQ_CST atomic işlemleri kapsar. Farklı scope'lar arasında ortak total order garanti edilmez.
+- SYSOP ve ana OP numeric değerleri henüz atanmadı; bu mnemonic'ler sembolik ISA gösterimidir.
+
+Örnekler:
+
+```asm
+; Producer: L3 shared zone'a payload yaz, ardından publish et
+STORE.L3.W64 [RA20], DA4
+FENCE.RELEASE.L3
+ATOM.STORE.RELEASE.L3.W64 [RA24], DA5
+
+; Consumer: hazır bilgisini acquire ile al, sonra payload'ı oku
+ATOM.LOAD.ACQUIRE.L3.W64 DA6, [RA24]
+LOAD.L3.W64 DA7, [RA20]
+
+; Birden fazla data domain'i kapsayan sistem bariyeri
+FENCE.ACQ_REL.SYSTEM
+```
+
+Bu örneklerde atomik publish nesnesi ile payload aynı synchronization protokolünün parçasıdır. FENCE, payload'ın kopyalanmasını veya otomatik olarak başka bir Lx domain'ine taşınmasını sağlamaz.
+
 
 ## 11. Instruction dispatch ve paralellik
 
