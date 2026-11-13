@@ -29,7 +29,7 @@ The interrupt ABI defines a 32-bit save mask for each bank. Bit N indicates whet
 - DA_MASK[31:0]
 - MA_MASK[31:0]
 
-A set bit means the interrupted value must be restored before IRET. A clear bit means the handler is guaranteed not to alter that register. Masks are generated from handler code and its complete call graph, or supplied by handwritten assembly. If analysis is unavailable or unknown code can be called, the conservative mask includes every register the call path may modify.
+A set bit means the interrupted value must be restored before IRET. A clear bit means the handler and its save/restore prologue are guaranteed not to alter that register. Masks are generated from handler code, the complete call graph, and the prologue's own staging-register clobbers, or supplied by handwritten assembly. If analysis is unavailable or unknown code can be called, the conservative mask includes every register the call path may modify.
 
 ### 3.1 Bank policy
 - RA: save touched integer registers only.
@@ -156,7 +156,7 @@ The save/restore ABI reuses already specified ISA operations; it does not requir
 Because DA is the staging bank for memory LOAD/STORE and explicit bank transfers, the handler must not overwrite interrupted DA values before preserving them.
 
 **Save order:**
-1. Save every DA register selected by DA_MASK to the Data RAM frame first, using STORE while the original DA values are intact.
+1. Save every DA register selected by DA_MASK to the Data RAM frame first, using STORE while the original DA values are intact. DA_MASK must also include every DA selector that the prologue will use as a staging temporary for RA/FA/MA transfers, even if the handler body itself never references that DA register.
 2. Save selected RA registers: MOV.DA.RA to staging DA, then STORE to the frame.
 3. Save selected FA registers: MOV.DA.FA to staging DA, then STORE to the frame.
 4. Save selected MA registers/groups: MOV.DA.MA to staging DA, then STORE the 256/512-bit DA group to the frame.
@@ -169,7 +169,7 @@ Because DA is the staging bank for memory LOAD/STORE and explicit bank transfers
 
 SPM7 supplies the temporary prologue workspace and can preserve the initial scratch values while KESP/frame setup is performed. SPM7 is not used as an excuse to introduce a parallel register bank. The per-depth 1 KiB slice is bounded; if a prologue needs more temporary data, it must use the normal protected Data RAM frame rather than overwrite another depth's slice.
 
-This ordering is mandatory for correctness. The compiler may optimize transfers only when it proves the same preservation and ordering invariants.
+This ordering is mandatory for correctness. The compiler may optimize transfers only when it proves the same preservation and ordering invariants. It must account for the DA staging clobber set in DA_MASK; otherwise the interrupted program's DA state could be corrupted.
 
 ## 13. Save-frame size and SPM7 capacity
 
