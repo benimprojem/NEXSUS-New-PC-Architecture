@@ -130,10 +130,10 @@ FA kayıtları 64-bit fiziksel genişliktedir. FP32 ve FP64 tek kayıt kullanır
 
 ### 4.3 Register banklarının toplam kapasitesi
 
-- RA: 64 × 64 bit = 256 byte
-- FA: 64 × 64 bit = 256 byte
-- DA: 64 × 64 bit = 256 byte
-- MA: 64 × 256 bit = 1 KiB
+- RA: 64 × 64 bit = 512 byte
+- FA: 64 × 64 bit = 512 byte
+- DA: 64 × 64 bit = 512 byte
+- MA: 64 × 256 bit = 2 KiB
 
 Toplam fiziksel register kapasitesi **3.5 KiB**'tır. SPM kapasitesi bu toplama dahil değildir.
 ## 5. Donanım Destekli Kısmi Yazma
