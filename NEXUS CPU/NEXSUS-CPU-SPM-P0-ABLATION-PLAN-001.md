@@ -65,7 +65,7 @@ The fallback must preserve data values, operation counts and architectural behav
 Model P0 as a dedicated command store, not as an ordinary data cache:
 
 - 64-bit command records.
-- Configurable capacity, with the current standard target of 8 KiB (1,024 records); 16 KiB remains an optional configuration.
+- Configurable capacity, with the current standard target of 16 KiB total as P0+P1 (two 8-KiB buffers, 1,024 records each); 4/8/32 KiB totals are sensitivity alternatives.
 - Up to 512-bit peak refill width (eight 64-bit records per refill beat), not a promise of eight decoded or issued commands per cycle.
 - Explicit refill request, refill latency, refill bandwidth, refill occupancy and branch/refill behavior.
 - Separate App RAM instruction source and Data RAM payload path.
