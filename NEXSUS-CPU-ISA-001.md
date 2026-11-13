@@ -699,18 +699,19 @@ MREDUCE.U.COLS.N8.W32 MA16, MA0
 
 ## 9. Control-flow komutları
 
-| Mnemonic | Operand | İşlev |
-|---|---|---|
-| JMP | target | Koşulsuz PC-relative dallanma |
-| BR.Z / BR.NZ | test, target | RA test register'ının sıfır / sıfır dışı olmasına göre dallanma |
-| BR.SLT / BR.SGE | test, target | RA test register'ının signed 64-bit işaretine göre dallanma |
-| CALL | target | Fonksiyon/alt rutin çağrısı |
-| RET | — | Çağrıdan dönüş |
-| TRAP | code | Trap/exception geçişi |
+| Mnemonic | Operand | Primary OP / format | İşlev |
+|---|---|---|---|
+| JMP | target | 0x00 / BR | Koşulsuz PC-relative dallanma |
+| BR.Z / BR.NZ / BR.SLT / BR.SGE / BR.SGT / BR.SLE | test, target | 0x01 / BR | RA test register'ı üzerinde koşullu dallanma |
+| CALL | link, target | 0x02 / BR | Link RA register'ına return address yazar ve dallanır |
+| RET | link | 0x03 / R2 | A alanındaki link RA register'ından dönüş |
+| TRAP | cause | 0x04 / RI | Yazılım kaynaklı senkron trap |
 
-Karşılaştırma komutları global condition flag üretmez. Sonucu hedef RA register'ına tam 64-bit 0 veya 1 olarak yazar. Branch komutları bu register'ı açıkça okur. Böylece farklı ALU komutlarının aynı çevrimde karşılaştırma yapması global flag yarışına neden olmaz; bağımlılık normal RA register hazard kurallarıyla izlenir. LOOP ilk ISA sürümünde ayrı bir komut olarak tutulmaz; sayaç azaltma ve koşullu branch ile oluşturulur.
+Branch koşulları, alan yerleşimi, PC-relative displacement, CALL link kaydı ve RET davranışı Instruction Encoding belgesinin bölüm 8.1'inde tanımlıdır.
 
-CALL/RET'nin return state ve parametre yönetimi RA/SPM/context mekanizmasıyla uyumlu kesin biçimi ayrıca tanımlanmalıdır; klasik RAM stack zorunlu kabul edilmez.
+Karşılaştırma komutları global condition flag üretmez. Sonucu hedef RA register'ına tam 64-bit 0 veya 1 olarak yazar. BR komutu, ihtiyaç halinde bu boolean sonucu EQZ/NEZ ile test edebilir. Ayrıca SLT0/SGE0/SGT0/SLE0 koşulları doğrudan signed 64-bit RA değerini sıfırla karşılaştırır. LOOP ilk ISA sürümünde ayrı komut değildir; sayaç azaltma ve koşullu branch ile oluşturulur.
+
+CALL sabit bir donanım link register'ı veya RAM stack gerektirmez. Çağıran kod link register selector'ını açıkça seçer; iç içe çağrılarda link değerinin korunması ABI/yazılım sorumluluğundadır. TRAP'ın vector, privilege ve context geçiş kuralları IRQ/exception bölümünde tanımlanacaktır.
 
 ## 10. System / synchronization komutları
 
