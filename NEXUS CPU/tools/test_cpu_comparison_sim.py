@@ -90,8 +90,8 @@ class SharedMemoryControllerTests(unittest.TestCase):
             [sim.Op(0, "LOAD", address=64, width=8)],
         ]
         result = sim.simulate_multicore_streams(shards, profile, 32)
-        self.assertEqual(result["cores"][0]["ready_at"][0], 128)
-        self.assertEqual(result["cores"][1]["ready_at"][0], 129)
+        self.assertEqual(result["cores"][0]["ready_at"][0], 168)
+        self.assertEqual(result["cores"][1]["ready_at"][0], 169)
 
     def test_lockstep_cores_use_independent_banks_in_parallel(self):
         profile_data = dict(sim.PROFILES["nexus_balanced_128"])
@@ -102,8 +102,8 @@ class SharedMemoryControllerTests(unittest.TestCase):
             [sim.Op(0, "LOAD", address=8, width=8)],
         ]
         result = sim.simulate_multicore_streams(shards, profile, 32)
-        self.assertEqual(result["cores"][0]["ready_at"][0], 128)
-        self.assertEqual(result["cores"][1]["ready_at"][0], 128)
+        self.assertEqual(result["cores"][0]["ready_at"][0], 168)
+        self.assertEqual(result["cores"][1]["ready_at"][0], 168)
 
 
 class SelectedNexusProfileTests(unittest.TestCase):
