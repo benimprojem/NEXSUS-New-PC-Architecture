@@ -88,32 +88,54 @@ SPM1–SPM7'de byte adresleme kullanılır. 8 KiB alan içindeki byte konumunu b
 
 SPM0 kayıt ofsetiyle, SPM1–SPM7 ise byte ofsetiyle adreslenir; tüm alanlarda geniş erişimler ardışık byte/kayıtları kapsayabilir.
 
-## 4. Register Görünümleri
+## 4. Register Bankları ve Görünümleri
 
-NEXSUS CPU'nun 64 bitlik registerları, farklı veri genişliklerinde kullanılabilecek mantıksal görünümler sunar.
+NEXSUS CPU dört bağımsız register bankı kullanır:
 
-Örnek gösterim:
+| Bank | Kayıt aralığı | Kayıt sayısı | Fiziksel genişlik | Görev |
+|---|---|---:|---:|---|
+| RA | RA0–RA31 | 32 | 64 bit | Integer, adres ve scalar state |
+| FA | FA0–FA31 | 32 | 64 bit | Floating-point state |
+| DA | DA0–DA31 | 32 | 64 bit | Data staging / transfer |
+| MA | MA0–MA31 | 32 | 256 bit | Vector / matrix operands |
 
-| Görünüm | Genişlik |
-|---|---:|
-| RA | 64 bit |
-| RB | 32 bit |
-| RC | 16 bit |
-| RD | 8 bit |
+### 4.1 RA alt genişlik görünümleri
 
-Sonundaki sayısal indis, register numarasını belirler.
+RB/RC/RD yalnızca RA bankının aynı fiziksel kaydına ait alt-bit görünümleridir:
 
-Örneğin RA0, RB0, RC0 ve RD0 aynı fiziksel registerın farklı genişliklerdeki görünümleri olarak tasarlanabilir.
+| Görünüm | Genişlik | Bit aralığı |
+|---|---:|---|
+| RA[n] | 64 bit | [63:0] |
+| RB[n] | 32 bit | [31:0] |
+| RC[n] | 16 bit | [15:0] |
+| RD[n] | 8 bit | [7:0] |
 
-- RA0: Tam 64 bitlik değer.
-- RB0: Alt 32 bit.
-- RC0: Alt 16 bit.
-- RD0: Alt 8 bit.
+Örneğin RA0, RB0, RC0 ve RD0 aynı fiziksel RA0 kaydını gösterir. RB/RC/RD, FA/DA/MA banklarına uygulanmaz.
 
-Bu modelde farklı genişliklerde erişim için ayrı fiziksel registerlar ayırmak zorunlu değildir.
+- RA write: 64 bitin tamamını günceller.
+- RB write: yalnızca [31:0] güncellenir; [63:32] korunur.
+- RC write: yalnızca [15:0] güncellenir; [63:16] korunur.
+- RD write: yalnızca [7:0] güncellenir; [63:8] korunur.
 
-Register görünümünün fiziksel register ile ilişkisi donanım tarafından tanımlanır. 32 bitlik bir yazmanın üst bitleri koruyup korumayacağı veya sıfırlayıp sıfırlamayacağı açık bir mimari kural olacaktır. NEXSUS için alan güncellemesi sırasında ilgisiz bitlerin korunması tercih edilir.
+### 4.2 FA kayıtları ve FP128 pair
 
+FA kayıtları 64-bit fiziksel genişliktedir. FP32 ve FP64 tek kayıt kullanır. FP128 iki ardışık FA kaydını birlikte kullanır; pair başlangıcı çift indisli olmalıdır:
+
+- FA00:FA01 → FP128 pair 0
+- FA02:FA03 → FP128 pair 1
+- …
+- FA30:FA31 → FP128 pair 15
+
+İlk kayıt düşük 64-bit, sonraki kayıt yüksek 64-bit dilimdir. Pair kullanımında iki kayıt da aynı komutun kaynak/hedef bağımlılığına dahildir.
+
+### 4.3 Register banklarının toplam kapasitesi
+
+- RA: 32 × 64 bit = 256 byte
+- FA: 32 × 64 bit = 256 byte
+- DA: 32 × 64 bit = 256 byte
+- MA: 32 × 256 bit = 1 KiB
+
+Toplam fiziksel register kapasitesi **1.75 KiB**'tır. SPM kapasitesi bu toplama dahil değildir.
 ## 5. Donanım Destekli Kısmi Yazma
 
 SPM, 64 bitlik kayıtların tamamını yeniden yazmak zorunda kalmadan seçilen alanları güncelleyebilecek biçimde tasarlanır.
