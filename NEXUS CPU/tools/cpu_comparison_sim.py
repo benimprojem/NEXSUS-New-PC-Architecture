@@ -250,7 +250,8 @@ def build_composite_workload(scale: int = 1) -> Dict[str, List[Op]]:
 
     # O) Two passes over 16 KiB of commands: exceeds P0 but fits conventional I-cache.
     ops = []
-    for i in range(32768*n):
+    # 8 KiB instructions = 64 KiB code: 4x the 16 KiB PX pool and 2x the 32 KiB reference I-cache.
+    for i in range(8192*n):
         add_op(ops, "INT", label="P0 starvation", command_address=(i % 2048)*8)
     result["p0_starvation"] = ops
 
