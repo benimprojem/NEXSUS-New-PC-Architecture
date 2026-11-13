@@ -515,3 +515,39 @@ Kullanıcının belirlediği temel paylaşım kuralı:
 - Gerçek donanımda seviyeler ayrı fiziksel banklar, dağıtık bellek dilimleri veya cache destekli ortak domain'ler şeklinde uygulanabilir; ISA görünür semantiği aynı kalır.
 
 Örnek kapsam: 8 çekirdekli bir yapılandırmada her çekirdeğin özel L1'i, çekirdek çiftleri için dört L2 paylaşım alanı, dört çekirdeklik gruplar için iki L3 alanı ve sekiz çekirdeğin erişebildiği bir L4 domain'i bulunabilir. Bu yalnızca topoloji örneğidir; fiziksel bank sayısı ve kapasiteyi sabitlemez.
+
+
+### 22.10 Ayrık bellek seviyeleri ve kapasite hedefleri
+
+L1/L2/L3/L4 birbirine otomatik bağlı, veriyi kendiliğinden aşağı/yukarı taşıyan tek bir cache zinciri değildir. Her seviye kendi bellek domain'idir. Seviyeler arasında otomatik veri göçü, otomatik cache fill veya donanımın gizli kopyalama davranışı varsayılmaz.
+
+İlk kapasite hedefi, paylaşım domain'i başına:
+
+| Seviye | Domain kapsamı | İlk kapasite hedefi | Not |
+|---|---:|---:|---|
+| L1 | 1 çekirdek | 128 KiB / çekirdek | En küçük ve en yakın çalışma alanı |
+| L2 | 2 çekirdek | 1 MiB / ikili grup | L1'lerden büyük, dar paylaşım |
+| L3 | 4 çekirdek | 8 MiB / dörtlü grup | Orta ölçekli ortak veri |
+| L4 | 8 çekirdek | 64 MiB / sekizli grup | En büyük ortak domain |
+
+Bu değerler ilk mimari hedeflerdir; nihai silikon kapasitesi değildir. Her basamakta domain başına kapasite 8 kat artırılmıştır. 8'den fazla çekirdekte L4 kapasitesi, sistem topolojisine göre sekizli gruplar veya daha geniş ortak domain'ler halinde ölçeklenebilir. L4'ün tek global domain olması zorunlu değildir.
+
+### 22.11 Seviyeler arası veri aktarımı
+
+- L1, L2, L3 ve L4 fiziksel/mantıksal olarak ayrı bellek domain'leridir; aralarında doğrudan bellek bağlantısı veya otomatik aktarım yolu varsayılmaz.
+- Bir verinin bir seviyeden diğerine taşınması gerekiyorsa aktarımı CPU açıkça başlatır ve yönetir.
+- Aktarımın kaynak seviyesi, kaynak adresi, hedef seviyesi, hedef adresi ve byte uzunluğu açıkça belirtilir.
+- Aktarım tamamlanmadan hedefteki kopya geçerli kabul edilmez. Başarılı tamamlanma, hata ve kısmi aktarım davranışı ISA tarafından raporlanmalıdır.
+- Kaynak ve hedef aralıklarının çakışma/alias durumu kontrol edilir. Aynı domain içindeki örtüşen aralıklar için COPY/MOVE semantiği ayrıca tanımlanır.
+- Bu işlem çekirdekler arası zero-copy zone paylaşımından farklıdır: aynı zone adresini paylaşmak kopya gerektirmez; farklı Lx domain'ine taşımak ise gerçek bir CPU kontrollü veri aktarımıdır.
+- İlk komut taslağı: `XFER dst_level:dst_addr, src_level:src_addr, length`. Komut CPU tarafından yürütülür; ayrı bir DMA motorunun otomatik aktarım yaptığı varsayılmaz. Uygulama bunu çok çevrimli bir CPU memory-operation olarak gerçekleştirebilir.
+- İleride büyük aralıklar için isteğe bağlı asynchronous form ve `XFER.WAIT token` eklenebilir. Bu, aktarımın CPU tarafından başlatılması ve kontrol edilmesi ilkesini değiştirmez.
+
+Örnek taslak:
+
+```asm
+XFER L3:RA20, L1:RA10, 4096
+; 4 KiB veri L1 kaynak aralığından L3 hedef aralığına CPU tarafından taşınır.
+```
+
+Buradaki register gösterimleri yalnızca adres operandı örneğidir; kesin operand encoding'i ve transfer buffer/throughput tasarımı henüz sabitlenmemiştir.
