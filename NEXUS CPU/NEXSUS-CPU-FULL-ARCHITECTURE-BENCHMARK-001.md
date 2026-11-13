@@ -192,7 +192,7 @@ Energy/power metrics are excluded until operation-level and memory-level energy 
 ## 9. Simulation algorithm (pseudocode)
 
 ```text
-for architecture in [AMD_ZEN5, INTEL_ARROW_LAKE_P, INTEL_ARROW_LAKE_E, NEXSUS]:
+for architecture in [AMD_9950X3D2, INTEL_XEON_698X, APPLE_M6, NEXSUS]:
     for scenario in configured_sensitivity_scenarios:
         cpu = build_cpu_model(architecture, scenario)
         for kernel in MASTER_WORKLOAD_SUITE:
@@ -215,7 +215,7 @@ The functional model must validate outputs independently from the timing engine.
 ## 10. Required test matrix
 
 At minimum, run:
-- four architecture profiles × all 15 kernels;
+- four architecture profiles × all 16 kernels;
 - low/base/high sensitivity for unresolved parameters;
 - cold-cache and warm-cache variants where relevant;
 - single-core and 8-core variants;
@@ -293,3 +293,12 @@ The logical vector workload uses 512-bit operations and is lowered to each profi
 - NEXSUS: 512-bit vector path plus the dedicated ME512 execution unit.
 
 These are model mappings, not claims that the vendor implementations have identical throughput or latency. Intel AMX tile setup/data movement costs and Apple M6's exact vector/matrix execution details remain calibration items. The workload graph and output validation remain identical across all backends.
+
+
+### 14.3 Public processor specification references
+
+- AMD Ryzen 9 9950X3D2 Dual Edition: https://www.amd.com/en/products/processors/desktops/ryzen/9000-series/amd-ryzen-9-9950x3d2-dual-edition.html
+- Intel Xeon 600 workstation family / Xeon 698X launch specifications: https://www.intel.com/content/www/us/en/newsroom/news/client-computing/intel-launches-new-intel-xeon-600-processors-for-workstation.html
+- Apple M6 announcement and CPU topology: https://www.apple.com/newsroom/2026/08/apple-introduces-m6-and-m5-ultra-for-a-big-leap-in-performance-and-ai-compute/
+
+Vendor disclosures define core counts, supported instruction families and memory-channel limits where available. Unpublished pipeline widths, execution ports, cache latencies and branch predictor accuracy remain simulator assumptions, not copied vendor specifications.
