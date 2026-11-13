@@ -140,6 +140,40 @@ Interpretation:
 
 The next mapping evaluation must include multiple base offsets and simultaneous streams, then compare conflict histograms rather than selecting a hash from a few favorable strides. The current folded selector remains a simulator candidate only.
 
+### 5.4 Width, alignment, multi-stream and random-trace model
+
+The mapping script now models each architectural request as a byte range. It converts that range into the set/count of intersected 64-bit bank words, then aggregates bank demand for a simultaneous batch.
+
+This keeps two different cases separate:
+
+- **One wide request:** a 512-bit request uses eight 64-bit slices when it is aligned to the 64-byte stripe. It is one architectural request, not eight independent CPU instructions.
+- **Many independent requests:** eight 64-bit requests can be serviced in one idealized round only if they map to eight banks with available ports/resources. Repeated bank assignments create local contention.
+
+The model sweeps 8/16/32/64/128/256/512-bit request widths at byte offsets 0 and 1. Offset 1 is a physical mapping stress case only; it does not declare byte-misaligned wide accesses legal. Existing ISA natural-alignment and precise-fault rules remain authoritative. A byte-misaligned 512-bit range intersects nine 64-bit words, which can demand one bank twice under the simple low-bit selector. An implementation may reject such an access before bank issue if the ISA alignment rule requires it.
+
+It also runs:
+- eight simultaneous 64-bit requests across the configured stride set;
+- a deterministic random-address sweep (default seed 20261113, 1,000 batches, eight streams);
+- a separate App RAM 512-bit P0 refill and Data RAM scalar/vector batch.
+
+App RAM and Data RAM results are reported independently. Their service rounds are not added together because the architecture defines separate physical paths/controllers. This model does not assert that every bank supports a simultaneous read and write, nor does it model cross-bank request assembly latency.
+
+Run the model from the repository root:
+
+```sh
+python "NEXUS CPU/tools/bank_mapping_model.py"
+```
+
+Useful parameter overrides:
+
+```sh
+python "NEXUS CPU/tools/bank_mapping_model.py" --base 0x1000 --requests 8
+python "NEXUS CPU/tools/bank_mapping_model.py" --random-samples 5000 --random-streams 4 --seed 42
+python "NEXUS CPU/tools/bank_mapping_model.py" --widths 64,128,256,512 --strides 8,64,4096
+```
+
+The reported minimum rounds are an ideal bank-demand lower bound, not cycle-accurate latency. Real service depends on port topology, queueing, arbitration/QoS, address translation, ECC, refresh, Fabric transport and physical timing.
+
 ## 6. App RAM bank group
 
 App RAM is read-dominant during normal execution. Its baseline group should provide:
