@@ -1,8 +1,8 @@
 # NEXSUS CPU — Cross-Architecture Comparison Simulator
 
 **Document ID:** NEXSUS-CPU-COMPARISON-SIMULATOR-001  
-**Status:** Simulator v0.2.4-dev; lockstep multicore, shared cache groups, first-stage P0/SPM2 ablation models; validation in progress  
-**Purpose:** Compare one deterministic mixed workload across AMD Zen 5, Intel Arrow Lake P/E cores, and the selected NEXSUS 128-window architecture.
+**Status:** Simulator v0.3.0-dev; current AMD/Intel/ARM profiles, PX-fed 4 KiB dual-bank SPM0 model, branch-prediction sensitivity model; regression validation in progress  
+**Purpose:** Compare one deterministic mixed workload across current AMD Zen 5, Intel Xeon Redwood Cove+, Apple ARM M6, and the selected NEXSUS architecture.
 
 ## 1. Comparison targets
 
@@ -198,3 +198,34 @@ The script is a research model, not a substitute for RTL simulation, gem5, vendo
 - Intel Lion Cove architecture presentation: https://cdrdv2-public.intel.com/824430/2024_Intel_Tech%20Tour_TW_Next%20Gen%20P-core%20The%20Lion%20Cove%20Architecture-4.pdf
 - Skymont analysis: https://chipsandcheese.com/p/skymont-intels-e-cores-reach-for-the-sky
 - Arrow Lake Lion Cove memory analysis: https://chipsandcheese.com/p/analyzing-lion-coves-memory-subsystem
+
+
+## 10. v0.3.0-dev architecture update
+
+The old AMD 9950X / Intel Arrow Lake P/E profile set is superseded for the current comparison run. The active reference profiles are:
+- AMD Ryzen 9 9950X3D2 Dual Edition, Zen 5, 16 cores;
+- Intel Xeon 698X, Redwood Cove+, 86 homogeneous P-cores;
+- Apple M6, 12-core ARM SoC. Its published topology is heterogeneous (2 super, 4 performance, 6 efficiency cores); the current simulator uses a provisional weighted homogeneous approximation until heterogeneous scheduling is implemented;
+- NEXSUS CPU, 8-core candidate.
+
+The simulator runs native core counts and retains a normalized 8-core comparison as a separate experiment. These are architectural profiles, not silicon-certified replicas. Reference pipeline/cache latencies and bandwidths not explicitly published by vendors are model assumptions and must be included in result manifests.
+
+### 10.1 PX and SPM0
+
+The old 2×8 KiB P0/P1 command-buffer model is superseded:
+- PX P0–P7: eight 2 KiB code-pool slots (16 KiB/core).
+- SPM0: 4 KiB total, split into two 2 KiB banks.
+- CPU fetch consumes one bank while PX Manager fills the inactive bank.
+- Full 2 KiB logical pages continue automatically.
+- PX_NEXT and PX_END are metadata read only by PX Manager; they are not instructions and are never copied into SPM0.
+- Current simulator refill latency default is 48 cycles: 32 payload cycles at the proposed 64 B/cycle path plus 16 cycles of provisional source/control overhead. This is a sensitivity assumption, not a guaranteed hardware timing.
+
+The fetch model now reports bank switches, ready boundaries, boundary waits, useful bytes, and PX-pool page hit/miss counters. The model still requires richer App-RAM source arbitration, true concurrent refill timing and task-switch invalidation tests before it can claim realistic zero-stall operation.
+
+### 10.2 Branch prediction
+
+A compact NEXSUS branch predictor is a candidate, not yet a frozen architectural commitment. A small direction predictor plus BTB should use logical PC tags, so bank swaps do not invalidate target identity. The simulator currently uses deterministic branch-class miss-rate assumptions for sensitivity only; it is not a cycle-accurate predictor implementation. Per-branch state, BTB aliasing/capacity, warm-up and actual outcome traces remain future work.
+
+### 10.3 Validation status
+
+The GitHub Actions workflow compiles the simulator, runs regression tests, runs the cross-architecture smoke test, executes NEXSUS ablations and runs PX refill sensitivity sweeps. Results are accepted only from the latest run after all steps pass. Historical test counts and old P0/P1 results in earlier sections must not be interpreted as validation of v0.3.0-dev.
