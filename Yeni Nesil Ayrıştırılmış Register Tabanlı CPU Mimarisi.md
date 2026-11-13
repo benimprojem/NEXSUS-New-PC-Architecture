@@ -1096,3 +1096,24 @@ ISA-001 belgesinde ilk kaynak/port hedefleri ve ME512 register pair eşlemesi ta
 - Register portları, bank çatışmaları ve data-path arbitration kesin throughput'u sınırlar.
 
 Detaylı tablo: [NEXSUS-CPU-ISA-001.md](NEXSUS-CPU-ISA-001.md)
+
+
+# 24. Register Alias ve Operand Scheduling İlkeleri
+
+RA/RB/RC/RD aynı 64-bit fiziksel register hücresinin genişlik görünümleridir. RB/RC/RD yazmaları yalnızca düşük bit alanını değiştirir; üst bitler korunur. Böylece scalar register alanı büyümeden 8/16/32/64-bit erişim sağlanır.
+
+- RA write 64-bit tam güncelleme yapar.
+- RB write [31:0], RC write [15:0], RD write [7:0] alanlarını günceller.
+- View alias'ları ayrı register gibi değil, aynı fiziksel RA index'i üzerinden dependency/hazard takibine girer.
+- Aynı RA hücresine aynı cycle'da iki yazma issue edilmez.
+- Forwarding, partial-write mask merge sonrasındaki güncel register değerini sağlamalıdır.
+
+Scalar issue planında her register kaynak operandı RA read slotu tüketir; immediate operand port tüketmez. Aynı RA değerinin tekrar kullanılması broadcast/reuse ile optimize edilebilir, ancak bu ilk sürümde throughput garantisi değildir. ALU ve FPU'ların bağımsız execution unit olması, tüm birimlerin her cycle tam dolacağı anlamına gelmez: issue scheduler register portu, operand dependency, destination conflict ve bypass uygunluğunu birlikte değerlendirir.
+
+**İlk hedef:** 6 RA read / 3 RA write slotu. Bu değer sabit maksimum issue genişliği değil, başlangıç register-file tasarım hedefidir. Port çoğaltma, bank replication veya operand queue ileride mikro-mimari optimizasyon olarak ele alınabilir.
+
+ISA davranışının ayrıntısı: [NEXSUS-CPU-ISA-001.md — §19–20](NEXSUS-CPU-ISA-001.md).
+
+## 24.1 ME512 accumulator ve tile ayrımı
+
+ME512'nin dış operand yolu 512-bit'tir; bu değer iç matrix accumulator genişliğini veya matris boyutunu belirlemez. MA pair'leri operand/result transfer biçimidir. Matrix shape, element packing, tile boyutu, accumulation precision ve iç accumulator kapasitesi ayrı mikro-mimari parametreler olarak kalır. Bu kararlar benchmark/iş yükü ve alan-güç hedefleriyle birlikte verilecektir; ISA'da şimdilik tek bir accumulator genişliği sabitlenmez.
