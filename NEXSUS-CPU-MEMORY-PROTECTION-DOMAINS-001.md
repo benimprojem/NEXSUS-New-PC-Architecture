@@ -148,3 +148,8 @@ These decisions must preserve the policies and invariants above.
 - NEXSUS-CPU-TASK-SCHEDULING-SPM-RESIDENCY-001.md
 - NEXSUS-CPU-CSR-001.md
 - NEXSUS-SYSTEM-NODE-COMMUNICATION-001.md
+
+
+## 14. Memory access-control flow reference
+
+The operational validation sequence for instruction fetch, LOAD/STORE, ATOM, and memory-domain XFER is specified in `NEXSUS-CPU-MEMORY-ACCESS-CONTROL-001.md`. This policy document defines who may access each region; the access-control-flow document defines when and how the existing request path must validate that authority before issue and commit.
