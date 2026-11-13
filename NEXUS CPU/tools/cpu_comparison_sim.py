@@ -274,8 +274,12 @@ class SharedMemoryController:
         self.beat_bytes = beat_bytes
         self.aggregate_bytes_per_cycle = aggregate_bytes_per_cycle
         self.bank_busy = [0] * bank_count
-        self.bus_next_cycle = 0
+        self.bus_next_byte = 0
         self.rr_cursor = 0
+
+    @property
+    def bus_next_cycle(self) -> int:
+        return math.ceil(self.bus_next_byte / max(1, self.aggregate_bytes_per_cycle))
 
     def _bank(self, address: int, bank_hash: str) -> int:
         if bank_hash == "folded":
@@ -310,16 +314,23 @@ class SharedMemoryController:
                 bank_start = max(cycle, self.bank_busy[bank])
                 bank_wait = max(bank_wait, bank_start - cycle)
                 self.bank_busy[bank] = bank_start + 1
-            bus_start = max(cycle, self.bus_next_cycle)
-            bus_wait = bus_start - cycle
-            bus_cycles = max(1, math.ceil(width / self.aggregate_bytes_per_cycle))
-            self.bus_next_cycle = bus_start + bus_cycles
+            cycle_byte = cycle * self.aggregate_bytes_per_cycle
+            bus_start_byte = max(cycle_byte, self.bus_next_byte)
+            bus_wait = max(0, (bus_start_byte // self.aggregate_bytes_per_cycle) - cycle)
+            bus_offset = bus_start_byte % self.aggregate_bytes_per_cycle
+            bus_service_cycles = max(
+                1, math.ceil((bus_offset + width) / self.aggregate_bytes_per_cycle)
+            )
+            self.bus_next_byte = bus_start_byte + width
+            bank_complete = max(self.bank_busy) if self.bank_busy else cycle
+            bus_complete = math.ceil(
+                (bus_start_byte + width) / self.aggregate_bytes_per_cycle
+            )
             result[req_id] = {
                 "bank_wait": bank_wait,
                 "bus_wait": bus_wait,
-                "service_complete_cycle": max(
-                    max(self.bank_busy), self.bus_next_cycle
-                ),
+                "bus_service_cycles": bus_service_cycles,
+                "service_complete_cycle": max(bank_complete, bus_complete),
             }
         self.rr_cursor = (start + 1) % len(core_ids)
         return result
