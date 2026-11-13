@@ -1,7 +1,7 @@
 # NEXSUS CPU — Cross-Architecture Comparison Simulator
 
 **Document ID:** NEXSUS-CPU-COMPARISON-SIMULATOR-001  
-**Status:** Simulator v0.3.0-dev; current AMD/Intel/ARM profiles, PX-fed 4 KiB dual-bank SPM0 model, branch-prediction sensitivity model; regression validation in progress  
+**Status:** Simulator v0.3.2-dev; current AMD/Intel/ARM profiles, PX-fed 4 KiB dual-bank SPM0 model, branch-prediction sensitivity model; regression validation in progress  
 **Purpose:** Compare one deterministic mixed workload across current AMD Zen 5, Intel Xeon Redwood Cove+, Apple ARM M6, and the selected NEXSUS architecture.
 
 ## 1. Comparison targets
@@ -260,3 +260,10 @@ The ME512-equivalent matrix workload maps to:
 - Apple vector path (provisional mapping).
 
 This mapping lets every architecture use its available modeled execution resources. It is still a design-space model: actual port counts, AMX tile setup, memory movement and sustained throughput require public data or independent measurement.
+
+
+## 13. v0.3.2-dev PX metadata integration
+
+The SPM0 fetch model now accepts logical-page descriptors. It validates the fetch offset against valid_bytes, resolves PX_NEXT to the declared next logical page, stops sequential prefetch on PX_END, and automatically advances full 2 KiB pages. Invalid padding fetches and sequential continuation after PX_END raise a modeled fault. Branch-target fetches can be marked non-sequential so logical PC mapping remains distinct from page-stream continuation.
+
+Regression tests cover full-page automatic continuation, partial intermediate pages, partial final pages, marker-free full pages, invalid padding, wrong next-page IDs and 64-bit alignment. PX_NEXT/PX_END remain descriptor metadata and are not Op records.
