@@ -231,3 +231,60 @@ The metadata and page contents must be validated and atomically published togeth
 ### Full-page stream end metadata
 
 PX_END is only required for a partial final page. If a task ends exactly at a full 2 KiB boundary, the code-region/page descriptor marks the final page with `stream_end=true` (or equivalent explicit region-length metadata). This prevents an unnecessary next-page prefetch without inserting a marker into executable bytes.
+
+
+## 12. OS / L0I / PX task-aware staging interface
+
+The application-code path is extended to App RAM -> 64 KiB L0I -> PX P0–P7 -> 4 KiB dual-bank SPM0. L0I is progressively filled in chunks; the complete cache is never required to be resident before PX staging begins.
+
+### 12.1 OS policy responsibilities
+
+The OS scheduler/code manager selects:
+- task ID and generation;
+- logical code page(s) needed for the task;
+- source code region and App RAM address/range (addresses may be non-contiguous);
+- valid byte count and stream-boundary metadata;
+- priority, deadline class and prefetch urgency;
+- whether the request is for the currently running task, next dispatch candidate or speculative background staging.
+
+The OS may submit a batch of page requests in task-aware order. It does not select an unsafe physical PX slot or directly manipulate active SPM0 bank contents.
+
+### 12.2 Hardware execution responsibilities
+
+L0I/PX hardware validates request identity, bounds and executable permissions; tracks chunk/page validity; allocates PX P0–P7 slots; transfers selected pages; and publishes READY state atomically. It rejects stale generations, incomplete pages, invalid metadata and unauthorized source ranges. PX_NEXT/PX_END remain PX Manager metadata only and never enter SPM0.
+
+### 12.3 Proposed request and completion records
+
+A logical request should carry at least:
+- request_cookie;
+- task_id and task_generation;
+- code_region_id;
+- logical_page_id;
+- App RAM source address or source handle;
+- valid_bytes and page-boundary kind (FULL_PAGE / PX_NEXT / PX_END / stream_end);
+- priority/deadline class;
+- prefetch/speculative flag.
+
+Completion should report:
+- request_cookie and task/generation/page identity;
+- status (QUEUED / WAIT_L0I / TRANSFERRING / READY / RETRY / FAULT);
+- PX physical slot when allocated;
+- bytes transferred and valid bytes;
+- fault/error code and completion sequence.
+
+These are logical interface fields; opcode encodings, descriptor byte layout and register/CSR addresses remain open.
+
+### 12.4 Independent queues and backpressure
+
+Keep separate queues for:
+1. App RAM -> L0I chunk fills;
+2. L0I -> PX task/page transfers;
+3. PX -> inactive SPM0 bank refills.
+
+A page request may wait for its source chunks while unrelated L0I fills and already-ready PX-to-SPM0 refills continue. Completion at one stage must not be confused with completion at the next. The OS receives events/counters and may reprioritize requests, but hardware preserves ownership, generation and atomic READY rules.
+
+### 12.5 Scheduling and fairness
+
+Prioritize current-task continuation and imminent dispatch requirements, then next runnable task code, then speculative/background pages. Apply aging or bounded service guarantees so low-priority tasks cannot starve indefinitely. Task policy remains in the OS; physical slot safety, transfer arbitration and protection remain in hardware.
+
+The baseline App-code lane is one 64-bit (8-byte) read path. Four parallel 64-bit lanes are a future expansion candidate and are not part of the initial interface freeze.
