@@ -223,7 +223,7 @@ DA kayıtları 64-bit olduğundan erişim genişliğine göre gereken kayıt say
 
 - D her zaman kullanılan DA aralığının ilk kaydını gösterir.
 - D + kayıt sayısı 32'yi aşamaz. Örneğin 512-bit erişim için D en fazla 24 olabilir.
-- MEM erişimlerinde 128/256/512-bit DA grupları için ek bir selector hizalama şartı ilk taslakta konulmaz; yalnızca DA31 sınırı kontrol edilir. Gerçek bellek hizalaması ayrı bir konudur.
+- MEM erişimlerinde 128/256/512-bit DA grupları için ek selector hizalaması aranmaz; yalnızca DA31 sınırı kontrol edilir. Bellek adresinin doğal hizalaması ise zorunludur ve aşağıdaki fault kurallarıyla denetlenir.
 - 8/16/32-bit LOAD, ilgili DA kaydının düşük bitlerine veriyi yazar ve aynı kaydın kullanılmayan üst bitlerini sıfırlar. 64-bit LOAD kaydın tamamını yazar.
 - 128/256/512-bit erişimlerde ardışık 64-bit parçalar artan bellek adresi sırasıyla artan DA selector'larına eşlenir. Her kaydın kendi içindeki byte sıralaması global endian kararıyla belirlenecektir.
 - STORE yalnızca istenen W bitini bellek alanına yazar; son DA kaydındaki erişim genişliği dışında kalan bitler yazılmaz.
@@ -494,8 +494,7 @@ Aşağıdaki örnekler gerçek hexadecimal makine kodu değildir; opcode değerl
 1. OP ve FMT sayısal kodlarının nihai tablosu.
 2. Komut sözcüğünün byte endianness ve bellek içi sıralaması.
 3. EXT word'ün kesin bit alanları ve birden çok literal word gerekip gerekmediği.
-4. MEM erişimlerinde doğal hizalama ve misaligned erişimlerin desteklenme/exception davranışı.
-5. DA 256-bit grup hizalamasının kesinleştirilmesi.
+4. DA↔MA 256/512-bit grup hizalaması ISA/encoding düzeyinde tanımlandı; mikro-mimari transfer portları ve timing'i açık.
 6. MA/FA pair komutlarının opcode ve exception ayrıntıları.
 7. Branch koşul kodları ve displacement'in PC'ye göre referans noktası (komut başlangıcı veya sonraki komut).
 8. SYS formatının system register/privilege alanları.
