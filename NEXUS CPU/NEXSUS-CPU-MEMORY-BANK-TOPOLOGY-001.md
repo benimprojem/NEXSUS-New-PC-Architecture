@@ -109,6 +109,37 @@ The folded selector is a **candidate mapping, not a frozen ISA-visible rule**. S
 
 The final selector may be chosen independently for App RAM and Data RAM if their physical organizations differ. Software-visible addresses and NDC semantics must not depend on the selected physical bank hash.
 
+### 5.3 Deterministic mapping comparison
+
+The first architectural mapping model treats each independent 64-bit LOAD as one request to the bank selected by its byte address. For a batch of eight requests, it reports:
+
+- **unique banks:** number of banks receiving at least one request;
+- **per-bank count:** number of requests assigned to each bank;
+- **minimum service rounds:** maximum per-bank request count, assuming one 64-bit request beat per bank per round and no other bottleneck.
+
+This is a bank-conflict lower-bound model. It does not model cycle timing, queue depth, read/write turnaround, wide-operation grouping, ECC, refresh, Fabric delay or physical MOSRAM behavior.
+
+The reproducible script is [tools/bank_mapping_model.py](tools/bank_mapping_model.py). It runs deterministic self-tests before printing the comparison table. With eight requests and base address zero, the current model produces:
+
+| Byte stride | Low-bit unique banks | Low-bit min rounds | Folded unique banks | Folded min rounds |
+|---:|---:|---:|---:|---:|
+| 8 | 8 | 1 | 8 | 1 |
+| 16 | 4 | 2 | 8 | 1 |
+| 32 | 2 | 4 | 8 | 1 |
+| 64 | 1 | 8 | 8 | 1 |
+| 128 | 1 | 8 | 8 | 1 |
+| 4096 | 1 | 8 | 1 | 8 |
+
+Interpretation:
+
+1. Sequential 8-byte words already distribute perfectly under both selectors.
+2. The folded selector improves the tested 16/32/64/128-byte strides by mixing higher address bits into the bank index.
+3. The folded selector does **not** solve every alias pattern. In particular, the tested 4-KiB stride still maps all eight requests to one bank because the current XOR uses only A[11:3].
+4. A more complex hash is not automatically better. Any candidate must be evaluated against realistic address traces, page/region boundaries, multi-stream offsets and App RAM versus Data RAM access patterns.
+5. The table is specific to eight 64-bit requests at base address zero. Changing the base address, request count or address distribution can change the result.
+
+The next mapping evaluation must include multiple base offsets and simultaneous streams, then compare conflict histograms rather than selecting a hash from a few favorable strides. The current folded selector remains a simulator candidate only.
+
 ## 6. App RAM bank group
 
 App RAM is read-dominant during normal execution. Its baseline group should provide:
@@ -201,4 +232,4 @@ These references are comparative evidence for banked access paths, address-based
 
 - AMD, *Software Optimization Guide for the AMD Zen 5 Microarchitecture*, Publication 58455, Rev. 1.00 (2024): [AMD documentation portal](https://docs.amd.com/v/u/en-US/58455_1.00). Describes a banked L1 data cache, address-derived bank selection, multiple load pipes and separate store-commit resources.
 - Intel, *64 and IA-32 Architectures Optimization Reference Manual*, Order No. 248966: [Intel manual PDF](https://www.intel.com/content/dam/doc/manual/64-ia-32-architectures-optimization-manual.pdf). Documents an eight-bank L1 data-cache organization in the Sandy Bridge/Nehalem examples and explains bank-conflict effects.
-- AMD, *Software Optimization Guide for the AMD Zen 4 Microarchitecture*, Publication 57647: [Guide PDF](https://www.numberworld.org/blogs/2024_8_7_zen5_avx512_teardown/57647_zen4_sog.pdf). Describes address-derived bank selection, bank conflicts and alignment-sensitive wide accesses.
+ - Reproducible architectural mapping model: [tools/bank_mapping_model.py](tools/bank_mapping_model.py).\n- AMD, *Software Optimization Guide for the AMD Zen 4 Microarchitecture*, Publication 57647: [Guide PDF](https://www.numberworld.org/blogs/2024_8_7_zen5_avx512_teardown/57647_zen4_sog.pdf). Describes address-derived bank selection, bank conflicts and alignment-sensitive wide accesses.
