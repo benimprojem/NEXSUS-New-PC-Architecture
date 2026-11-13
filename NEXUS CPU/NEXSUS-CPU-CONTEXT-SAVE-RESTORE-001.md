@@ -180,48 +180,42 @@ The full architectural RA/FA/DA/MA payload is 3,584 bytes. A selective interrupt
 
 The scheduler may use available SPM1–SPM6 capacity to keep several complete task register contexts resident on the same core. This reuses the existing SPM memory and existing register-transfer instructions; it adds no new memory type, register bank, cache level or ISA opcode.
 
-### 14.1 Slot sizing and five-task target
+### 14.1 Slot sizing and resident-context target
 
-The four architectural register banks contain 1,792 bytes:
-- RA: 256 bytes
-- FA: 256 bytes
-- DA: 256 bytes
-- MA: 1,024 bytes
+With 64 registers in each bank, the full register payload is **3,584 bytes**:
+- RA: 64 × 8 = 512 bytes
+- FA: 64 × 8 = 512 bytes
+- DA: 64 × 8 = 512 bytes
+- MA: 64 × 32 = 2,048 bytes
 
-A full task-context slot is allocated as **2 KiB**, aligned to a 2 KiB boundary. It contains the 1,792-byte register payload, context/control metadata, and alignment reserve. The exact internal metadata layout is an ABI detail to be finalized with the scheduler implementation.
+A resident context slot is **4 KiB**, aligned to 4 KiB. A 64-byte frame header plus 3,584-byte register payload totals 3,648 bytes and fits with alignment reserve.
 
-Five resident contexts therefore require **10 KiB**. SPM1–SPM6 provide 48 KiB in total, so five slots fit when that capacity is available. If all six banks were dedicated to this purpose, the theoretical ceiling would be 24 slots of 4 KiB each. This is a capacity calculation, not a promise that all 24 are always available: active workloads may already own SPM space.
+SPM3–SPM6 provide four 8-KiB banks. Each bank holds two 4-KiB slots:
+- 4 banks × 2 slots = **8 resident full-context slots/core**.
+- These are fast resident contexts, not total task count or simultaneous execution count.
+- Further task contexts remain in protected Data RAM.
 
 ### 14.2 Allocation policy
 
-- SPM1–SPM6 remain general directly addressable SPM resources. The OS explicitly reserves free 2 KiB-aligned ranges for context slots; there is no unconditional fixed reservation.
-- SPM0 remains the 2 KiB execution workspace and is not included in the five-slot baseline.
-- SPM7 remains exclusively reserved for exception-entry temporary slices.
-- Each slot has an owner task ID, generation/version, valid-state and size recorded in the scheduler's existing task metadata.
-- A slot is valid only after the complete context payload and metadata have been written. Publication uses required release ordering; a consumer uses acquire ordering before restoring it.
-- A task with no resident SPM slot keeps its full context in the protected Data RAM task-context area. SPM residency is an optimization, never the only durable copy when the scheduler needs to reclaim the slot.
-- Eviction is explicit: write the complete valid context to Data RAM, verify completion, then release the SPM range. Never overwrite a live owner's slot.
-- When SPM capacity is occupied by application workspace, the scheduler falls back to Data RAM; it must not silently steal task-owned SPM ranges.
+- SPM3–SPM6 remain OS-managed context-residency pools; each 4-KiB slot has task ID, generation, valid state and ownership metadata.
+- A slot becomes valid only after its complete context is saved and published with release ordering; restore requires acquire ordering.
+- SPM1/SPM2 keep their OS/user workspace roles and are not counted in the eight-slot context pool.
+- SPM0 remains CPU-exclusive; SPM7 remains exception-entry-only.
+- If a task has no resident slot, its full context stays in protected Data RAM.
 
-### 14.3 Context switch with resident slots
+### 14.3 Eight-context ready set
 
-For a same-core switch from Task A to Task B:
+A core may keep up to eight full register contexts resident across SPM3–SPM6. One task owns the execution pipeline at a time; the other contexts are saved and ready. The OS may choose residency based on scheduling priority and reuse. Eviction is an explicit OS decision and must never overwrite a live context.
 
-1. Enter the scheduler through the normal exception/context-switch path; preserve the outgoing task's architectural state.
-2. If A owns an allocated context slot, write A's latest RA/FA/DA/MA values and required control metadata into that slot. Otherwise, write them to its protected Data RAM context.
-3. Locate B's slot by task ID and generation. If valid and resident, restore its context directly from SPM using the existing SPM.RD/SPM.WR and register-bank transfer paths. If it is not resident, restore from Data RAM and optionally allocate a free SPM slot for a later switch.
-4. Restore control state and memory-domain ownership under the scheduler's privilege checks.
-5. Start/refill P0 for B's saved PC in parallel with the context restore where the implementation permits.
-6. Do not dispatch B's first instruction until its architectural state is valid and the required instruction fetch for its resume PC is available.
-7. Publish the task handoff with release/acquire ordering; then resume B.
+### 14.4 Task-switch operation
 
-The scheduler must use the existing DA staging-order rules when transferring RA/FA/MA through DA. DA values are preserved before DA is used as staging, and DA is restored last.
-
-### 14.4 Five-task ready set
-
-A core can keep five task contexts resident simultaneously using five 4 KiB slots (10 KiB total). This means five saved contexts can be restored without first reading their register payloads from Data RAM. It does **not** mean five tasks execute simultaneously on one core: one task owns the architectural execution pipeline at a time, while the other four remain saved and ready.
-
-The OS may choose which five tasks receive resident slots based on scheduling priority, wake frequency and expected reuse. Slot replacement is an OS policy decision; no hardware task-cache behavior is implied.
+1. Stop outgoing architectural retirement at the defined switch boundary.
+2. Save the outgoing 3,584-byte register payload plus frame metadata into a resident 4-KiB slot when available; otherwise use protected Data RAM.
+3. Resolve and restore the incoming task's register state from its resident slot or Data RAM.
+4. Restore control, address-space and memory-domain state under privilege checks.
+5. Refill the incoming task's P0/P1 command buffers in parallel where the App RAM and context paths permit.
+6. Do not resume until architectural state and the required instruction block are valid.
+7. Publish the handoff with release/acquire ordering.
 
 ## 15. P0 refill during task dispatch
 
@@ -279,7 +273,7 @@ SPM2 has one physical 8 KiB capacity per core. Its contents are owned by the cur
 
 Four banks are dedicated to the OS-managed fast task-context pool: SPM3, SPM4, SPM5, and SPM6. Their combined capacity is 32 KiB.
 
-A full RA/FA/DA/MA payload is 1,792 bytes. The existing 64-byte save-frame header brings the base frame to 3,648 bytes, which fits in a 2 KiB slot with 32-byte alignment. Therefore each 8 KiB bank contains two 4 KiB slots:
+A full RA/FA/DA/MA payload is 1,792 bytes. The existing 64-byte save-frame header brings the base frame to 3,648 bytes, which fits in a 4 KiB slot with 32-byte alignment. Therefore each 8 KiB bank contains two 4 KiB slots:
 
 - 4 banks × 2 slots = **8 resident task-context slots per core**.
 - Each slot holds one full register-bank image and its save-frame header.
@@ -351,7 +345,7 @@ This section is the final authoritative allocation. If an earlier section in thi
 
 ### 17.1 Resident task-context capacity
 
-Only SPM3–SPM6 are in the resident task-context pool: 4 × 8 KiB = 32 KiB. Each full register context uses a 2 KiB slot, so each bank holds four slots and the per-core resident maximum is **16 task contexts**. This is a resident fast-context limit, not a system-wide task limit. Additional task contexts stay in protected Data RAM.
+Only SPM3–SPM6 are in the resident task-context pool: 4 × 8 KiB = 32 KiB. Each full register context uses a 4 KiB slot, so each bank holds two slots and the per-core resident maximum is **8 task contexts**. This is a resident fast-context limit, not a system-wide task limit. Additional task contexts stay in protected Data RAM.
 
 SPM1 and SPM2 are never counted as task-context slots. SPM1 belongs to the OS; SPM2 belongs to the currently executing user task and its live contents must be preserved across a switch when required.
 
@@ -378,7 +372,7 @@ SPM1 is reserved to privileged OS code. The OS defines the syscall exchange ABI 
 P0 refill and context transfer may overlap, but the scheduler must wait for both dependencies; neither completion order is assumed. SPM contents never migrate between cores implicitly. A migrated task's live SPM2 data must be explicitly transferred through supported mechanisms or reconstructed before it resumes.
 
 ## 18. Task scheduler specification reference
-Task READY/RUNNING/BLOCKED/SLEEPING transitions, sixteen-slot residency pressure, SPM2 save/restore lifecycle, wake-up race handling, priority updates, and explicit cross-core migration are specified in `NEXSUS-CPU-TASK-SCHEDULING-SPM-RESIDENCY-001.md`. That document uses the authoritative SPM allocation in Section 17 of this file and does not change the register context format.
+Task READY/RUNNING/BLOCKED/SLEEPING transitions, eight-slot residency pressure, SPM2 save/restore lifecycle, wake-up race handling, priority updates, and explicit cross-core migration are specified in `NEXSUS-CPU-TASK-SCHEDULING-SPM-RESIDENCY-001.md`. That document uses the authoritative SPM allocation in Section 17 of this file and does not change the register context format.
 
 
 ## 19. SPM access protection reference
