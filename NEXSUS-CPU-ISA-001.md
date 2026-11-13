@@ -103,6 +103,7 @@ LOAD ve STORE veri belleği ile DA bankı arasında çalışır. Bellek domain'i
 | STORE.L1 / STORE.L2 / STORE.L3 / STORE.L4 | [addr], DA | DA register grubundan seçilen veri domain'ine ham bit yazma | Load/store |
 | LEA | RA, [base+offset] | Adres hesaplama | ALU |
 | MOV.RA.DA | RA, DA | DA'dan integer/scalar registera açık 64-bit bit aktarımı | Register path |
+| MOV.RA.DA.SX / MOV.RA.DA.ZX | RA, DA, W=8/16/32 | DA düşük W bitini RA'nın tam 64-bit değerine signed / zero-extend ederek aktarır | Register path |
 | MOV.DA.RA | DA, RA | RA'dan DA staging'e 64-bit aktarım | Register path |
 | MOV.FA.DA | FA, DA | DA bitlerini FA kayıt konteynerine aktarma | Register path |
 | MOV.DA.FA | DA, FA | FA kayıt bitlerini DA staging'e aktarma | Register path |
@@ -119,7 +120,7 @@ DAx:DAx+3 gösterimi dört ardışık 64-bit DA kaydını, toplam 256-bit veri g
 - MEM.AM[0]=0, ilk sürümdeki base + signed displacement adresleme biçimidir; diğer adresleme biçimleri ayrılmıştır.
 - LOAD ham bitleri DA'ya getirir. 8/16/32-bit yüklemelerde DA kaydının kullanılmayan üst bitleri sıfırlanır; 64-bit ve daha geniş erişimler DA kayıtlarını tam doldurur.
 - STORE yalnızca W kadar bit yazar. Son DA kaydında erişim genişliğinin dışında kalan bitler belleğe aktarılmaz.
-- LOAD sign-extension yapmaz ve signed/unsigned tür seçmez. DA bir staging bankıdır; sayısal yorumlama sonraki açık register transferi veya FCONV aşamasında yapılır.
+- LOAD sign-extension yapmaz ve signed/unsigned tür seçmez. DA bir staging bankıdır; scalar tamsayı yorumu gerektiğinde MOV.RA.DA.SX veya MOV.RA.DA.ZX ile açıkça yapılır. SX/ZX kaynak genişliği 8/16/32 bittir ve hedef RA'nın tam 64 bitini yazar; diğer dönüşümler için FCONV kullanılır.
 - Geniş erişimlerde ardışık bellek parçaları artan adres sırasıyla ardışık DA selector'larına yerleştirilir. Her 64-bit DA kaydının iç byte sırası endian kararıyla birlikte kesinleştirilecektir.
 - 64-bit effective address, RA[BASE] + signed 32-bit DISP ile hesaplanır. Domain erişim izni, sınır ve hata kontrolleri geçerlidir.
 - Doğal hizalama ve misaligned erişimlerin desteklenip desteklenmeyeceği henüz açık karardır.
