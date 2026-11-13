@@ -352,13 +352,13 @@ class CrossArchitectureComparisonTests(unittest.TestCase):
         workloads = {"p0_starvation": [sim.Op(i, "INT", command_address=i*8)
                                        for i in range(2048)]}
         sweep = sim.run_p0_capacity_sweep(workloads, sim.PROFILES["nexus_balanced_128"])
-        self.assertEqual(set(sweep["results"]), {"4", "8", "16", "32"})
+        self.assertEqual(set(sweep["results"]), {"4", "8", "16", "32", "64"})
         self.assertEqual({r["total_ops"] for r in sweep["results"].values()}, {2048})
         self.assertEqual({r["kernels"]["p0_starvation"]["ops"]
                           for r in sweep["results"].values()}, {2048})
         self.assertGreater(len({r["total_cycles"] for r in sweep["results"].values()}), 1)
         misses = [sweep["results"][k]["kernels"]["p0_starvation"]["p0"]["pool_misses"]
-                  for k in ("4", "8", "16", "32")]
+                  for k in ("4", "8", "16", "32", "64")]
         self.assertTrue(all(misses[i] >= misses[i+1] for i in range(len(misses)-1)))
         self.assertGreater(misses[0], misses[-1])
 
