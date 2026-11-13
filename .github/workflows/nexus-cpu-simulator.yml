@@ -31,8 +31,36 @@ jobs:
         working-directory: "NEXUS CPU/tools"
         run: python test_cpu_comparison_sim.py
       - name: Run comparison smoke test
-        run: python "NEXUS CPU/tools/cpu_comparison_sim.py" --scale 1 --json > /tmp/nexus-cpu-results.json
+        run: |
+          python "NEXUS CPU/tools/cpu_comparison_sim.py" --scale 1 --json > /tmp/nexus-cpu-results.json
+          python - <<'PY'
+          import json
+          data = json.load(open("/tmp/nexus-cpu-results.json", encoding="utf-8"))
+          print("CONTROLLED 8-CORE ARCHITECTURE COMPARISON")
+          for key, result in data.items():
+              print(f'{key}: cycles={result["total_cycles"]} ops={result["total_ops"]} IPC={result["aggregate_ipc"]}')
+              for name, kernel in result["kernels"].items():
+                  print(f'  {name}: cycles={kernel["cycles"]} ops={kernel["ops"]} IPC={kernel["aggregate_ipc"]}')
+          PY
       - name: Run four-way SPM P0 ablation
         run: python "NEXUS CPU/tools/cpu_comparison_sim.py" --ablation --scale 1
       - name: Run P0 capacity sensitivity sweep
-        run: python "NEXUS CPU/tools/cpu_comparison_sim.py" --p0-sweep --scale 1 --json > /tmp/nexus-p0-sweep.json
+        run: |
+          python "NEXUS CPU/tools/cpu_comparison_sim.py" --p0-sweep --scale 1 --json > /tmp/nexus-p0-sweep.json
+          python - <<'PY'
+          import json
+          data = json.load(open("/tmp/nexus-p0-sweep.json", encoding="utf-8"))
+          print("P0 CAPACITY SENSITIVITY")
+          for row in data["results"].values():
+              starve = row["kernels"]["p0_starvation"]["cycles"]
+              print(f'{row["capacity_kb"]} KiB: total_cycles={row["total_cycles"]} p0_starvation_cycles={starve} ops={row["total_ops"]}')
+          PY
+      - name: Upload comparison and P0 sweep results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexus-cpu-comparison-results
+          path: |
+            /tmp/nexus-cpu-results.json
+            /tmp/nexus-p0-sweep.json
+          if-no-files-found: ignore
