@@ -174,19 +174,23 @@ python "NEXUS CPU/tools/bank_mapping_model.py" --widths 64,128,256,512 --strides
 
 The reported minimum rounds are an ideal bank-demand lower bound, not cycle-accurate latency. Real service depends on port topology, queueing, arbitration/QoS, address translation, ECC, refresh, Fabric transport and physical timing.
 
-## 6. App RAM bank group
+## 6. App RAM code-fetch path
 
-App RAM is read-dominant during normal execution. Its baseline group should provide:
+App RAM serves application instructions and is physically/logically independent from Data RAM. The current baseline code path is:
 
-- eight 64-bit bank slices;
-- a 512-bit aggregate refill path to P0;
-- parallel bank access for a 64-byte aligned fetch block;
-- independent bank queues so a conflict in one bank does not stop unrelated fetches;
-- a write/maintenance path for loader, firmware and controlled code updates.
+```text
+App RAM -> L0I (64 KiB) -> PX P0–P7 (8 x 2 KiB) -> SPM0 (4 KiB; 2 x 2 KiB)
+```
 
-Instruction fetch and Data RAM access must remain physically independent. App RAM writes are not required to match the sustained read throughput target; exact loader/programming throughput is a separate platform parameter.
+- The App RAM -> L0I connection is one 64-bit (8-byte) read lane. One transfer beat carries one 64-bit instruction word.
+- The initial design uses one read lane only. Four independent 64-bit lanes (256-bit aggregate) are a future expansion and require additional ports/routing/arbitration.
+- L0I is filled progressively in task-aware chunks. It does not wait for a complete 64 KiB refill.
+- The OS selects task/logical-page requests and priorities. Consecutive logical pages may reside at non-contiguous App RAM addresses.
+- L0I -> PX transfers selected logical 2 KiB pages according to OS requests, not a sequential physical-address scan.
+- PX -> SPM0 uses the dual 2 KiB banks; PX fills the inactive bank while CPU consumes the active bank.
+- The 8-bank × 64-bit Data RAM throughput table in Section 8 does not describe or widen this single-lane App-code path.
 
-A P0 refill that obtains 512 bits provides eight 64-bit command words as raw instruction data. It does not guarantee that all eight words are valid standalone instructions or that eight instructions can be decoded/dispatched in one cycle.
+App RAM and Data RAM access remain physically independent and may make progress concurrently. App RAM writes/maintenance for loader and controlled code updates use a separately specified maintenance path.
 
 ## 7. Data RAM bank group
 
@@ -204,7 +208,7 @@ A bank is not assumed to accept a read and a write in the same cycle. If the phy
 
 ## 8. Throughput model
 
-The following values are theoretical interface ceilings, not guaranteed sustained application bandwidth. They assume every 64-bit bank slice can complete one 64-bit beat per memory cycle and the aggregate path can carry all eight slices.
+The following values are theoretical Data RAM interface ceilings, not guaranteed sustained application bandwidth. They assume every 64-bit Data RAM bank slice can complete one 64-bit beat per memory cycle and the aggregate Data RAM path can carry all eight slices. These figures do not apply to the single 64-bit App RAM -> L0I code-fetch lane.
 
 | Active bank slices | Aggregate width | Bytes/cycle | At 10 GHz | At 20 GHz |
 |---:|---:|---:|---:|---:|
@@ -244,7 +248,7 @@ Actual sustained bandwidth will be lower where sense time, write time, bank conf
 | READ and WRITE contend in one bank | Turnaround and aging prevent starvation |
 | READ in one bank and WRITE in another | Independent banks may proceed concurrently |
 | App RAM fetch plus Data RAM load | Both independent paths make progress concurrently |
-| P0 512-bit refill | Returns eight 64-bit words; does not assert eight-instruction retirement |
+| App RAM -> L0I single-lane fetch | Transfers one 64-bit instruction word per beat; no implicit 512-bit code refill |\n| Task-based L0I -> PX transfer | Selects requested 2 KiB logical pages from non-contiguous App RAM code regions |\n| PX -> SPM0 dual-bank refill | Fills inactive 2 KiB bank while active bank supplies instruction words |
 | MEMXFER crosses several banks | Bounded chunking and reservation semantics remain correct |
 | ECC/error or backpressure in one bank | Affected request is handled locally; independent banks continue where possible |
 
