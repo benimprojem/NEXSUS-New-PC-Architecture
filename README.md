@@ -87,7 +87,7 @@ NEXSUS CPU, genel amaçlı işlem ve kontrol akışını yürütür. Register or
 
 RA'nın RB/RC/RD alt görünümleri sırasıyla 32/16/8-bit erişim sağlar; bunlar ayrı fiziksel bank değildir. FA, DA ve MA bağımsız banklardır.
 
-CPU'nun komut kodu ve veri alanları ayrıdır. P0, App RAM'den getirilen 64-bit komut sözcüklerini tutan komut ön belleğidir. SPM0 ve SPM1–SPM7 ise yürütme sırasında kullanılan doğrudan adreslenebilir geçici çalışma alanlarıdır.
+CPU'nun komut kodu ve veri alanları ayrıdır. P0–P7, her biri 2 KiB olan ve OS ile CPU'nun ortaklaşa yönettiği dinamik komut sayfası havuzudur (toplam 16 KiB/çekirdek); sayfalar sabit task yuvaları değildir ve kod herhangi bir fiziksel PX yuvasından yürütülebilir. SPM0 ve SPM1–SPM7 ise yürütme ve register context işlemlerinde kullanılan doğrudan adreslenebilir geçici çalışma alanlarıdır.
 
 Temel belgeler:
 
@@ -701,8 +701,9 @@ CPU ile ilgili teknik belgeler `NEXUS CPU/` klasöründe merkezi olarak tutulur.
 - [SPM and P0 Initial Ablation Results](NEXUS%20CPU/NEXSUS-CPU-SPM-P0-ABLATION-RESULTS-001.md) — İlk dört profilli deneyin sonuçları, kernel bazlı çevrimler ve model varsayımları.
 - [CPU Comparison Simulator](NEXUS%20CPU/NEXSUS-CPU-COMPARISON-SIMULATOR-001.md) — AMD Zen 5, Intel Arrow Lake P/E ve NEXSUS için ortak algoritma ve simülasyon modeli.
 - [Cross-Architecture Comparison Results](NEXUS%20CPU/NEXSUS-CPU-CROSS-ARCHITECTURE-RESULTS-001.md) — Aynı 8 çekirdekli algoritma testinin AMD/Intel/NEXSUS sonuçları, P0 kapasite taraması ve sınırlamalar.
-- [CPU Architecture Revision — 2026-11-13](NEXUS%20CPU/NEXSUS-CPU-ARCHITECTURE-REVISION-2026-11-13.md) — 32-entry register banks, 64 B/cycle DRAM bandwidth, and P0/P1 8+8 KiB command buffers.
-- [PX Manager — P0–P7 Instruction Page Pool](NEXUS%20CPU/NEXSUS-CPU-PX-MANAGER-001.md) — Eight 2 KiB executable-code pages, dynamic task allocation, page state machine, and SPM register-context integration.
+- [CPU Architecture Revision — 2026-11-13](NEXUS%20CPU/NEXSUS-CPU-ARCHITECTURE-REVISION-2026-11-13.md) — 32-entry register banks and 64 B/cycle DRAM bandwidth; the earlier P0/P1 buffer proposal is superseded by the P0–P7 shared 8×2 KiB PX page pool.
+- [PX Manager — P0–P7 Instruction Page Pool](NEXUS%20CPU/NEXSUS-CPU-PX-MANAGER-001.md) — Eight equal 2 KiB executable-code slots, dynamically allocated from a shared pool.
+- [OS / PX / Context Control Interface](NEXUS%20CPU/NEXSUS-CPU-OS-PX-CONTEXT-INTERFACE-001.md) — Proposed privileged commands, OS/CPU responsibility split, PX page descriptors, context operations, and task-switch protocol.
 - [CPU Comparison Simulator source](NEXUS%20CPU/tools/cpu_comparison_sim.py) — İlk çalıştırılabilir davranışsal simülatör prototipi.
 - [CPU Simulator Architecture](NEXUS%20CPU/NEXSUS-CPU-SIMULATOR-ARCHITECTURE-001.md) — NEXSUS ve referans CPU için ortak algoritma, fonksiyonel/çevrimsel simülasyon ve karşılaştırma planı.
 
