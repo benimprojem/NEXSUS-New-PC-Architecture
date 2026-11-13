@@ -1,7 +1,7 @@
 # NEXSUS CPU — Cross-Architecture Comparison Simulator
 
 **Document ID:** NEXSUS-CPU-COMPARISON-SIMULATOR-001  
-**Status:** Simulator v0.2.2; controlled 8-core model with Balanced-128 candidate and clarified stall diagnostics (shared-memory contention still pending)  
+**Status:** Simulator v0.2.3; controlled 8-core model with Balanced-128 candidate and chip-wide DRAM bandwidth cap (global bank arbitration still pending)  
 **Purpose:** Compare one deterministic mixed workload across AMD Zen 5, Intel Arrow Lake P/E cores, and configurable NEXSUS CPU candidates.
 
 ## 1. Comparison targets
@@ -45,7 +45,7 @@ The target model is an event/cycle-driven CPU model with these components:
 6. L1/L2/L3/L4/DRAM access classification and per-bank serialization.
 7. Multicore task scheduling and shared-cache/memory contention (planned after v0.1).
 
-The v0.2 script partitions independent dependency components across eight cores, simulates each core's pipeline, and uses the slowest participating core to determine kernel completion. The text report also provides a per-kernel breakdown (cycles, operations, IPC, active cores and DRAM access count) alongside the composite total. The suite now adds isolated integer, FP, generic vector and branch-throughput kernels to help identify which execution resource limits each profile. It includes dependency tracking, issue-resource limits, in-order retirement, branch stalls, deterministic LRU private-cache approximations and local bank serialization. Shared LLC contention, a globally shared memory controller/bank queue, inter-core coherence traffic and SMT are still pending; current multicore results are therefore an intermediate model, not final throughput predictions. The generic vector kernel does not yet represent ME512's 512-bit paired-register behavior, matrix dimensions or data movement.
+The v0.2.3 script partitions independent dependency components across eight cores, simulates each core's pipeline, and uses the slowest participating core to determine kernel completion. To avoid multiplying the chip-wide DRAM bandwidth by the core count, the 32-byte/reference-cycle aggregate ceiling is divided into a fixed 4-byte/reference-cycle share per configured core. The text report also provides a per-kernel breakdown (cycles, operations, IPC, active cores and DRAM access count) alongside the composite total. The suite now adds isolated integer, FP, generic vector and branch-throughput kernels to help identify which execution resource limits each profile. It includes dependency tracking, issue-resource limits, in-order retirement, branch stalls, deterministic LRU private-cache approximations and local bank serialization. Shared LLC contention, a globally shared memory controller/bank queue, cross-core bank conflicts, dynamic work-conserving bandwidth redistribution, inter-core coherence traffic and SMT are still pending; current multicore results are therefore an intermediate model, not final throughput predictions. The fixed equal-share cap is conservative but not equivalent to a real shared controller: an idle core's unused share cannot be borrowed by another core. The generic vector kernel does not yet represent ME512's 512-bit paired-register behavior, matrix dimensions or data movement.
 
 ## 4. Known public reference points and model assumptions
 
@@ -77,7 +77,7 @@ NEXSUS dispatch/retire width, scheduling model, branch predictor, ROB-equivalent
 The first architecture-isolation experiment uses:
 - Exactly 8 active cores for AMD, Intel P-core, Intel E-core reference and NEXSUS.
 - Exactly 3.0 GHz common reference clock for CPU pipeline and modeled memory timing.
-- Identical DRAM latency (120 reference cycles) and aggregate modeled bandwidth (32 bytes/reference cycle) for every profile, including NEXSUS.
+- Identical DRAM latency (120 reference cycles) and chip-wide aggregate modeled bandwidth (32 bytes/reference cycle) for every profile, including NEXSUS. In v0.2.3 this is conservatively divided into a fixed 4 bytes/reference-cycle share per configured core.
 - Identical workload graph, input sizes and branch-event pattern.
 - One hardware thread per core; SMT is disabled in this phase.
 
@@ -114,7 +114,7 @@ The original NEXSUS profile is retained unchanged as the baseline. Three additio
 | STORE units | 1 | **4** | **4** | **4** |
 | BR units | 1 | 1 | 2 | 2 |
 
-All four NEXSUS profiles retain the same provisional cache capacities/latencies, 8-bank folded mapping, 32-byte/reference-cycle DRAM bandwidth, operation latencies and 3.0 GHz reference clock. This isolates the effect of execution and pipeline width in the current simplified model. The candidates are not yet constrained by physical area, power, wiring, queue implementation, bank-port availability or clock closure.
+All four NEXSUS profiles retain the same provisional cache capacities/latencies, 8-bank folded mapping, 32-byte/reference-cycle chip-wide aggregate DRAM bandwidth (4 bytes/reference-cycle static share per configured core), operation latencies and 3.0 GHz reference clock. This isolates the effect of execution and pipeline width in the current simplified model. The candidates are not yet constrained by physical area, power, wiring, queue implementation, bank-port availability or clock closure.
 
 The 8L4S profile tests whether a wider memory issue subsystem improves streaming and mixed workloads while keeping compute resources moderately sized. The wide-balanced profile additionally expands integer, FP, vector, branch and pipeline capacity. Balanced-128 keeps the wide-balanced execution/front-end widths but reduces the ROB-like window from 192 to 128 to test whether the larger window is necessary. The 8 LOAD + 4 STORE figures represent modeled concurrent issue slots, not a guarantee that every access completes in the same cycle: dependencies, memory latency, bank conflicts and later shared-controller arbitration still constrain throughput.
 
@@ -122,21 +122,21 @@ The 8L4S profile tests whether a wider memory issue subsystem improves streaming
 
 The report now includes:
 - dependency-blocked operation-cycle events;
-- issue-width-blocked operation events;
-- execution-unit-unavailable operation events;
+- issue-width-blocked operation-cycle events, counted only after dependency readiness is established;
+- execution-unit-unavailable operation-cycle events;
 - front-end bandwidth-limited cycles;
 - ROB-full cycles;
 - branch-recovery cycles;
 - cumulative modeled memory-latency exposure (`latency - 1` summed per issued LOAD/STORE); this is not measured stall time.
 
-These are diagnostic counters, not mutually exclusive wall-clock durations. Some count per-operation events and others count cycles; they must not be added together as elapsed time. The current per-core memory model can also understate contention because each simulated core still has private bank and DRAM scheduling state. The memory-latency exposure counter is descriptive latency accounting, not a count of cycles during which the pipeline was actually stalled. Shared memory arbitration must be implemented before treating 8L4S throughput as a realistic whole-chip prediction.
+These are diagnostic counters, not mutually exclusive wall-clock durations. Some count per-operation events and others count cycles; they must not be added together as elapsed time. The v0.2.3 model no longer grants each core the full 32-byte/reference-cycle chip-wide bandwidth: it caps each configured core at a static 4-byte/reference-cycle share. However, each simulated core still has private bank scheduling state, so same-bank conflicts between cores are not modeled. The fixed split can also underutilize bandwidth when some cores are idle; a lockstep global controller must replace it. The memory-latency exposure counter is descriptive latency accounting, not a count of cycles during which the pipeline was actually stalled. Shared memory arbitration must be implemented before treating 8L4S throughput as a realistic whole-chip prediction.
 
 ## 7. Roadmap
 
 | Version | Scope | Acceptance condition |
 |---|---|---|
 | v0.1 | Deterministic kernels, dependency scheduling, basic cache and bank approximation | Initial scaffold |
-| v0.2 | Controlled 8-core scheduling with equal reference clocks; dependency-component parallelism | Per-core partition and clock-normalization checks pass |\n| v0.2.1 | Experimental 8L4S and wide-balanced NEXSUS profiles; initial stall diagnostics | Compare candidate outputs and inspect dominant resource stalls |\n| v0.2.2 | Balanced-128 candidate; distinguish blocked-operation-cycle events from cycle counters and latency exposure | Run the 128-vs-192 window comparison and verify counter semantics |
+| v0.2 | Controlled 8-core scheduling with equal reference clocks; dependency-component parallelism | Per-core partition and clock-normalization checks pass |\n| v0.2.1 | Experimental 8L4S and wide-balanced NEXSUS profiles; initial stall diagnostics | Compare candidate outputs and inspect dominant resource stalls |\n| v0.2.2 | Balanced-128 candidate; distinguish blocked-operation-cycle events from cycle counters and latency exposure | Run the 128-vs-192 window comparison and verify counter semantics |\n| v0.2.3 | Enforce 32 B/cycle chip-wide DRAM cap through a static 4 B/cycle/core share | Verify bandwidth is not multiplied by core count; replace static split with global controller next |
 | v0.3 | Shared LLC/memory-controller contention, coherence, true P/E placement, SMT and NEXSUS P0/SPM/App RAM/L1–L4/8-bank/MEMXFER | Existing NEXSUS contracts represented without invented ISA |
 | v0.4 | Interrupts, exceptions, context save/restore, atomic operations and memory ordering | Architectural conformance scenarios pass |
 | v0.5 | Calibration against actual Ryzen 9 9950X and Core Ultra 9 285K measurements | Error bounds reported per kernel |
