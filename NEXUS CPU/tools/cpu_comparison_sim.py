@@ -461,14 +461,16 @@ class CommandFetchModel:
             if len(self.pool_pages) > max_pages:
                 self.pool_pages.popitem(last=False)
 
-    def _start_p0_prefetch(self, block: int, cycle: int):
+    def _start_p0_prefetch(self, block: int, cycle: int, allow_active_bank: bool = False):
         if block in self.p0_buffers or (self.p0_pending and self.p0_pending[0] == block):
             return
         if self.p0_pending is not None:
             return
         bank = block & 1
         if self.active_block is not None and bank == (self.active_block & 1):
-            return  # do not overwrite the bank currently consumed by CPU
+            if not allow_active_bank:
+                return  # do not overwrite a bank still consumed by sequential fetch
+            self.active_block = None  # branch redirect abandons the old sequential stream
         self._pool_touch(block)
         self.p0_pending = (block, cycle + self.refill_latency, bank)
         self.prefetches += 1
@@ -518,7 +520,7 @@ class CommandFetchModel:
             if self.p0_pending is not None:
                 self.prefetch_wait_cycles += 1
             else:
-                self._start_p0_prefetch(block, cycle)
+                self._start_p0_prefetch(block, cycle, allow_active_bank=not sequential)
             return False
         line = command_address // 64
         if self.lines.lookup(line):
