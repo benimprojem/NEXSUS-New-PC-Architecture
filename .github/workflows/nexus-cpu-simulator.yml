@@ -32,3 +32,5 @@ jobs:
         run: python test_cpu_comparison_sim.py
       - name: Run comparison smoke test
         run: python "NEXUS CPU/tools/cpu_comparison_sim.py" --scale 1 --json > /tmp/nexus-cpu-results.json
+      - name: Run four-way SPM P0 ablation
+        run: python "NEXUS CPU/tools/cpu_comparison_sim.py" --ablation --scale 1
