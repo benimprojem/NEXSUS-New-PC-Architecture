@@ -219,7 +219,8 @@ class SpmP0ModelTests(unittest.TestCase):
     def test_p0_capacity_and_refill_parameters_are_explicit(self):
         p0 = sim.CommandFetchModel(True)
         conventional = sim.CommandFetchModel(False)
-        self.assertEqual(p0.capacity_bytes, 16384)\n        self.assertEqual(p0.p0_buffer_bytes, 8192)
+        self.assertEqual(p0.capacity_bytes, 16384)
+        self.assertEqual(p0.p0_buffer_bytes, 8192)
         self.assertEqual(conventional.lines.capacity, 32768 // 64)
         self.assertEqual((p0.refill_latency, conventional.refill_latency), (128, 32))
     
