@@ -705,7 +705,7 @@ CPU ile ilgili teknik belgeler `NEXUS CPU/` klasöründe merkezi olarak tutulur.
 - [PX Manager — P0–P7 Instruction Page Pool](NEXUS%20CPU/NEXSUS-CPU-PX-MANAGER-001.md) — Eight equal 2 KiB executable-code slots, dynamically allocated from a shared pool.
 - [OS / PX / Context Control Interface](NEXUS%20CPU/NEXSUS-CPU-OS-PX-CONTEXT-INTERFACE-001.md) — Proposed privileged commands, OS/CPU responsibility split, PX page descriptors, context operations, and task-switch protocol.
 - [SPM0 Dual-Bank PX Code Feed](NEXUS%20CPU/NEXSUS-CPU-PX-MANAGER-001.md) — 4 KiB SPM0, two 2 KiB ping-pong code banks, and PX Manager-only PX_NEXT/PX_END metadata.
-- [Full Architecture Benchmark](NEXUS%20CPU/NEXSUS-CPU-FULL-ARCHITECTURE-BENCHMARK-001.md) — Shared workload suite and fair comparison plan for AMD Zen 5, Intel P-core, Intel E-core, and NEXSUS.
+- [Full Architecture Benchmark](NEXUS%20CPU/NEXSUS-CPU-FULL-ARCHITECTURE-BENCHMARK-001.md) — Shared workload suite and fair comparison plan for current AMD Zen 5, Intel Xeon Redwood Cove+, Apple ARM M6, and NEXSUS.
 - [CPU Comparison Simulator source](NEXUS%20CPU/tools/cpu_comparison_sim.py) — İlk çalıştırılabilir davranışsal simülatör prototipi.
 - [CPU Simulator Architecture](NEXUS%20CPU/NEXSUS-CPU-SIMULATOR-ARCHITECTURE-001.md) — NEXSUS ve referans CPU için ortak algoritma, fonksiyonel/çevrimsel simülasyon ve karşılaştırma planı.
 
