@@ -1220,4 +1220,106 @@ Aşağıdaki örnekler tam 64-bit hexadecimal makine kodu değildir; atanmış p
 - Geniş literal: EXT prefix + normal komut + COUNT adet **64-bit literal word**; ilk sürüm COUNT=1.
 - P0: 64-bit word kayıtları; EXT paketleri prefix, normal instruction ve COUNT kadar literal word tüketir.
 
+Bu belge, NEXSUS CPU instruction encoding için ilk ortak referanstır. Sayısal opcode değerleri ve açık kararlar kapatıldığında revizyon 1.0 olarak dondurulabilir### 8.4 Floating-point primary opcode atamaları
+
+Floating-point komutları için 0x50–0x5F aralığı ayrılmıştır. İlk sürümde 12 primary opcode atanmış, dört değer genişletme için boş bırakılmıştır.
+
+| OP | Mnemonic | Format | Açıklama |
+|---:|---|---|---|
+| 0x50 | FADD | R3 | FP toplama |
+| 0x51 | FSUB | R3 | FP çıkarma |
+| 0x52 | FMUL | R3 | FP çarpma |
+| 0x53 | FDIV | R3 | FP bölme |
+| 0x54 | FMA | R4 | Fused multiply-add |
+| 0x55 | FNEG | R2 | İşaret tersleme |
+| 0x56 | FABS | R2 | Mutlak değer |
+| 0x57 | FSQRT | R2 | Kare kök |
+| 0x58 | FMIN | R3 | IEEE minimumNumber davranışı |
+| 0x59 | FMAX | R3 | IEEE maximumNumber davranışı |
+| 0x5A | FCMP | R3 | FP karşılaştırma; koşul AUX alanında |
+| 0x5B | FCONV | XFER | Integer/FP sayısal dönüşüm |
+
+- 0x5C–0x5F FP ailesi için ayrılmıştır; ilk sürümde illegal/reserved kabul edilir.
+- FCMP R3 alanları: D=RA hedef selector'ı, A/B=FA kaynak selector'ları, W=FP32/FP64/FP128 biçimi. AUX[3:0] condition kodudur: 0000=EQ, 0001=NE, 0010=LT, 0011=LE, 0100=GT, 0101=GE, 0110=ORD, 0111=UNORD. AUX[31:4] sıfır olmalıdır. M=000 zorunludur.
+- FCMP.LT gibi assembly yazımları ayrı opcode değildir; FCMP opcode'u ve ilgili condition koduna çevrilen mnemonic alias'larıdır.
+- FCONV, XFER alan yerleşimini ve önceki FCONV payload tanımını kullanır; yalnızca primary opcode 0x5B olarak sabitlenmiştir.
+- FP128 kaynak/hedef FA pair ve even-start selector kuralları geçerlidir. Bu opcode atamaları FP latency, throughput veya exception edge-case kararlarını değiştirmez.
+
+## 9. Decoder ve P0 akışı
+
+- P0 her zaman 64-bit instruction word kayıtları tutar.
+- Decoder ilk 64-bit word üzerinden OP ve FMT alanlarını çözer.
+- Tek word komutlarda bir P0 kaydı tüketilir.
+- EXT kullanan komutlarda prefix, normal instruction ve belirtilen literal word'ler birlikte tüketilir.
+- Literal word normal opcode olarak decode edilmez.
+- Decode/dispatch sonrası komut uygun issue kuyruğuna gönderilir.
+- P0 kapasitesi, fetch genişliği ve issue sayısı birbirinden farklı kavramlardır; 512-bit fetch bir çevrimde sekiz 64-bit word getirebilir ancak sekiz komutun aynı çevrimde yürütüleceği anlamına gelmez.
+
+## 10. Exception ve illegal encoding ilkeleri
+
+Aşağıdaki durumlar illegal instruction veya ilgili erişim exception'ı üretmelidir:
+
+- Reserved FMT veya opcode kullanımı.
+- Reserved alanlarda sıfır dışında değer bulunması.
+- Register selector'ın 0–31 aralığı dışında olması (5-bit selector zaten bu aralığı sağlar; pair/group taşması ayrıca kontrol edilir).
+- FP128 için tek numaralı FA pair başlangıcı.
+- 512-bit ME512 için tek numaralı MA pair başlangıcı.
+- DA 4-register group erişiminin DA31 sınırını aşması veya hizalama şartını ihlal etmesi.
+- Komutun istediği register bankı ile kodlanan bankın uyuşmaması.
+- EXT paketinin normal instruction word'ünün veya gerekli literal word'lerinin kod belleği/P0 akışında bulunmaması.
+
+Exception türleri, trap vector ve hata raporlama ayrıntıları ayrı system-control bölümünde tanımlanacaktır.
+
+## 11. Örnek alan eşlemeleri
+
+Aşağıdaki örnekler tam 64-bit hexadecimal makine kodu değildir; atanmış primary opcode değerleri sembolik veya sayısal olarak gösterilmiştir.
+
+| Assembly | Format | Alanların yorumu |
+|---|---|---|
+| `ADD RA3, RA1, RA2` | R3 | OP=0x11, FMT_R3, D=3, A=1, B=2, W=64 |
+| `FADD FA4, FA1, FA2` | R3 | OP=0x50, FMT_R3, D=4, A=1, B=2, W=FP64 |
+| `FCMP.LT RA6, FA1, FA2` | R3 | OP=0x5A, FMT_R3, D=RA6, A=FA1, B=FA2, W=FP64, AUX[3:0]=0010 |
+| `VADD.W32 MA8, MA4, MA12` | R3 | OP_VADD, FMT_R3, D=8, A=4, B=12, W=32 |
+| `FMA FA4, FA1, FA2, FA3` | R4 | OP_FMA, FMT_R4, D=4, A=1, B=2, C=3, W=FP64 |
+| `VMACC.W32 MA8, MA4, MA12, MA16` | R4 | OP_VMACC, FMT_R4, D=8, A=4, B=12, C=16, W=32 |
+| `LOAD.L1 DA12, [RA20+16]` | MEM | D=12, BASE=20, W=64, AM=000 (L1), DISP=16 |
+| `MOV.FA.DA FA3, DA12` | XFER | DB=FA, DI=3, SB=DA, SI=12, W=64 |
+| `MOV.MA.DA MA4, DA0:DA3` | XFER | DB=MA, DI=4, SB=DA, SI=0, W=256 |
+| `CAS.ACQ_REL.L2.W64 DA2, [RA10], DA3, DA4` | ATOM | D=2, BASE=10, A=3, B=4, W=64, AM=L2, ORDER=ACQ_REL |
+
+## 12. Henüz dondurulmamış kararlar
+
+- MEMUPD/MEMXUPD ve ATOM opcode numaraları §8.5 ile atandı; assembler mnemonic alias tablosunun ayrıntılı canonical spelling listesi ayrıca tamamlanacaktır.
+- ATOM ordering, scalar 8/16/32/64-bit işlemler ve CAS/SWAP/FETCH_* operand semantiği taslak olarak tanımlandı; fiziksel coherence, arbitration ve bank locking mikro-mimari aşamasında belirlenecek.
+
+1. OP ve FMT sayısal kodlarının nihai tablosu.
+3. EXT opcode'unun numeric değeri ve gelecekte COUNT>1 çoklu literal semantiği.
+4. DA↔MA 256/512-bit grup hizalaması ISA/encoding düzeyinde tanımlandı; mikro-mimari transfer portları ve timing'i açık.
+6. MA/FA pair komutlarının opcode ve exception ayrıntıları.
+7. Branch displacement'in packet başlangıcına göre hesaplanması ve koşul kodları tanımlandı; branch hedef doğrulama fault ayrıntıları exception bölümünde tamamlanacak.
+8. SYS formatının system register/privilege alanları.
+9. Komutlarda predicate/condition alanı gerekip gerekmediği.
+10. Reserved bitlerin gelecekteki uyumluluk politikası.
+11. FCONV için NaN, infinity, integer overflow ve saturating/trap durumlarının kesin exception sonuçları.
+12. FP exception sticky flag'lerinin (FPSR) mimari görünürlüğü ve SYS üzerinden okuma/temizleme komutları.
+13. FCMP koşul kodlarının ve AUX reserved bitlerinin assembler doğrulaması; FCMP primary opcode ve condition alanı atanmıştır.
+
+---
+
+## 13. Tasarım özeti
+
+- Temel instruction word: **64 bit**.
+- Primary opcode: **8 bit**.
+- Format selector: **4 bit**.
+- Register selector: **5 bit** (her bankta 32 kayıt).
+- Register bank kodu: **2 bit** (yalnızca genel XFER formatında).
+- Immediate: temel RI formatında **signed 36 bit**.
+- Memory displacement: MEM için **signed 32 bit**, MEMUPD için **signed 34 bit**, MEMX için **signed 28 bit**, MEMXUPD için **signed 26 bit**, 64-bit RA base ile.
+- Otomatik adres güncelleme: MEMUPD/MEMXUPD, POST/PRE increment/decrement; miktar W/8 byte, yalnızca başarılı bellek erişiminde commit.
+- MEM domain seçimi: AM[2:1] ile L1/L2/L3/L4; AM[0]=0 base + displacement.
+- LOAD/STORE erişim genişliği ve DA grup dağılımı: 8–512 bit; 1/2/4/8 ardışık DA kaydı.
+- Branch displacement: **signed 32 bit**.
+- Geniş literal: EXT prefix + normal komut + COUNT adet **64-bit literal word**; ilk sürüm COUNT=1.
+- P0: 64-bit word kayıtları; EXT paketleri prefix, normal instruction ve COUNT kadar literal word tüketir.
+
 Bu belge, NEXSUS CPU instruction encoding için ilk ortak referanstır. Sayısal opcode değerleri ve açık kararlar kapatıldığında revizyon 1.0 olarak dondurulabilir.
