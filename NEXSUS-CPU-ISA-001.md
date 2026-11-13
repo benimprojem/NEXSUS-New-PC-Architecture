@@ -98,9 +98,30 @@ LOAD ve STORE veri belleği ile DA bankı arasında çalışır. Scalar hesaplam
 | MOV.DA.RA | DA, RA | RA'dan DA staging'e 64-bit aktarım | Register path |
 | MOV.FA.DA | FA, DA | DA bitlerini FA kayıt konteynerine aktarma | Register path |
 | MOV.DA.FA | DA, FA | FA kayıt bitlerini DA staging'e aktarma | Register path |
-| MOV.MA.DA | MA, DA | DA verisini MA operandına paketleme/yükleme | Matrix data path |
-| MOV.DA.MA | DA, MA | MA dilimini DA staging'e alma | Matrix data path |
+| MOV.MA.DA | MA, DAx:DAx+3 | Dört ardışık DA kaydındaki 256-bit veriyi MA'ya yükleme | Matrix data path |
+| MOV.DA.MA | DAx:DAx+3, MA | MA'daki 256-bit veriyi dört ardışık DA kaydına alma | Matrix data path |
 | COPY | dst, src, length | Bellek alanı/blok kopyalama | Transfer path (TBD) |
+
+DAx:DAx+3 gösterimi dört ardışık 64-bit DA kaydını, toplam 256-bit veri grubunu ifade eder; register aralığı DA31'i aşamaz. Grup hizalama kuralı ve register portlarının mikro-mimari yerleşimi ayrıca belirlenecektir.
+
+Örnek bank akışı:
+
+```asm
+LOAD DA12, [RA20]
+MOV.RA.DA RA05, DA12
+ADD RA06, RA05, RA02
+
+MOV.FA.DA FA03, DA12
+FADD FA04, FA03, FA02
+FCONV RA07, FA04, i64
+
+MOV.MA.DA MA04, DA00:DA03
+VADD.W32 MA08, MA04, MA12
+MOV.DA.MA DA04:DA07, MA08
+STORE [RA21], DA04
+```
+
+Bu örnek operand banklarını ve açık transferleri gösterir; kesin opcode encoding'i, erişim genişlikleri ve alignment kuralları ayrı ISA aşamasında sabitlenecektir.
 
 Memory adres genişliği 64-bit olabilir; register selector genişlikleri bundan bağımsızdır.
 
