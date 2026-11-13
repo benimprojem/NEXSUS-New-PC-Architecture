@@ -4,11 +4,14 @@
 
 Bu CPU mimarisinin temel amacı, klasik işlemci tasarımlarında farklı görevler için aynı register ve bellek yapılarının kullanılmasından kaynaklanan veri erişim darboğazlarını azaltmak ve işlemcinin farklı işlem türlerini fiziksel olarak ayrıştırmaktır.
 
-Mimari üç temel register alanı üzerine kuruludur:
+Mimari dört bağımsız register bankı üzerine kuruludur:
 
-- **RA00–RA63:** Application / Scalar Register Bank
-- **DA00–DA63:** Data Register Bank
-- **MA00–MA31:** Matrix / Vector Register Bank
+- **RA0–RA31:** Integer / Scalar Register Bank — 32 × 64-bit
+- **FA0–FA31:** Floating-Point Register Bank — 32 × 64-bit
+- **DA0–DA31:** Data Staging / Transfer Register Bank — 32 × 64-bit
+- **MA0–MA31:** Matrix / Vector Register Bank — 32 × 256-bit
+
+RA, FA, DA ve MA ayrı fiziksel banklardır. RA'nın RB/RC/RD alt genişlik görünümleri yalnızca RA kayıtlarına uygulanır.
 
 Bunlara ek olarak kod belleği ve veri belleği birbirinden fiziksel ve mantıksal olarak ayrılır.
 
@@ -30,14 +33,14 @@ Temel yapı:
                 Scalar Path   Vector/Matrix Path
                       │       │
               ┌───────▼───┐ ┌─▼────────────┐
-              │ RA00-RA63 │ │ MA00-MA31    │
+              │ RA00-RA31 │ │ MA00-MA31    │
               │ 64 × 64b  │ │ 32 × 256b   │
               └───────┬───┘ └──────┬───────┘
                       │            │
                    Scalar ALU   Matrix/Vector ALU
                       │            │
               ┌───────▼───┐        │
-              │ DA00-DA63 │◄───────┘
+              │ DA00-DA31 │◄───────┘
               │ 64 × 64b  │
               └───────┬───┘
                       │
@@ -149,18 +152,18 @@ RA00
 RA01
 RA02
 ...
-RA61
-RA62
-RA63
+RA29
+RA30
+RA31
 ```
 
 Toplam:
 
 $$\[
-64 \times 64 = 4096\text{ bit}
+32 \times 64 = 2048\text{ bit}
 \]$$
 
-yani toplam **512 byte** fiziksel register kapasitesi bulunur.
+yani toplam **256 byte** fiziksel register kapasitesi bulunur.
 
 Her RA registerı 64 bittir.
 
@@ -179,7 +182,7 @@ gibi işlemleri gerçekleştirmektir.
 
 Önemli nokta:
 
-**RA00–RA63 bir adres değeri taşıyan registerlar değildir.**
+**RA00–RA31 bir adres değeri taşıyan registerlar değildir.**
 
 Bunların kendileri CPU içindeki fiziksel register seçimleridir.
 
@@ -207,7 +210,34 @@ gibi ikinci bir register adresleme katmanı bulunmaz.
 
 ---
 
-# 5. DA Register Bank
+# 5. FA Register Bank
+
+FA register bankı floating-point işlemleri için RA'dan fiziksel olarak ayrılmıştır. Böylece integer ALU ve FPU operand erişimleri aynı register portları üzerinde yarışmaz.
+
+```text
+FA00
+FA01
+FA02
+...
+FA29
+FA30
+FA31
+```
+
+Toplam kapasite:
+
+$\[
+32 \times 64 = 2048\text{ bit} = 256\text{ byte}
+\]$
+
+- FP32 ve FP64 değerler tek FA kaydında tutulur.
+- FP128 değerler çift numaralı FA kaydından başlayan iki ardışık kaydı kullanır: FA00:FA01, FA02:FA03, …, FA30:FA31.
+- Pair'in ilk kaydı düşük 64-bit, sonraki kaydı yüksek 64-bit dilimdir.
+- FA kayıtları RA'nın RB/RC/RD görünümlerini paylaşmaz; ayrı banktır.
+
+---
+
+# 6. DA Register Bank
 
 DA register bankı doğrudan veri yolu ile ilişkili register alanıdır.
 
@@ -215,8 +245,9 @@ DA register bankı doğrudan veri yolu ile ilişkili register alanıdır.
 DA00
 DA01
 ...
-DA62
-DA63
+DA29
+DA30
+DA31
 ```
 
 Toplam:
@@ -466,27 +497,17 @@ Bu mimaride kritik bir tasarım prensibi vardır:
 
 **CPU içindeki register seçimi ile dış bellek adreslemesi aynı şey değildir.**
 
-RA register bankı için:
+RA ve FA register banklarının her biri 32 kayıt içerir:
 
-$$\[
-64=2^6
-\]$$
+$\[
+32=2^5
+\]$
 
-dolayısıyla register seçimi için:
-
-\[
-6\text{ bit}
-\]
+dolayısıyla RA ve FA kayıt seçimi için ayrı ayrı **5 bit** yeterlidir.
 
 yeterlidir.
 
-DA için de:
-
-$$\[
-6\text{ bit}
-\]$$
-
-gerekir.
+DA için de 32 kayıt bulunduğundan **5 bit** gerekir. MA için 32 adet 256-bit kayıt bulunduğundan register seçimi yine **5 bit** gerektirir.
 
 MA için:
 
@@ -545,11 +566,11 @@ Yeni mimaride ise application state'in önemli bölümü RA register bankında t
 Örneğin:
 
 ```text
-RA00–RA15 → parameters
-RA16–RA31 → local state
-RA32–RA47 → temporaries
-RA48–RA55 → pointers
-RA56–RA63 → return / control state
+RA00–RA07 → parameters
+RA08–RA15 → local state
+RA16–RA23 → temporaries
+RA24–RA27 → pointers
+RA28–RA31 → return / control state
 ```
 
 Bu yalnızca örnek bir register allocation modelidir; registerların sabit görevlerle sınırlandırılması zorunlu değildir.
@@ -1047,6 +1068,8 @@ Her çekirdeğe **1 adet 512-bit Matrix Engine (ME)** eklenir.
 | Matrix Engine | 1 × 512-bit | Temel hedef |
 
 ## 22.5 Register ve SPM bağlantısı
+
+Register banklarının görevleri ISA operand kurallarıyla eşleşir: RA integer/scalar, FA floating-point, DA data staging, MA vector/matrix. Load/store DA'yı kullanır; integer komutlar RA'yı, FP komutlar FA'yı, vector/matrix komutları MA'yı hedefler. Register bankları arasında yalnızca açık ve tanımlı transfer/dönüşüm komutları kullanılır.
 
 - RA/RB/RC/RD görünümleri scalar ALU'ların operand ve sonuç alanıdır.
 - DA bankı data transfer ve staging görevini sürdürür.
