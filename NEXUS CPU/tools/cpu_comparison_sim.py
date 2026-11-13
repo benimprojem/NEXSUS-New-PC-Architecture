@@ -321,8 +321,7 @@ class SharedMemoryController:
                     max(self.bank_busy), self.bus_next_cycle
                 ),
             }
-        last_core = int(ordered[-1]["core"])
-        self.rr_cursor = (core_ids.index(last_core) + 1) % len(core_ids)
+        self.rr_cursor = (start + 1) % len(core_ids)
         return result
 
 
