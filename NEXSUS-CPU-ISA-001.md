@@ -159,6 +159,8 @@ MOVI64 RA4, 0x123456789ABCDEF0
 | BEXT | dst, src, start, width | Seçilen bit aralığını çıkarır; sonuç zero-extend edilir | ALU |
 | BINS | dst, src, start, width | Kaynağın düşük bitlerini hedefte seçilen aralığa yerleştirir; diğer bitleri korur | ALU |
 
+**Primary opcode eşlemesi:** AND/OR/XOR ve immediate alias'ları 0x1D–0x1F; NOT, shift/rotate ve BSET/BCLR/BTST/BEXT/BINS komutları 0x30–0x3A aralığındadır. Numeric atamalar ve alan kısıtları Instruction Encoding belgesi bölüm 8.1'de tanımlıdır.
+
 ### 4.2 Shift, rotate ve bit komutları
 
 - SHL/SHR/SAR/ROL/ROR işlemleri seçili W genişliğinde çalışır; W yalnızca 8/16/32/64 olabilir.
