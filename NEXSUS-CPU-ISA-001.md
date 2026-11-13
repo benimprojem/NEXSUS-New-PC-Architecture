@@ -70,6 +70,8 @@ Bu bölümdeki scalar/integer komutlarının kaynak ve hedef operandları RA0–
 | ABS | dst, src | Mutlak değer | ALU |
 
 
+**Primary opcode eşlemesi:** Scalar/integer/logic komutlarının numeric opcode'ları `NEXSUS-CPU-INSTRUCTION-ENCODING-001.md` bölüm 8.1'de atanmıştır. ADD/ADDI, SUB/SUBI ve AND/ANDI, OR/ORI, XOR/XORI aynı primary opcode'u R3 ve RI formatlarıyla paylaşır. DIV/MOD/MIN/MAX signedness'i opcode yerine R3 M[0] alanından seçer; CMP koşulu AUX[3:0] alanındadır.
+
 ### 3.2 Scalar integer aritmetik semantiği
 
 Bu bölüm, scalar integer komutlarının ilk ISA sürümündeki ortak davranışını tanımlar.
@@ -136,7 +138,7 @@ MOVI RA1, -17
 MOVI64 RA4, 0x123456789ABCDEF0
 ```
 
-İkinci örnek üç 64-bit word tüketir: EXT prefix, MOVI instruction ve literal. Numeric opcode ataması henüz yapılmamıştır.
+İkinci örnek üç 64-bit word tüketir: EXT prefix, MOVI instruction ve literal. LOAD/STORE numeric opcode atamaları henüz yapılmamıştır.
 
 ## 4. Bit ve Boolean komutları
 
@@ -354,7 +356,7 @@ LOAD.POSTINC.L1.W64 DA2, [RA4 + RA5*2 + 8]
 STORE.POSTINC.L3.W256 [RA20], DA8:DA11
 ```
 
-POSTINC/PREINC/POSTDEC/PREDEC, assembler mnemonic suffix'leridir. Sayısal opcode ataması yapılmamıştır; encoding alan yerleşimi `NEXSUS-CPU-INSTRUCTION-ENCODING-001.md` içinde MEMUPD/MEMXUPD olarak tanımlanır.
+POSTINC/PREINC/POSTDEC/PREDEC, assembler mnemonic suffix'leridir. Numeric opcode ataması encoding belgesinde henüz yapılmamıştır; encoding alan yerleşimi `NEXSUS-CPU-INSTRUCTION-ENCODING-001.md` içinde MEMUPD/MEMXUPD olarak tanımlanır.
 
 ### 5.5 Atomic bellek işlemleri
 
@@ -419,7 +421,7 @@ FETCH_ADD.RELAXED.L1.W64 DA7, [RA14], DA8
 FETCH_AND.ACQ_REL.L4.W64 DA9, [RA20], DA10
 ```
 
-Bu mnemonic'ler sembolik assembly gösterimleridir. ATOM formatının bit yerleşimi ve ORDER kodları `NEXSUS-CPU-INSTRUCTION-ENCODING-001.md` belgesinde tanımlanır; numeric opcode ataması henüz yapılmamıştır.
+Bu mnemonic'ler sembolik assembly gösterimleridir. ATOM formatının bit yerleşimi ve ORDER kodları `NEXSUS-CPU-INSTRUCTION-ENCODING-001.md` belgesinde tanımlanır; numeric opcode ataması encoding belgesinde henüz yapılmamıştır.
 
 ## 6. SPM komutları
 
