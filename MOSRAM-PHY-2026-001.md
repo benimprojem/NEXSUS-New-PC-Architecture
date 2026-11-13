@@ -3039,3 +3039,15 @@ Sonuçta bütün sistemi şöyle düşünebiliriz:
 
 Bundan sonraki teknik çalışmada bence **en kritik üç blok: `READ → WRITE → ERASE`**. 
 Çünkü bunları hücrenin gerçek elektriksel davranışına bağlamadan kontrol ve güç mimarisini kesinleştirmek erken olur.
+
+
+# 29. CPU bank topology ile arayüz notu
+
+NEXSUS CPU'nun önerilen bellek organizasyonu, her bankada 64-bit yerel veri dilimi bulunan **8 fiziksel banklı bir bank group** modelidir. Bu CPU arayüzü önerisi, bu belgedeki 64-bit paralel sense bloğuyla genişlik bakımından eşleştirilmiştir; ancak iki kavram otomatik olarak aynı fiziksel nesne değildir.
+
+- 64-bit sense bloğu, bir fiziksel bankanın yerel okuma/sense veri yolu olarak uygulanabilir.
+- 8×64 mimarisi, sekiz adet 64-bit bloktan oluşan 512-bit aggregate yol hedefidir. Bunun sekiz ayrı fiziksel bank, tek bank içindeki sekiz sense slice veya başka bir yerleşim olarak gerçekleştirilmesi transistor/array layout ve routing doğrulamasına bağlıdır.
+- CPU bellek topolojisi için sekiz bağımsız bank ve 8-byte interleave başlangıç önerisidir. MOSRAM hücre dizisi, prob kuplajı, sense amplifier yerleşimi, write path ve güç dağıtımı bu yapıyı doğrulamadan kesin fiziksel bank düzeni kabul edilmemelidir.
+- App RAM ve Data RAM ayrı fiziksel bellekler ve ayrı controller yolları olarak kalır; CPU bank-group önerisi her iki yola bağımsız uygulanabilir.
+
+CPU tarafındaki bank sayısı, adres interleaving ve bant genişliği varsayımları [NEXSUS-CPU-MEMORY-BANK-TOPOLOGY-001.md](NEXUS%20CPU/NEXSUS-CPU-MEMORY-BANK-TOPOLOGY-001.md) belgesinde tanımlanır. Bu bölüm MOSRAM fiziksel doğrulamasının yerine geçmez.
