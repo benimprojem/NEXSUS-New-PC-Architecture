@@ -4,7 +4,7 @@
 **Durum:** ISA taslak / komut aileleri ve kaynak eşlemesi  
 **Bağlı mimari:** Yeni Nesil Ayrıştırılmış Register Tabanlı CPU Mimarisi
 
-> Bu belge mnemonic'leri, operand rollerini ve execution-unit eşlemesini tanımlar. 64-bit komut sözcüğü ve operand alanlarının ilk encoding taslağı ayrı [Instruction Encoding Specification](NEXSUS-CPU-INSTRUCTION-ENCODING-001.md) belgesindedir. Sayısal opcode atamaları ve açık kararlar henüz dondurulmamıştır.
+> Bu belge mnemonic'leri, operand rollerini ve execution-unit eşlemesini tanımlar. 64-bit komut sözcüğü ve operand alanlarının ilk encoding taslağı ayrı [Instruction Encoding Specification](NEXSUS-CPU-INSTRUCTION-ENCODING-001.md) belgesindedir. Sayısal opcode atamaları ve bazı açık mikro-mimari kararlar henüz dondurulmamıştır. Bellek byte sıralaması little-endian'dır.
 
 ## 1. Çekirdek Execution Unit konfigürasyonu
 
@@ -112,6 +112,19 @@ LOAD ve STORE veri belleği ile DA bankı arasında çalışır. Bellek domain'i
 | COPY | dst, src, length | Bellek alanı/blok kopyalama | Transfer path (TBD) |
 
 DAx:DAx+3 dört ardışık 64-bit DA kaydını, toplam 256-bit grubu ifade eder. XFER ile 256-bit MA aktarımında DA başlangıç selector'ı 4'ün katı olmalıdır (0,4,…,28). 512-bit MA pair aktarımında sekiz DA kaydı kullanılır; DA başlangıcı 8'in katı olmalıdır (0,8,16,24) ve MA pair başlangıcı çift selector olmalıdır. Bu hizalama yalnızca tam MA register/pair XFER işlemleri içindir. LOAD/STORE'da DA selector ilk kaydı gösterir; W=8/16/32/64 için 1, W=128 için 2, W=256 için 4, W=512 için 8 kayıt kullanılır. MEM erişimlerinde DA başlangıcı için ek selector hizalaması aranmaz; DA aralığının DA31'i aşmaması yeterlidir.
+
+## 5.3 Little-endian bellek ve register-grup sıralaması
+
+NEXSUS CPU, veri belleği ve SPM byte erişimlerinde **little-endian** kullanır. En düşük bellek adresi, çok byte'lı değerin en düşük anlamlı byte'ını taşır.
+
+- 64-bit değerin bit[7:0] alanı en düşük adreste, bit[63:56] alanı en yüksek adreste bulunur.
+- 128/256/512-bit LOAD işlemlerinde en düşük adresli 64-bit parça ilk DA kaydına yazılır; sonraki parçalar artan adres sırasıyla artan DA selector'larına yerleştirilir. STORE ters yönde aynı eşlemeyi kullanır.
+- FA128 pair'inde düşük anlamlı 64 bit çift indisli ilk FA kaydında, yüksek anlamlı 64 bit sonraki FA kaydındadır.
+- 512-bit MA pair'inde düşük anlamlı 256 bit ilk MA kaydında, yüksek anlamlı 256 bit sonraki MA kaydındadır. DA grubu kullanılıyorsa en düşük DA selector'ı en düşük anlamlı 64-bit parçayı tutar.
+- 64-bit instruction word'leri bellekten/P0'a little-endian byte sırasıyla alınır. EXT çok sözcüklü komutunda literal word, ana word'ü izleyen daha yüksek adresli word'dür; literal'in byte sıralaması da little-endian'dır.
+- Little-endian, register bit numaralandırmasını veya encoding alanlarının mantıksal word içindeki bit konumlarını değiştirmez.
+
+Bu sıralama ISA düzeyinde sabittir; bellek denetleyicisi ve bus byte-lane eşlemesi mikro-mimari uygulama ayrıntısıdır.
 
 ### 5.2 DA↔MA çoklu kayıt XFER kuralları
 
