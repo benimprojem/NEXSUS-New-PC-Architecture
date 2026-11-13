@@ -1237,7 +1237,7 @@ NEXSUS CPU'da program komutları ile uygulama verileri farklı RAM alanlarında 
 P0 komut fetch ön belleğidir. SPM alanları CPU'nun yürütme sırasında ihtiyaç duyduğu geçici çalışma durumunu ve verileri doğrudan adreslenebilir biçimde saklar.
 
 - **SPM0:** Yürütme sırasında oluşan geçici komutsal durum, ara değerler ve sonuçlar için kullanılır. Stack benzeri geçici saklama işlevi görür; fakat LIFO zorunluluğu yoktur ve doğrudan adreslenir.
-- SPM0 toplam 32 KiB'tır; 8 × 4 KiB sayfadan oluşur. Her sayfada 512 adet 64-bit kayıt bulunur.
+- SPM0 toplam 2 KiB'tır ve 256 adet 64-bit temel kayıt içerir. 8/16/32-bit erişimler kayıt içindeki alanları, 128/256/512-bit erişimler gerektiğinde ardışık temel kayıtları kapsar.
 - **SPM1–SPM7:** Aynı doğrudan adreslenebilir modeli veri tarafında uygular; geçici veriler ve ara hesaplama değerleri burada tutulur. Her biri 8 KiB kapasitelidir (toplam 56 KiB); byte adresleme ve 8/16/32/64/128/256/512-bit erişim genişlikleri desteklenir.
 - SPM0–SPM7, P0'dan komut kopyalamak için kullanılmaz. P0'ın görevi komutları App RAM'den fetch etmektir; SPM alanlarının görevi yürütme sırasında oluşan çalışma durumunu saklamaktır.
 - SPM0–SPM7'nin fiziksel bank/port düzeni ve geniş erişimlerdeki hizalama/sınır davranışı sonraki mikro-mimari aşamasında kesinleştirilecektir.
