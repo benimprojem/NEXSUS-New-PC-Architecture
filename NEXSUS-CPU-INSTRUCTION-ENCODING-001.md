@@ -901,7 +901,7 @@ OP alanı 8-bit olduğundan 256 primary opcode değeri sunar. İlk aşamada opco
 | 0x50–0x5F | Floating point / conversion | 0x50–0x5B atandı; 0x5C–0x5F ayrıldı |
 | 0x60–0x83 | Vector / Matrix / ME512 | Alt aile aralığı ayrıldı; aşağıda 0x60–0x82 atandı |
 | 0x84–0x93 | Atomic extension / register transfer | 0x84 ATOM.FETCH_XOR; 0x85 XFER; 0x86–0x93 reserved |
-| 0x94–0xA3 | SPM access / SPM control | Aile aralığı ayrıldı; bireysel atamalar açık |
+| 0x94–0xA3 | System / IRQ / synchronization | 0x94–0x9B atandı; 0x9C–0xA3 reserved |
 | 0xA4–0xC3 | System / synchronization | Aile aralığı ayrıldı; bireysel atamalar açık |
 | 0xC4–0xEF | Reserved / future extensions | Ayrılmış |
 | 0xF0–0xFF | Escape / EXT / implementation-defined | Ayrılmış; EXT için bireysel değer açık |
@@ -1327,3 +1327,21 @@ Aşağıdaki örnekler tam 64-bit hexadecimal makine kodu değildir; atanmış p
 - P0: 64-bit word kayıtları; EXT paketleri prefix, normal instruction ve COUNT kadar literal word tüketir.
 
 Bu belge, NEXSUS CPU instruction encoding için ilk ortak referanstır. Sayısal opcode değerleri ve açık kararlar kapatıldığında revizyon 1.0 olarak dondurulabilir.
+
+### 8.6 System / IRQ / CSR primary opcode baseline
+
+The 0x94–0xA3 window is the privileged system-control family. CSR identifiers are 12-bit operands and are not primary opcodes.
+
+| OP | Mnemonic | Format | Behavior |
+|---:|---|---|---|
+| 0x94 | CSRR | SYS | Read CSR into RA destination |
+| 0x95 | CSRW | SYS | Write RA source to CSR |
+| 0x96 | CSRS | SYS | Atomically set selected CSR bits from RA source |
+| 0x97 | CSRC | SYS | Atomically clear selected CSR bits from RA source |
+| 0x98 | IRQON | SYS | Set STATUS.IE=1 (privileged policy; user cannot enable global IRQ) |
+| 0x99 | IRQOFF | SYS | Set STATUS.IE=0; permitted to disable at current privilege under policy |
+| 0x9A | WFI | SYS | Wait until an eligible interrupt/event or implementation-defined wake source; wake does not imply handler acceptance |
+| 0x9B | IRET | SYS | Privileged exception/IRQ return; restores EPC and saved context |
+| 0x9C–0xA3 | Reserved | — | Illegal in first ISA release |
+
+**SYS payload baseline:** CSR ID[11:0], RA selector[4:0], operation flags and reserved bits. Exact SYS bit positions and CSRR/CSRW operand direction will be detailed in the SYS format section before encoding is frozen. IRQCLAIM/IRQEOI are CSR side-effect accesses (CSR 0x014/0x015), not separate payload-transfer instructions.
