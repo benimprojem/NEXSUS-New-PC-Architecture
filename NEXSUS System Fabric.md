@@ -558,6 +558,31 @@ Bu nedenle QoS mekanizması starvation önleme kurallarına sahip olmalıdır.
 
 ---
 
+
+# 17.1 Adil arbitration ve starvation koruması
+
+QoS önceliği, düşük öncelikli bir isteğin sonsuza kadar bekletilmesi anlamına gelmez. Fabric Scheduler, hedef kaynak ve ilgili bank/port başına ağırlıklı adil servis uygular; bekleme süresi arttıkça isteğin etkin önceliğini yükselten aging mekanizması kullanır.
+
+Önerilen servis sınıfları:
+
+- **URGENT:** Sistem ilerlemesi veya gerçek zamanlı tepki için sınırlı gecikme bütçesi olan donanımca yetkilendirilmiş talepler.
+- **LATENCY-SENSITIVE:** Gecikme hedefi olan CPU/Fabric/Node talepleri.
+- **NORMAL:** Olağan etkileşimli ve CPU talep trafiği.
+- **BULK:** Büyük MEMXFER, DMA ve sürekli payload akışları.
+- **BACKGROUND:** Ertelenebilir bakım ve arka plan trafiği.
+
+Kurallar:
+
+1. URGENT trafik sınırlı rezervasyon/bütçeyle servis edilir. Bütçe dolduğunda NORMAL, BULK ve BACKGROUND sınıflarına da servis verilmelidir.
+2. Diğer sınıflar ağırlıklı round-robin veya deficit-based adil zamanlama ile servis edilir. Ağırlıklar konfigüre edilebilir; etkin sınıflardan hiçbiri sıfır servis payına sahip olamaz.
+3. Yaşlanan istekler etkin öncelik kazanır. Yeni gelen yüksek öncelikli trafik, uzun süredir bekleyen bir isteği sürekli geçemez.
+4. Büyük transferler sınırlı beat/chunk quantum'larına ayrılır. Scheduler quantum sınırında başka istekleri araya alabilir; transfer state'i ve kaynak tahsisi güvenli biçimde korunur.
+5. Arbitration hedef kaynak/bank/port kapsamında yereldir. Bağımsız hedefler ve bankalar ortak bir global sıra yüzünden durdurulmaz.
+6. Hedefin backpressure uygulaması isteği kaybetmez veya zorla teslim etmez; istek kuyruğunda kalır ve adil servis/aging kurallarına tabi olur.
+
+CPU bellek erişimleri için URGENT sınıfının hangi koşullarda üretileceği ve SPM7/Data RAM context-frame ayrımı `NEXSUS-CPU-SRA-001.md` ile `NEXSUS-CPU-MEMORY-ACCESS-CONTROL-001.md` belgelerinde tanımlanır. Bu sınıflar donanım içi QoS metadata'sıdır; yeni ISA komutu veya yazılıma açık register gerektirmez.
+
+Kesin ağırlıklar, quantum büyüklüğü ve cycle bazlı gecikme hedefleri, gerçek clock-domain, bank ve lane konfigürasyonlarıyla performans ölçümü sonrasında seçilir. Starvation koruması ve bounded burst mimari gerekliliktir.
 # 18. Hata Yönetimi
 
 Fiziksel sistemlerde mutlak anlamda "sıfır hata" garanti edilemez.
