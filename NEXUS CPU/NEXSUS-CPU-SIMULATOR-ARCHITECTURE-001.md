@@ -261,3 +261,22 @@ A required ablation matrix is:
 5. dual-bank under competing task/code-refill pressure.
 
 For each profile report instruction-fetch stalls, bank-switch bubbles, refill overlap ratio, percentage of boundaries READY on time, useful bytes transferred, wasted bytes transferred, and task-switch interactions. The simulator must not assume zero-stall operation: it should derive stalls from the configured source latency and transfer service model.
+
+
+## 15. Current comparison profiles and branch prediction
+
+The comparison set is refreshed to current product families:
+- AMD Ryzen 9 9950X3D2 Dual Edition (Zen 5, 16 cores);
+- Intel Xeon 698X (Redwood Cove+, 86 P-cores);
+- Apple M6 (12-core ARM SoC: 2 super, 4 performance, 6 efficiency cores);
+- NEXSUS CPU (current 8-core proposal).
+
+Run each at its native core count and also run a normalized 8-core subset. Native package throughput and per-core efficiency must be reported separately. The current simulator represents Apple M6 with a provisional homogeneous weighted profile; a heterogeneous scheduler with distinct super/performance/efficiency core queues is a required next model stage.
+
+### 15.1 Branch prediction
+
+A short branch target distance does not remove branch prediction's value. Misprediction recovery can starve a wide front end even when the target lies in the same 2 KiB code page.
+
+NEXSUS candidate: compact 2-bit direction predictor plus a small BTB, with static fallback. Predictor/BTB tags use logical PC, not physical SPM0-A/B bank addresses. Same-page and cross-page targets must both work. PX_NEXT/PX_END remain PX Manager metadata and are not CPU instructions.
+
+The simulator's current branch prediction model uses deterministic workload-class miss-rate assumptions for sensitivity only. It is not a cycle-accurate 2-bit predictor or a claim about vendor predictor accuracy. Next implementation stage: per-branch predictor state, BTB capacity/associativity, aliasing, warm-up, and branch-outcome traces. Compare NEXSUS predictor-off and compact-predictor variants against the reference profiles.
