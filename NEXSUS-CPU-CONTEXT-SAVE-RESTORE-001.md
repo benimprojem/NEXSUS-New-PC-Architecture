@@ -250,7 +250,7 @@ The baseline per-core SPM allocation is now explicitly partitioned by role. Each
 
 | Bank | Capacity | Owner / role |
 |---|---:|---|
-| SPM0 | 8 KiB | CPU execution workspace; existing role |
+| SPM0 | 2 KiB | CPU execution workspace; existing role |
 | SPM1 | 8 KiB | OS-only workspace and OS-defined syscall/I/O exchange area |
 | SPM2 | 8 KiB | OS-managed resident task-context pool |
 | SPM3 | 8 KiB | User/programmer-addressable workspace |
@@ -309,9 +309,9 @@ This overlap is an implementation opportunity, not a guarantee that context rest
 | OS workspace + syscall exchange (SPM1) | 8 KiB |
 | User/programmer workspace (SPM3) | 8 KiB |
 | Resident task register-context pool (SPM2, SPM4–SPM6) | 32 KiB |
-| Execution workspace (SPM0) | 8 KiB |
+| Execution workspace (SPM0) | 2 KiB |
 | Exception workspace (SPM7) | 8 KiB |
-| **Total per core** | **64 KiB** |
+| **Total per core** | **58 KiB** |
 
 This partition replaces the earlier flexible SPM1–SPM6 task-slot allocation proposal. The fixed role partition is the baseline; changing it requires an explicit OS/platform configuration rather than implicit sharing.
 
