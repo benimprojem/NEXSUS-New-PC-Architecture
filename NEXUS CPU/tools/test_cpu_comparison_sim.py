@@ -11,7 +11,7 @@ class BandwidthPolicyTests(unittest.TestCase):
         for cores in (8, 16, 32, 64):
             with self.subTest(cores=cores):
                 result = sim.simulate_cpu({"tiny": [sim.Op(0, "INT")]}, profile, cores)
-                self.assertEqual(result["aggregate_dram_bytes_per_cycle"], 32)
+                self.assertEqual(result["aggregate_dram_bytes_per_cycle"], 64)
                 self.assertIsNone(result["per_core_dram_bytes_per_cycle"])
                 self.assertEqual(
                     result["dram_bandwidth_policy"],
