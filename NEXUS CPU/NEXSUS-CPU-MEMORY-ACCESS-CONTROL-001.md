@@ -92,16 +92,21 @@ ATOM uses the same effective-address, domain, bounds, alignment, ownership, and 
 
 Existing XFER.MEM / XFER.START / XFER.WAIT operations use the same protection domains; they do not bypass LOAD/STORE protection.
 
-For XFER.MEM or XFER.START:
-1. Validate the complete source range for read access.
-2. Validate the complete destination range for write access.
-3. Validate source and destination domain membership, bounds, length, and any required alignment.
-4. Validate task ownership and any explicit shared/Fabric grant for both ranges.
-5. Do not begin payload movement until both endpoints pass validation.
-6. For asynchronous transfers, preserve the existing source-stability and target-not-valid-until-completion contract. A permission grant or allocation cannot be reclaimed while an accepted transfer still uses it; revocation must wait for completion or defined cancellation.
-7. XFER.WAIT observes completion/status for its valid token; it does not create new access rights.
+For XFER.MEM or XFER.START with a nonzero length:
+1. Snapshot the source address, destination address, and byte length from their selected RA registers before writing any destination register. Therefore, the token destination RA may alias DRA, SRA, or LRA.
+2. Validate the complete source range for read access.
+3. Validate the complete destination range for write access.
+4. Validate source and destination domain membership, 64-bit range arithmetic, bounds, and any required transfer alignment.
+5. Validate task ownership and any explicit shared/Fabric grant for both ranges.
+6. Do not begin payload movement until both endpoints pass validation.
+7. For asynchronous transfers, preserve source stability and target-not-valid-until-completion. A permission grant or allocation cannot be reclaimed while an accepted transfer still uses it; revocation must wait for completion or defined cancellation.
 
-The exact MEMXFER field-level semantics and any unassigned details remain governed by the instruction-encoding work; this document adds no new encoding.
+**Zero-length special case:** If the selected length is zero, XFER.MEM is a successful no-op and XFER.START creates an already-completed token. No memory range, mapping, or permission checks are performed because no byte is accessed. Instruction format, domain selectors, and RA selectors must still be valid. No payload movement occurs.
+
+**WAIT/token behavior:**
+- Successful XFER.WAIT consumes the token and clears its TRA register to zero. Reusing a consumed token is an illegal-token fault.
+- A runtime transfer failure is reported synchronously by XFER.WAIT. The failed token is retired by hardware, but the faulting WAIT does not commit its TRA write under precise-exception rules; the old token bits remain in the RA and are stale. The exception handler may clear or overwrite that RA using normal RA operations.
+- A token is local to the initiating core and does not grant new access rights.
 
 ## 7. Domain reachability is not task permission
 
