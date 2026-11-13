@@ -200,6 +200,20 @@ class SpmP0ModelTests(unittest.TestCase):
         self.assertEqual(conventional.lines.capacity, 32768 // 64)
         self.assertEqual((p0.refill_latency, conventional.refill_latency), (8, 32))
 
+class FourWayAblationTests(unittest.TestCase):
+    def test_four_profiles_preserve_operation_count_and_report_interaction(self):
+        ops = [sim.Op(i, "LOAD", address=(i % 8)*64, width=64,
+                      label="SPM2: ablation") for i in range(64)]
+        result = sim.run_nexus_ablation({"small_spm_kernel": ops},
+                                        sim.PROFILES["nexus_balanced_128"])
+        self.assertEqual(set(result["variants"]), {"N-FULL", "N-NO-SPM", "N-NO-P0", "N-BASE"})
+        row = result["kernels"]["small_spm_kernel"]
+        self.assertTrue(row["ops_preserved"])
+        self.assertEqual(row["ops"], 64)
+        self.assertIn("interaction_cycles", row)
+        self.assertEqual({v["total_ops"] for v in result["variants"].values()}, {64})
+
+
 class WorkloadPartitionTests(unittest.TestCase):
     def test_partition_preserves_operation_count_and_dependencies(self):
         workloads = sim.build_composite_workload(scale=1)
