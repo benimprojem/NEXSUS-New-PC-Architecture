@@ -100,7 +100,7 @@ Baseline full context includes:
 - Memory-domain permissions, ownership/handle state and relevant address-space configuration.
 - SPM0–SPM6 allocation/ownership metadata and contents for every bank whose contents are live across the switch. When OS-managed context slots are allocated from SPM1–SPM6, the task's saved register context may remain resident there.
 - SPM7 is reserved for active exception entry and is not task-owned.
-- P0 is refillable instruction prefetch state, not architectural task state.
+- P0/P1 are refillable instruction prefetch state, not architectural task state.
 
 Full four-bank register payload is 3,584 bytes before metadata. Scheduler may optimize using bank ownership/dirty state but must restore exact architectural values before resuming a task.
 
@@ -232,9 +232,9 @@ This allows command prefetch and context restoration to overlap without treating
 
 ## 16. Updated baseline decisions
 
-**Selected:** OS-managed 4 KiB task-context slots in SPM3–SPM6; eight simultaneous resident full-register contexts/core (32 KiB pool); Data RAM backing for nonresident/evicted contexts; P0 refill for the incoming task overlapped with context restoration when possible.
+**Selected:** OS-managed 4 KiB task-context slots in SPM3–SPM6; eight simultaneous resident full-register contexts/core (32 KiB pool); Data RAM backing for nonresident/evicted contexts; P0/P1 command refill for the incoming task overlapped with context restoration when possible.
 
-**Unchanged:** SPM0 execution workspace; SPM7 exception workspace; P0 refillable command prefetch; full task context remains 1,792 bytes of register payload plus metadata; SPM is directly addressed local memory, not a coherent cache.
+**Unchanged:** SPM0 execution workspace; SPM7 exception workspace; P0 refillable command prefetch; full task context is 3,584 bytes of register payload plus metadata; SPM is directly addressed local memory, not a coherent cache.
 
 **Open:** exact context-slot metadata layout; SPM allocator interface; whether the scheduler dedicates a configurable SPM quota per core; P0 task/code identity tagging details.
 
