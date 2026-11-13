@@ -7,7 +7,23 @@
 - `Yeni Nesil Ayrıştırılmış Register Tabanlı CPU Mimarisi.md` — CPU ve bellek mimarisi
 - `NEXSUS CPU — SPM, Register Görünümleri ve Doğrudan Alan Erişimi.md` — register/SPM ayrıntıları
 
-> Bu belge, ISA mnemonic'lerini makine koduna dönüştürmek için ilk encoding modelini tanımlar. Alan genişlikleri ve format yapısı önerilen temel tasarımdır. Sayısal opcode atamaları, kesin endian/byte sıralaması ve bazı özel formatlar henüz dondurulmamıştır.
+> Bu belge, ISA mnemonic'lerini makine koduna dönüştürmek için ilk encoding modelini tanımlar. Alan genişlikleri ve format yapısı önerilen temel tasarımdır. Sayısal opcode atamaları ve bazı özel formatlar henüz dondurulmamıştır. Bellek ve komut sözcüğü byte sıralaması little-endian olarak kararlaştırılmıştır.
+
+---
+
+## 3. Little-endian byte ve word sıralaması
+
+NEXSUS CPU'nun bellek byte sıralaması **little-endian**'dır. Bu karar veri belleği, SPM byte erişimleri, komut sözcüklerinin bellekte/P0'da temsil edilmesi ve çok sözcüklü literal dizileri için geçerlidir.
+
+- Birden fazla byte içeren scalar değerlerde en düşük bellek adresi en düşük anlamlı byte'ı (LSB) taşır.
+- 64-bit bir değer bellekte `A` adresinden başlıyorsa bit[7:0] `A`, bit[15:8] `A+1` ... bit[63:56] `A+7` adresindedir.
+- 128/256/512-bit LOAD/STORE'da en düşük adresli 64-bit parça ilk DA kaydına yazılır; sonraki 64-bit parçalar artan adres sırasıyla artan DA selector'larına gider. Her DA kaydının iç byte sırası da little-endian'dır.
+- FA128 gibi register pair'lerinde düşük anlamlı 64-bit parça çift indisli ilk FA kaydında, yüksek anlamlı parça sonraki FA kaydındadır.
+- 512-bit MA pair aktarımında düşük anlamlı 256-bit parça ilk MA kaydında, yüksek anlamlı parça sonraki MA kaydındadır. DA grubu kullanılıyorsa DA'nın en düşük selector'ı en düşük anlamlı 64-bit parçayı tutar.
+- Her 64-bit instruction word bellekte/P0'a little-endian byte sırasıyla yerleştirilir: word bit[7:0] en düşük byte adresindedir.
+- EXT gibi çok sözcüklü komutlarda extension/literal word, ana komut word'ünü izleyen daha yüksek adresli 64-bit word'dür. Literal word'ün kendi byte sırası da little-endian'dır. Bu kural literal'in opcode olarak decode edilmesi anlamına gelmez.
+
+Little-endian, bit alanlarının instruction word içindeki konumunu değiştirmez; encoding tablolarındaki bit numaraları mantıksal 64-bit word üzerindedir.
 
 ---
 
@@ -225,7 +241,7 @@ DA kayıtları 64-bit olduğundan erişim genişliğine göre gereken kayıt say
 - D + kayıt sayısı 32'yi aşamaz. Örneğin 512-bit erişim için D en fazla 24 olabilir.
 - MEM erişimlerinde 128/256/512-bit DA grupları için ek selector hizalaması aranmaz; yalnızca DA31 sınırı kontrol edilir. Bellek adresinin doğal hizalaması ise zorunludur ve aşağıdaki fault kurallarıyla denetlenir.
 - 8/16/32-bit LOAD, ilgili DA kaydının düşük bitlerine veriyi yazar ve aynı kaydın kullanılmayan üst bitlerini sıfırlar. 64-bit LOAD kaydın tamamını yazar.
-- 128/256/512-bit erişimlerde ardışık 64-bit parçalar artan bellek adresi sırasıyla artan DA selector'larına eşlenir. Her kaydın kendi içindeki byte sıralaması global endian kararıyla belirlenecektir.
+- 128/256/512-bit erişimlerde ardışık 64-bit parçalar artan bellek adresi sırasıyla artan DA selector'larına eşlenir. Her DA kaydının kendi içindeki byte sıralaması little-endian'dır: en düşük bellek adresi kaydın en düşük anlamlı byte'ına karşılık gelir.
 - STORE yalnızca istenen W bitini bellek alanına yazar; son DA kaydındaki erişim genişliği dışında kalan bitler yazılmaz.
 - LOAD/STORE ham bit aktarımı yapar. LOAD signed/unsigned yorumlama veya sign-extension yapmaz. Signed/unsigned yorum, DA'dan RA/FA'ya sonraki açık dönüşüm/transfer aşamasında yapılır.
 - **Doğal hizalama zorunludur.** EA, erişim boyutunun byte karşılığına (W/8) tam bölünmelidir. Örnek: W=16 için 2-byte, W=64 için 8-byte, W=512 için 64-byte hizalama gerekir. W=8 için her byte adresi geçerlidir.
@@ -492,7 +508,6 @@ Aşağıdaki örnekler gerçek hexadecimal makine kodu değildir; opcode değerl
 ## 12. Henüz dondurulmamış kararlar
 
 1. OP ve FMT sayısal kodlarının nihai tablosu.
-2. Komut sözcüğünün byte endianness ve bellek içi sıralaması.
 3. EXT word'ün kesin bit alanları ve birden çok literal word gerekip gerekmediği.
 4. DA↔MA 256/512-bit grup hizalaması ISA/encoding düzeyinde tanımlandı; mikro-mimari transfer portları ve timing'i açık.
 6. MA/FA pair komutlarının opcode ve exception ayrıntıları.
