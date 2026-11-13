@@ -88,7 +88,8 @@ FMT alanı için ilk öneri:
 | 1001 | MEMX | Indexed load/store: base + index × scale + displacement |
 | 1010 | MEMUPD | Load/store with base-register pre/post increment/decrement |
 | 1011 | MEMXUPD | Indexed load/store with base-register pre/post increment/decrement |
-| 1100–1111 | Reserved | Gelecek formatlar |
+| 1100 | ATOM | Atomic scalar memory operations (load/store/CAS/RMW) |
+| 1101–1111 | Reserved | Gelecek formatlar |
 
 FMT kodları taslak değerlerdir; opcode tablosu dondurulurken sabitlenecektir.
 
@@ -390,7 +391,83 @@ LOAD.POSTINC.L1.W64 DA2, [RA4 + RA5*2 + 8]
 ```
 
 POSTINC/PREINC/POSTDEC/PREDEC suffix'leri MEMUPD veya MEMXUPD MODE alanını seçen assembler gösterimleridir; bağımsız opcode numaraları henüz atanmış değildir. Bu biçimlerde EXT kullanıldığında literal signed 64-bit displacement sağlar ve ilgili DISP alanı sıfır kodlanır.
-### 4.10 XFER — Register bankları arası açık aktarım
+### 4.10 ATOM — Atomic scalar memory işlemleri
+
+ATOM formatı, seçilen L1–L4 domain'inde doğal hizalı 8/16/32/64-bit atomic load/store ve read-modify-write işlemleri için kullanılır.
+
+```text
+63       56 55    52 51   47 46   42 41   37 36   32 31  29 28  26 25  23 22          0
++----------+--------+-------+-------+-------+-------+------+-------+-------+------------+
+| OP (8)   |FMT (4) | D (5) | BASE(5)| A (5) | B (5) | W(3)| AM(3)|ORDER(3)| DISP (23)  |
++----------+--------+-------+-------+-------+-------+------+-------+-------+------------+
+```
+
+Payload toplamı 52 bittir:
+- D: atomic LOAD/RMW sonucunda bellek konumundan okunan eski değerin yazılacağı DA selector'ı.
+- BASE: effective address için RA selector'ı.
+- A: CAS için beklenen (expected) değeri tutan DA selector'ı; CAS dışındaki işlemlerde sıfır olmalıdır.
+- B: STORE/RMW kaynak operandını tutan DA selector'ı. LOAD için sıfır olmalıdır.
+- W: yalnızca 8/16/32/64-bit atomic genişlikleri geçerlidir. 128/256/512 ve reserved width kodları illegal encoding'dir.
+- AM: MEM ile aynı domain kodlaması; AM[0]=0 zorunludur. AM[2:1] L1/L2/L3/L4 seçer.
+- ORDER: memory ordering modeli.
+- DISP: normal biçimde signed 23-bit byte displacement. EXT biçiminde DISP=0 zorunludur ve literal signed 64-bit displacement olarak kullanılır.
+
+Effective address normal biçimde `RA[BASE] + sign_extend(DISP23)`; EXT biçiminde `RA[BASE] + signed(LITERAL64)` olarak hesaplanır. 64-bit adres aralığı dışına taşma `ADDRESS_OVERFLOW_FAULT` üretir. Absolute ve indexed adresleme bu ilk ATOM formatında yoktur; gerekirse önce LEA ile adres RA register'ında hazırlanır.
+
+**ORDER kodları**
+
+| ORDER | Semantik |
+|---:|---|
+| 000 | RELAXED | Atomicity vardır; ek sıralama garantisi yoktur |
+| 001 | ACQUIRE | Bu işlemden sonraki bellek işlemleri acquire sıralamasına tabidir |
+| 010 | RELEASE | Bu işlemden önceki bellek işlemleri release sıralamasına tabidir |
+| 011 | ACQ_REL | Hem acquire hem release sıralaması |
+| 100 | SEQ_CST | Sequentially consistent atomic sıralama |
+| 101–111 | Reserved | Illegal encoding |
+
+- Atomic LOAD için RELAXED, ACQUIRE veya SEQ_CST geçerlidir; RELEASE ve ACQ_REL geçersizdir.
+- Atomic STORE için RELAXED, RELEASE veya SEQ_CST geçerlidir; ACQUIRE ve ACQ_REL geçersizdir.
+- CAS ve diğer read-modify-write işlemleri beş geçerli ordering değerinin tümünü kullanabilir.
+
+**Operand kullanımı ve işlemler**
+
+| İşlem | D | A | B | Sonuç / etki |
+|---|---|---|---|---|
+| ATOM.LOAD | Sonuç | 0 | 0 | Bellekteki eski değeri D'ye getirir |
+| ATOM.STORE | 0 | 0 | Kaynak | B'nin düşük W bitini belleğe yazar |
+| CAS | Eski değer | Expected | Desired | Bellek yalnızca eski değer Expected ile eşitse Desired olur |
+| SWAP | Eski değer | 0 | Yeni değer | Bellekteki değeri B ile değiştirir |
+| FETCH_ADD / FETCH_SUB | Eski değer | 0 | Operand | Eski değeri döndürür; belleği toplama/çıkarma sonucu ile günceller |
+| FETCH_AND / FETCH_OR / FETCH_XOR | Eski değer | 0 | Operand | Eski değeri döndürür; belleği bitwise sonuç ile günceller |
+
+- RMW işlemleri (CAS, SWAP, FETCH_*) hedef konumun eski değerini D'ye yazar. W<64 olduğunda D'nin üst bitleri sıfırlanır.
+- Kaynak operandlar komut başlangıcında snapshot edilir. D ile B aynı DA selector'ı olabilir. CAS için D ve A farklı selector olmalıdır; böylece döndürülen eski değer expected operandını ezmez.
+- CAS başarısı, döndürülen D değerinin A'daki expected değerle eşit karşılaştırılmasıyla belirlenir. İlk sürümde ayrı success flag/status register üretilmez.
+- FETCH_ADD/FETCH_SUB sonucu W-bit modulo arithmetic olarak hesaplanır; taşma wrap-around'dur ve arithmetic fault üretmez. FETCH_AND/OR/XOR bitwise W-bit işlemleridir.
+- ATOM.LOAD/STORE ve RMW işlemleri yalnızca tek bir scalar bellek konumu üzerinde atomic'tir. 128/256/512-bit atomic işlem desteklenmez.
+
+**Atomicity, domain ve fault kuralları**
+- Atomic erişim effective address'in W/8 byte'a doğal hizalı olmasını gerektirir; misalignment `ALIGNMENT_FAULT` üretir.
+- Atomic işlem, seçilen domain'deki aynı adres ve W genişliğine yönelik diğer atomic işlemlere karşı indivisible/linearizable olmalıdır.
+- L1 çekirdeğe özel olduğundan L1 atomic işlemleri çekirdek içi senkronizasyon kapsamındadır. L2, L3 ve L4 atomic işlemleri ilgili paylaşım grubundaki tüm çekirdekler için aynı serialization domain'ine katılmalıdır.
+- Atomic ordering, yalnızca aynı adrese değil, mimari memory-order kurallarına uygun olarak çekirdeğin ilgili bellek işlemlerine uygulanır. Ordering, farklı L1–L4 domain'leri arasında veri kopyalama veya otomatik coherence oluşturmaz.
+- Aynı bellek konumuna atomic ve non-atomic erişimlerin eşzamanlı karıştırılması, ayrıca senkronizasyonla korunmadıkça data race kabul edilir.
+- Bounds, permission, mapping, alignment veya address overflow fault'unda bellek değişmez; LOAD/RMW hedefi D de değişmeden kalır. Faulting STORE/RMW hiçbir kısmi yazma yapamaz.
+- Atomic serialization, bellek domain'inin uygulama düzeyindeki coherence/visibility protokolünü gerektirir. Fiziksel arbiter, bank locking ve cache-coherence uygulaması mikro-mimari aşamasında belirlenir.
+
+Assembly örnekleri:
+
+```asm
+ATOM.LOAD.ACQUIRE.L2.W64 DA0, [RA10]
+ATOM.STORE.RELEASE.L2.W64 [RA10], DA1
+CAS.ACQ_REL.L2.W64 DA2, [RA10], DA3, DA4
+SWAP.SEQ_CST.L3.W32 DA5, [RA12], DA6
+FETCH_ADD.RELAXED.L1.W64 DA7, [RA14], DA8
+FETCH_AND.ACQ_REL.L4.W64 DA9, [RA20], DA10
+```
+
+Bu mnemonic'ler ATOM formatını ve ORDER alanını seçen assembly gösterimleridir; numeric opcode değerleri henüz atanmış değildir.
+### 4.11 XFER — Register bankları arası açık aktarım
 
 ```text
 63       56 55    52 51  50 49   45 44  43 42   38 37  35 34  32 31     0
@@ -439,7 +516,7 @@ Assembly gösterimi:
 
 Bu suffix'ler XFER opcode'unun M alanını ve W değerini seçen assembly gösterimleridir; ayrı opcode değerleri henüz atanmış değildir.
 
-### 4.11 XFER tabanlı sayısal dönüşüm — FCONV
+### 4.12 XFER tabanlı sayısal dönüşüm — FCONV
 
 FCONV bit kopyalama yapmaz; kaynak sayısal değeri hedef türüne dönüştürür. XFER alan yerleşimini kullanır, ancak ayrı opcode ve dönüşüm alt alanlarına sahiptir.
 
@@ -502,7 +579,7 @@ W, DST_TYPE genişliğiyle aynı olmalıdır. F128 kaynak veya hedef, FA bankın
 
 Normal MOV.* XFER komutlarında M/AUX alanları ilgili transfer opcode tanımına göre yorumlanır; FCONV alt alanları onlara uygulanmaz.
 
-### 4.12 BR — PC-relative branch
+### 4.13 BR — PC-relative branch
 
 ```text
 63       56 55    52 51   48 47                         16 15          0
@@ -516,7 +593,7 @@ Normal MOV.* XFER komutlarında M/AUX alanları ilgili transfer opcode tanımın
 - COND, branch koşulunu belirler; koşul kodları ayrı tabloda tanımlanacaktır.
 - Reserved alan sıfır olmalıdır.
 
-### 4.13 SYS — System ve kontrol komutları
+### 4.14 SYS — System ve kontrol komutları
 
 SYS formatı privilege, system state, interrupt, synchronization ve özel kontrol komutları için ayrılmıştır. Alt alan yerleşimi her komut sınıfı için ayrı tabloda tanımlanacaktır. Henüz system register bankı veya CSR sayısı kesinleştirilmemiştir.
 
@@ -723,7 +800,8 @@ Aşağıdaki örnekler gerçek hexadecimal makine kodu değildir; opcode değerl
 
 ## 12. Henüz dondurulmamış kararlar
 
-- MEMUPD/MEMXUPD opcode numaraları ve assembler mnemonic alias tablosu henüz atanmadı. PRE/POST update semantiği ve W/8 stride ilk taslak olarak tanımlandı; farklı stride ayrı ADD/ADDI ile yapılır.
+- MEMUPD/MEMXUPD ve ATOM opcode numaraları ile assembler mnemonic alias tablosu henüz atanmadı.
+- ATOM ordering, scalar 8/16/32/64-bit işlemler ve CAS/SWAP/FETCH_* operand semantiği taslak olarak tanımlandı; fiziksel coherence, arbitration ve bank locking mikro-mimari aşamasında belirlenecek.
 
 1. OP ve FMT sayısal kodlarının nihai tablosu.
 3. EXT opcode'unun numeric değeri ve gelecekte COUNT>1 çoklu literal semantiği.
