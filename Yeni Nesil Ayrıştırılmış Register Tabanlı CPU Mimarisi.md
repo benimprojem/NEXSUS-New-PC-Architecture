@@ -26,29 +26,29 @@ Temel yapı:
               └───────────┬───────────┘
                           │
               ┌───────────┴───────────┐
-              │    Instruction        │
-              │       Decode          │
-              └───────┬───────┬───────┘
-                      │       │
-                 Integer Path  FP Path  Vector/Matrix Path
-                      │       │
-              ┌───────▼───┐ ┌─▼────────────┐
-               │ RA00-RA31 │ │ FA00-FA31 │ │ MA00-MA31 │
-               │ 32 × 64b  │ │ 32 × 64b  │ │ 32 × 256b│
-               └───────┬───┘ └────┬─────┘ └──────┬───────┘
-                       │          │              │
-                    Integer ALU  FPU        Matrix/Vector ALU
-                       │          │              │
-               ┌───────▼──────────▼──────────────▼──┐
-               │             DA00-DA31              │
-               │               32 × 64b            │
-              └───────┬───┘
-                      │
-                 Load / Store
-                      │
-                ┌─────▼─────┐
-                │ DATA RAM  │
-                └───────────┘
+              │   Instruction Decode │
+              └───────┬──────┬──────┬─┘
+                      │      │      │
+                 Integer    FP    Vector/Matrix
+                   Path    Path       Path
+                      │      │         │
+                ┌─────▼──┐ ┌─▼────┐ ┌──▼────────┐
+                │ RA0-31 │ │FA0-31│ │ MA0-31    │
+                │32×64bit│ │32×64b│ │32×256bit  │
+                └─────┬──┘ └──┬───┘ └────┬──────┘
+                      │       │          │
+                      └───────┴────┬─────┘
+                                   │
+                             ┌─────▼─────┐
+                             │ DA0–DA31  │
+                             │ 32×64 bit │
+                             └─────┬─────┘
+                                   │
+                              Load / Store
+                                   │
+                             ┌─────▼─────┐
+                             │  DATA RAM │
+                             └───────────┘
 ```
 
 Buradaki temel prensip, **instruction, application state, data ve vector/matrix işlemlerinin aynı kaynak için birbirleriyle yarışmasını mümkün olduğunca önlemektir.**
@@ -925,8 +925,8 @@ Genel sistem şu şekilde özetlenebilir:
                             │        │        │
                             ▼        ▼        ▼
                        ┌────────┐ ┌────────┐ ┌────────────┐
-                       │RA00-31 │ │DA00-31 │ │ MA00-31    │
-                       │64×64b  │ │64×64b  │ │32×256b     │
+                        │RA00-31 │ │FA00-31 │ │DA00-31 │ │ MA00-31    │
+                        │32×64b  │ │32×64b  │ │32×64b  │ │32×256b     │
                        └────┬───┘ └────┬───┘ └─────┬──────┘
                             │           │            │
                             ▼           │            ▼
