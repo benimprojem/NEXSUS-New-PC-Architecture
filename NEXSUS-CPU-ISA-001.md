@@ -30,8 +30,8 @@
 | RDn | RAn alt 8-bit görünümü | 8-bit erişim |
 | DA00–DA63 | 64 × 64-bit | Data staging / transfer |
 | MA00–MA31 | 32 × 256-bit | Vector/matrix operands |
-| SPM0 | 32 KiB; 8 × 4 KiB | 64-bit doğrudan adreslenebilir geçici yürütme durumu/sonuç alanı |
-| SPM1–SPM7 | Sayfalı, byte-addressed | Değişken genişlikli geçici veri alanları |
+| SPM0 | 2 KiB; 256 × 64-bit kayıt | Doğrudan adreslenebilir geçici yürütme durumu/sonuç alanı; 8–512-bit erişim |
+| SPM1–SPM7 | 8 KiB × 7; byte-addressed | Her biri 8–512-bit erişimli geçici veri alanı |
 
 RB/RC/RD yazmalarında etkilenmeyen üst bitlerin korunması mimari tercihidir. Register-view detayları SPM/register dokümanında tanımlanır.
 
@@ -101,7 +101,7 @@ SPM0 ve SPM1 adresleme birimleri farklıdır. Bu komut isimleri taslak mnemonic'
 | SPM.MASK | addr, mask, value | Maskeli güncelleme | Alan koruma |
 | SPM.COPY | dst, src, length | SPM içi kopyalama | SPM transfer |
 
-SPM0 page-id + 64-bit-record offset; SPM1 page-id + byte offset modelini kullanır. 64-bit kayıt içindeki alan güncellemesinde hardware partial-write hedeflenir.
+SPM0, 256 adet 64-bit temel kayıt üzerinden doğrudan adreslenir; SPM1–SPM7 ise her biri 8 KiB byte-addressed alandır. Tüm SPM alanları 8/16/32/64/128/256/512-bit veri erişimlerini destekler. Geniş erişimler gerektiğinde ardışık temel kayıtları veya byte konumlarını kapsar; alignment ve sınır davranışı mimari kurallarla denetlenir.
 
 ## 7. Floating-point komutları
 
@@ -254,8 +254,8 @@ Bu örnek sadece 512-bit operand/result register eşlemesini gösterir; matris s
 | RA (64-bit) | 6 | 3 | 2–3 ALU ve 2 FPU için operand besleme hedefi |
 | DA (64-bit) | 4 | 2 | Load/store ve data staging |
 | MA (256-bit) | 4 × 256-bit | 2 × 256-bit | ME512 pair ve vector data |
-| SPM0 | 2 × 64-bit | 1 × 64-bit | 64-bit record access |
-| SPM1 | 2 variable-width | 1 variable-width | Byte/field access; bank implementation TBD |
+| SPM0 | 2 × 64-bit | 1 × 64-bit | 64-bit temel kayıt erişimi; 8–512-bit geniş erişimler çok kayıtlı olabilir |
+| SPM1–SPM7 | 2 variable-width | 1 variable-width | 8–512-bit byte/field access; bank implementation TBD |
 
 RA port hedefleri ideal koşulda 3 adet 2-source ALU komutu ve 2-source FPU komutlarını aynı çevrimde beslemeye tek başına yetmez; operand reuse, immediate, bypass ve dispatch sınırlaması gerekir. Bu nedenle tablo **azami port hedefi değil, ilk planlama değeridir**; issue scheduler port/operand kaynaklarına göre komut seçer. RA register rename/physical bank çoğaltma henüz kararlaştırılmadı.
 
@@ -341,20 +341,21 @@ Bu örnekler little-endian memory byte sıralamasını değil, register bit dili
 
 ## 21. SPM erişim ve bank-conflict modeli (ilk taslak)
 
-SPM0 ve SPM1, RA/DA/MA register banklarından ayrı erişim kaynaklarıdır. SPM komutu register operandı kullanıyorsa register portu tüketimi ayrıca hesaba katılır.
+SPM0 ve SPM1–SPM7, RA/DA/MA register banklarından ayrı erişim kaynaklarıdır. SPM komutu register operandı kullanıyorsa register portu tüketimi ayrıca hesaba katılır.
 
 ### SPM0
 
-- 32 KiB alan, 8 adet 4 KiB page/bank olarak düzenlenir.
-- Her page içinde 512 adet 64-bit record bulunur.
-- Adres: `(page_id, record_offset)`; record_offset 0..511 aralığındadır.
+- Toplam kapasite 2 KiB'tır ve 256 adet 64-bit temel kayıt içerir.
+- Adresleme doğrudan kayıt ofsetiyle yapılır: `record_offset` 0..255.
+- 8/16/32-bit alan erişimleri 64-bit temel kayıt içindeki byte/bit alanlarını; 128/256/512-bit erişimler ise gerektiğinde ardışık temel kayıtları kapsar.
 - İlk erişim hedefi: cycle başına 2 adet 64-bit read ve 1 adet 64-bit write.
 - Aynı bankaya aynı cycle içinde birden fazla erişim gelirse port kapasitesi aşan erişimler stall/issue ertelemesine girer.
 
-### SPM1
+### SPM1–SPM7
 
+- Her alan 8 KiB kapasitelidir; yedi alanın toplamı 56 KiB'tır.
 - Byte-addressed ve değişken genişlikli alan erişimini destekler.
-- 8/16/32/64/128-bit erişimlerde alignment ve sayfa sınırı davranışı ayrıca tanımlanacaktır.
+- 8/16/32/64/128/256/512-bit erişimlerde alignment ve alan sınırı davranışı ayrıca tanımlanacaktır.
 - İlk hedef 2 read + 1 write erişimidir; gerçek paralellik bank dağılımına bağlıdır.
 - Aynı byte/field üzerinde çakışan write'lar aynı cycle'da issue edilmez.
 - Maskeli/partial update, ilgili alan dışındaki bitleri korur.
@@ -557,12 +558,12 @@ P0 ile SPM0 farklı aşamalara hizmet eder ve birbirinin yerine geçmez:
 | Bellek | İşlev | Kayıt genişliği | Kapasite |
 |---|---|---:|---:|
 | P0 | App RAM'den komut fetch eden ön bellek | 64 bit sabit | 8 KiB standart; 16 KiB genişletilebilir / çekirdek |
-| SPM0 | Yürütme sırasında oluşan geçici komutsal durum, ara değerler ve sonuçlar | 64 bit kayıt | 32 KiB / çekirdek |
+| SPM0 | Yürütme sırasında oluşan geçici komutsal durum, ara değerler ve sonuçlar | 64-bit temel kayıt; 8–512-bit erişim | 2 KiB / çekirdek |
 
 - P0, sıradaki komutları fetch aşamasında hazır tutar.
 - SPM0, CPU çalışırken yürütme sırasında oluşan geçici komutsal durumu, ara değerleri ve sonuçları tutar. Stack benzeri geçici saklama alanıdır; ancak zorunlu LIFO düzeni yoktur ve doğrudan adreslenir.
-- SPM0'ın 8 × 4 KiB sayfa düzeni korunur; toplam 32 KiB ve sayfa başına 512 adet 64-bit kayıt bulunur.
-- SPM1–SPM7, aynı doğrudan adreslenebilir modeli veri tarafında uygular; geçici veriler ve ara hesaplama değerlerini tutar.
+- SPM0 toplam 2 KiB'tır; 256 adet 64-bit temel kayıt içerir. 8–512-bit erişimler gerektiğinde bir veya daha fazla temel kaydı kapsayabilir.
+- SPM1–SPM7, her biri 8 KiB olmak üzere toplam 56 KiB doğrudan adreslenebilir veri çalışma alanı sağlar; geçici veriler ve ara hesaplama değerlerini tutar.
 - P0 yalnızca App RAM'den komut fetch eder; SPM0'a komut kuyruğu veya komut kopyası aktarılmaz.
 
 Fetch genişliği, branch davranışı, miss oranı ve komut besleme bant genişliği ölçüldükten sonra P0'ın bank sayısı, line size, refill genişliği ve portları mikro-mimari aşamasında belirlenecektir.
