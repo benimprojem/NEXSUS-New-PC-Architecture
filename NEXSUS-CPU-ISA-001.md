@@ -508,6 +508,63 @@ FENCE.ACQ_REL.SYSTEM
 
 Bu örneklerde atomik publish nesnesi ile payload aynı synchronization protokolünün parçasıdır. FENCE, payload'ın kopyalanmasını veya otomatik olarak başka bir Lx domain'ine taşınmasını sağlamaz.
 
+### 10.2 L1–L4 memory consistency modeli (NEXSUS Domain Consistency — NDC)
+
+İlk ISA sürümünün ortak bellek sözleşmesi **NEXSUS Domain Consistency (NDC)** olarak tanımlanır. Model, her Lx domain'ini kendi tutarlılık alanı olarak ele alır; farklı Lx seviyeleri tek bir otomatik cache hiyerarşisi veya ortak adres alanı değildir.
+
+**1. Domain kimliği ve adres ayrımı**
+- Bellek konumu yalnızca sayısal adresle tanımlanmaz; `(domain, address, access width)` üçlüsü erişim hedefini belirler.
+- Aynı sayısal adresin L1 ve L2'de bulunması aynı fiziksel/logical nesne anlamına gelmez.
+- L1 yalnızca sahibi çekirdeğin eriştiği private domain'dir. L2/L3/L4, kendi paylaşım gruplarındaki çekirdeklerin ortak eriştiği domain'lerdir.
+- Bir domain'den diğerine `XFER` ile kopyalama, iki ayrı nesne/kopya oluşturur. Kaynak ve hedef otomatik alias olmaz.
+
+**2. Paylaşılan domain içinde tutarlılık**
+- L2/L3/L4 içindeki aynı adres ve aynı boyuttaki normal LOAD/STORE işlemleri tek bir domain coherence order'a tabidir.
+- Domain'e yapılan her STORE, domain'in katılımcı çekirdekleri için tek bir mantıksal commit/visibility noktasına sahiptir (**multi-copy atomic visibility**). Bir çekirdek aynı yazmayı görürken başka bir katılımcı çekirdeğin aynı yazmayı görmemesi şeklinde kalıcı/bağımsız görünürlük davranışı mimari olarak oluşamaz.
+- Aynı adrese yapılan yazmalar domain içinde tek bir tutarlı sıraya yerleşir. Bir çekirdeğin aynı adrese yaptığı okumalar, senkronizasyon ve eşzamanlı yazma yarışları dışında, kendi gözleminde daha eski bir coherence konumuna geri dönemez.
+- Farklı adreslerdeki normal LOAD/STORE işlemleri varsayılan olarak **RELAXED**'tir; aralarındaki sıralama yalnızca program sırasından çıkarılamaz. Gerekli ordering ATOM ordering alanları veya FENCE ile kurulmalıdır.
+- Eşzamanlı çakışan normal yazmalar için kazanan yazma sırası program tarafından garanti edilmez. Aynı konuma kontrolsüz read/write veya write/write erişimi data race'tir; sonuç yazılım tarafından kullanılabilir bir deterministik değer olarak varsayılmamalıdır.
+- Bu garanti, donanımın içeride cache, bank veya buffer kullanıp kullanmamasından bağımsız mimari sonuçtur. Fiziksel coherence/visibility protokolü mikro-mimari sorumluluğudur.
+
+**3. Atomic işlemler ve normal bellek erişimleri**
+- ATOM işlemleri aynı domain, aynı adres ve aynı genişlikte linearizable serialization sağlar; normal LOAD/STORE ile aynı konumun karışık erişimi senkronizasyon gerektirir.
+- RELAXED atomic yalnızca atomicity/serialization sağlar; başka bellek erişimlerine ordering vermez.
+- RELEASE atomic, kendisinden önce program sırasındaki bellek erişimlerini publish eder. ACQUIRE atomic, başarılı acquire okumasından sonra program sırasındaki erişimlerin ilgili publish edilmiş veriyi tüketmesini sağlar.
+- Release/acquire senkronizasyonu, acquire işleminin aynı synchronization nesnesindeki uygun release işleminin değerini (veya tanımlı release sequence değerini) okumasıyla kurulur. Yalnızca iki çekirdekte acquire/release işlemi çalıştırmak, aralarında böyle bir ilişki yoksa synchronization oluşturmaz.
+- SEQ_CST atomic işlemler ve SEQ_CST FENCE olayları, aynı seçilmiş scope içinde tek bir tutarlı sequentially-consistent order'a katılır. Farklı scope'lar ortak total order'a katılmaz; SYSTEM scope bu kuralın sistem çapındaki seçeneğidir.
+
+**4. FENCE'in rolü**
+- FENCE, issuing core'un bellek işlemlerini seçilen scope içinde acquire/release yönünde sıralar. Bariyer tek başına peer çekirdeğe mesaj göndermez ve tek başına synchronization event değildir.
+- RELEASE fence, bariyerden önceki erişimleri bariyerden sonraki erişimlerin arkasına taşımaz; ACQUIRE fence, sonraki erişimleri bariyerden önceye taşımaz. ACQ_REL iki yönü kapsar.
+- Bir fence ile atomic synchronization arasındaki fence-atomic eşleştirme, release fence → onu izleyen atomic publish ve atomic acquire → onu izleyen acquire fence biçiminde kullanılabilir. İlk sürüm yazılımı için daha basit ve tercih edilen yol, doğrudan release/acquire ATOM işlemleridir.
+- FENCE scope'u yalnızca seçilen Lx domain'lerini sıralar. SYSTEM, issuing core'un erişebildiği tüm L1–L4 domain'lerine yayılan sıralama sağlar; fakat domain'leri birleştirmez veya domain'ler arası alias/coherence oluşturmaz.
+
+**5. L1 ve özel alanlar**
+- L1 private olduğu için başka çekirdeğin doğrudan L1 LOAD/STORE erişimi yoktur. L1 atomic ve FENCE işlemleri yerel çekirdek içi ordering içindir.
+- SPM0–SPM7 ve P0, bu NDC modelinin kapsamına dahil değildir. SPM ordering ve P0 instruction-fetch/self-modifying-code kuralları ayrı tanımlanır.
+- MMIO/device erişimleri bu ilk NDC sürümünün dışındadır; device ordering için ayrı I/O fence/interface gerekir.
+
+**6. Uygun producer/consumer örneği**
+
+```asm
+; Producer — payload ve hazır bilgisini aynı L3 domain'inde yayımlar
+STORE.L3.W64 [RA20], DA4
+ATOM.STORE.RELEASE.L3.W64 [RA24], DA5
+
+; Consumer — acquire aynı publish nesnesindeki yeni değeri gördüğünde
+ATOM.LOAD.ACQUIRE.L3.W64 DA6, [RA24]
+LOAD.L3.W64 DA7, [RA20]
+```
+
+Bu örnekte release/acquire atomic çifti payload'ın görünürlüğünü ve erişim sırasını sağlar; ayrıca FENCE koymak gerekmez. Hazır bilgisinin acquire okuması, ilgili release değerini gözlemlemelidir.
+
+**7. İlk sürümün sınırları**
+- Aynı nesne üzerinde farklı genişlikte veya örtüşen aralıklı atomic işlemler için ortak serialization garantisi yoktur.
+- Normal bellek işlemleri relaxed'tir; güçlü sıralama gerekiyorsa açık ordering kullanılmalıdır.
+- Domain'ler arasında otomatik coherence, otomatik migration veya gizli write-back yoktur.
+- NDC mimari davranışı tanımlar; directory/snoop tabanlı coherence, fiziksel cache politikası, store buffer ve fabric protokolü mikro-mimari aşamasında seçilir.
+
+
 
 ## 11. Instruction dispatch ve paralellik
 
@@ -889,6 +946,29 @@ XFER L3:[RA20], L1:[RA10], 4096
 ```
 
 Buradaki register gösterimleri yalnızca adres operandı örneğidir; kesin operand encoding'i ve transfer buffer/throughput tasarımı henüz sabitlenmemiştir.
+
+### 22.16 Lx domain'leri için XFER tamamlanma sözleşmesi
+
+L1–L4 arası bellek aktarımı, register-bank `XFER` komutlarından ayrı bir **memory-domain transfer operation**'dır. Sembolik biçim:
+
+```asm
+XFER L3:[RA20], L1:[RA10], 4096
+```
+
+- Kaynak ve hedef domain/adresleri ile byte uzunluğu açıkça belirtilir. Adresler kendi domain adres uzaylarında yorumlanır.
+- Kaynak ve hedef aralıkları aktarım başlamadan önce overflow, bounds, permission ve mapping bakımından doğrulanır. Doğrulama hatasında hedefe hiçbir byte yazılmaz.
+- Başarılı synchronous XFER, tamamlandığında hedef aralığın tamamının kaynak aralığın komut başlangıcındaki mantıksal snapshot'ıyla aynı olmasını garanti eder.
+- Aktarım sırasında kaynak aralığa başka çekirdek yazıyorsa, senkronizasyon olmadan alınan snapshot'ın hangi anı temsil edeceği garanti edilmez. Kaynak sabit tutulmalı veya producer/consumer synchronization ile korunmalıdır.
+- Kaynak ve hedef aynı domain içinde örtüşüyorsa işlem `MOVE` semantiğindedir; örtüşme güvenli şekilde desteklenir. Farklı domain'ler doğal olarak ayrı adres uzaylarıdır.
+- Transferin mimari commit noktası tamamlanma anıdır. Hedef, tamamlanma bildirilmeden tüketici tarafından geçerli veri olarak kullanılmamalıdır.
+- Synchronous biçim, tamamlanana kadar komut akışını bekletir. Asynchronous biçim `XFER.START` ile token üretir; `XFER.WAIT token` tamamlanmayı bekler. Token, yalnızca başlatan çekirdeğin ilgili transferi için geçerlidir.
+- Asynchronous aktarım sürerken hedef aralığa erişmek veya hedefi yeniden kullanmak, WAIT tamamlanmadan geçerli değildir. Kaynak aralık da transfer tamamlanana kadar değiştirilemez.
+- Başlangıçta doğrulanan erişim hataları hedefi değiştirmez. Çalışma sırasında beklenmeyen donanım hatası oluşursa hedef aralık geçersiz/undefined kabul edilir; yazılım başarı durumu almadan hedefi kullanamaz. Kısmi hedef içeriği mimari olarak geçerli veri sayılmaz.
+- XFER atomic değildir ve aynı anda başka çekirdeklerin hedef aralığı okumasına karşı eski/yeni verinin karışık görünmesini engellemez. Paylaşılan hedefi yayınlamadan önce transferin tamamlanması ve release/acquire synchronization uygulanması gerekir.
+- XFER, Lx seviyeleri arasında otomatik coherence veya sürekli alias oluşturmaz. İşlem sonrasında kaynak ve hedef bağımsız kopyalardır.
+
+**Açık mikro-mimari konuları:** beat boyutu, transfer buffer kapasitesi, aynı anda aktif token sayısı, arbiter öncelikleri ve beklenmeyen runtime fault'un raporlanma register/interface biçimi. Bunlar ISA'nın yukarıdaki tamamlanma ve görünürlük sözleşmesini değiştiremez.
+
 
 
 ### 22.12 P0 program komut ön belleği ve sabit komut genişliği
