@@ -254,3 +254,33 @@ The following remain open implementation details:
 - NEXSUS-CPU-TASK-SCHEDULING-SPM-RESIDENCY-001.md — task identity and handoff.
 - NEXSUS-SYSTEM-NODE-COMMUNICATION-001.md — Fabric task descriptors and payload requests.
 - NEXSUS System Fabric.md — Address Manager, bank parallelism, and Fabric arbitration.
+
+
+## 10.4 Fiziksel bank çakışması, interleaving ve read/write turnaround
+
+L1–L4, mantıksal bellek domain'leridir; fiziksel RAM bank numarası değildir. Bir domain birden fazla fiziksel bankaya eşlenebilir. Bank, controller, port, Fabric lane ve cache-line/transfer granülü farklı kaynaklardır; aynı kavram gibi ele alınmamalıdır.
+
+- Bank mapping/interleaving, ardışık veya yoğun erişilen adresleri uygun granülde bankalara dağıtabilir. Kesin adres bitleri/hash ve granül, bank sayısı ile fiziksel kapasite seçilene kadar implementation-defined kalır.
+- Farklı fiziksel bankalara giden, veri/ordering bağımlılığı bulunmayan istekler paralel ilerleyebilir. Aynı bankanın paylaşılan veya meşgul portuna çarpan istekler yalnızca o bankada bekler.
+- Bir bankanın aynı anda read ve write kabul etmesi, fiziksel port organizasyonuna bağlıdır. Gerçek multiport desteklenmiyorsa controller read/write turnaround uygular; mimari çift yönlü eşzamanlı servis varsaymaz.
+- Controller turnaround maliyetini azaltmak için sınırlı read-batch veya write-batch kullanabilir. Ancak karşı yönde bekleyen istekler aging ile öncelik kazanır; batch/queue drain sınırsız tutulamaz. Böylece sürekli READ yükü WRITE'ı, sürekli WRITE yükü de READ'i aç bırakamaz.
+- Aynı domain coherence order içindeki STORE→LOAD bağımlılığı korunur. Gerekirse store forwarding veya aynı bankada sıralı servis kullanılır; henüz görünür olması gereken önceki yazma atlanarak stale veri döndürülemez.
+- App RAM ve Data RAM fiziksel olarak ayrı ve bağımsız erişim yollarına sahiptir. App RAM→P0 instruction fetch ile Data RAM LOAD/STORE/context-frame erişimleri, kendi kaynakları elverdiğinde eşzamanlı ilerler. Bu, her RAM bankasının dual-port olduğu anlamına gelmez.
+- Bank içi çatışma, başka bankaları veya bağımsız App/Data RAM yolunu global olarak durduramaz. Backpressure yalnızca bağlı queue/port/bank kaynaklarına yayılır.
+
+### 10.5 Bank/port doğrulama senaryoları
+
+| Senaryo | Beklenen sonuç |
+|---|---|
+| Ardışık adresler birden fazla bankaya interleave ediliyor | Bağımsız bankalar paralel servis verir; bank mapping tutarlıdır. |
+| İki istek aynı tek-port bankaya geliyor | İstekler yalnızca o bankada sıraya girer; diğer bankalar ilerler. |
+| İki istek farklı bankalara geliyor | Ortak global FIFO nedeniyle beklemez; kaynaklar uygunsa paralel tamamlanır. |
+| Aynı bankada READ ve WRITE birlikte talep ediliyor, port tek yönlü | Controller geçerli turnaround uygular; veri/ordering kuralları korunur. |
+| Sürekli READ akışı varken WRITE bekliyor | Bounded read batch ve aging sayesinde WRITE sonunda servis alır. |
+| Sürekli WRITE akışı varken READ bekliyor | Bounded write drain ve aging sayesinde READ sonunda servis alır. |
+| Aynı adres için STORE ardından LOAD geliyor | LOAD, domain coherence order gereği önceki STORE'un yeni değerini görür. |
+| App RAM fetch ve Data RAM LOAD aynı anda isteniyor | Bağımsız fiziksel yollar nedeniyle birbirlerini gereksiz yere bloke etmezler. |
+| Bir bank backpressure altında | Aynı controller içindeki bağımsız bank/portlar ve ayrı RAM yolu çalışmayı sürdürür. |
+| MEMXFER uzun chunk'larla aynı bankayı kullanıyor | Mevcut quantum/yield politikası işler; range reservation transfer boyunca korunur. |
+
+Bu testler cycle hedefi koymaz. Bank sayısı, port topolojisi, turnaround süresi ve interleave granülü seçildiğinde cycle-accurate performans hedefleri ayrıca belirlenir.
