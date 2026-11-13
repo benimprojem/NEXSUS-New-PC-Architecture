@@ -89,7 +89,8 @@ FMT alanı için ilk öneri:
 | 1010 | MEMUPD | Load/store with base-register pre/post increment/decrement |
 | 1011 | MEMXUPD | Indexed load/store with base-register pre/post increment/decrement |
 | 1100 | ATOM | Atomic scalar memory operations (load/store/CAS/RMW) |
-| 1101–1111 | Reserved | Gelecek formatlar |
+| 1101 | MEMXFER | L1–L4 domain'leri arası CPU kontrollü transfer |
+| 1110–1111 | Reserved | Gelecek formatlar |
 
 FMT kodları taslak değerlerdir; opcode tablosu dondurulurken sabitlenecektir.
 
@@ -1100,6 +1101,9 @@ Bellek komutları tek bir opcode'a sıkıştırılmayacaktır: normal LOAD/STORE
 | 0x4E | FETCH_AND | ATOM | Atomic fetch-and |
 | 0x4F | FETCH_OR | ATOM | Atomic fetch-or |
 | 0x84 | FETCH_XOR | ATOM | Atomic fetch-xor; atomic aile tamamlayıcısı |
+| 0x86 | XFER.MEM | MEMXFER | Synchronous Lx-domain transfer |
+| 0x87 | XFER.START | MEMXFER | Asynchronous transfer start/token |
+| 0x88 | XFER.WAIT | MEMXFER | Transfer token completion wait |
 
 **Opcode/format doğrulamaları**
 - LOAD/STORE opcode'ları yalnızca MEM; LOADX/STOREX yalnızca MEMX; LOADUPD/STOREUPD yalnızca MEMUPD; LOADXUPD/STOREXUPD yalnızca MEMXUPD kullanır.
