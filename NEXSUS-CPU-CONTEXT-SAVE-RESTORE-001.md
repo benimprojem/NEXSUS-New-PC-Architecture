@@ -379,3 +379,8 @@ P0 refill and context transfer may overlap, but the scheduler must wait for both
 
 ## 18. Task scheduler specification reference
 Task READY/RUNNING/BLOCKED/SLEEPING transitions, sixteen-slot residency pressure, SPM2 save/restore lifecycle, wake-up race handling, priority updates, and explicit cross-core migration are specified in `NEXSUS-CPU-TASK-SCHEDULING-SPM-RESIDENCY-001.md`. That document uses the authoritative SPM allocation in Section 17 of this file and does not change the register context format.
+
+
+## 19. SPM access protection reference
+
+SPM privilege and ownership rules are specified in `NEXSUS-CPU-SPM-ACCESS-PROTECTION-001.md`. The key boundary is that PL0 directly accesses only its currently owned SPM2 workspace. SPM1 is OS-owned; SPM3–SPM6 are accessible only to OS context-management paths; SPM7 is exception-only and limited to the currently active ECS-depth slice for handler access. SPM0 remains CPU execution workspace, not user scratch. These rules do not change SPM capacities or the context frame format.
