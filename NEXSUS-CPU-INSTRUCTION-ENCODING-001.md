@@ -761,7 +761,7 @@ Matrix tile şekli, formatın M alanında; eleman genişliği W alanında kodlan
 - AUX alanı ilk sürümde sıfır olmalıdır. Ayrılmış M/W kodları, sıfır olmayan AUX veya ISA'daki MA grup sınır/alignment kurallarının ihlali illegal operand/encoding fault üretir.
 - Register grup uzunluğu `ceil(N × N × W / 256)` MA register'dır. Her başlangıç selector'ı bu grup uzunluğunun katı olmalı ve grup MA31'i aşmamalıdır.
 - Operandların aynı tile'ı kullanması tam alias olarak geçerlidir (ör. A=B veya D=A). Kısmi/örtüşen ama eşit olmayan tile grupları geçersizdir.
-- Numeric opcode değerleri 8.2 bölümünde atanmıştır; bu eşleme yalnızca format/operand kodlamasını tanımlar.
+- Numeric opcode değerleri 8.3 bölümünde atanmıştır; bu eşleme yalnızca format/operand kodlamasını tanımlar.
 
 Örnek sembolik gösterimler:
 
@@ -893,7 +893,7 @@ OP alanı 8-bit olduğundan 256 primary opcode değeri sunar. İlk aşamada opco
 
 | OP aralığı | Ayrılan aile | Durum |
 |---|---|---|
-| 0x00–0x0F | Control-flow / branch | Aile aralığı ayrıldı; bireysel atamalar açık |
+| 0x00–0x0F | Control-flow / branch | 0x00–0x04 atandı; 0x05–0x0F ayrıldı |
 | 0x10–0x2F | Integer / scalar ALU | 0x10–0x1F atandı; 0x20–0x2F ayrıldı |
 | 0x30–0x3F | Bit / Boolean / shift | 0x30–0x3A atandı; 0x3B–0x3F ayrıldı |
 | 0x40–0x4F | Load/store / address | Aile aralığı ayrıldı; bireysel atamalar açık |
@@ -905,9 +905,58 @@ OP alanı 8-bit olduğundan 256 primary opcode değeri sunar. İlk aşamada opco
 | 0xC4–0xEF | Reserved / future extensions | Ayrılmış |
 | 0xF0–0xFF | Escape / EXT / implementation-defined | Ayrılmış; EXT için bireysel değer açık |
 
-Primary opcode, FMT ile birlikte komut tanımını seçer. Aşağıda Scalar/Integer/Logic, Vector/Matrix ve Floating-point ailelerinin sayısal atamaları verilmiştir; diğer ailelerin aralıkları ayrılmış ancak bireysel opcode atamaları henüz yapılmamıştır.
+Primary opcode, FMT ile birlikte komut tanımını seçer. Aşağıda Control-flow, Scalar/Integer/Logic, Vector/Matrix ve Floating-point ailelerinin sayısal atamaları verilmiştir; diğer ailelerin aralıkları ayrılmış ancak bireysel opcode atamaları henüz yapılmamıştır.
 
-### 8.1 Scalar / Integer / Logic primary opcode atamaları
+### 8.1 Control-flow primary opcode atamaları
+
+Control-flow komutları 0x00–0x0F aralığını kullanır. İlk sürümde JMP, koşullu BR, CALL, RET ve TRAP atanır; kalan değerler gelecekteki branch/call genişletmeleri için ayrılmıştır.
+
+| OP | Mnemonic | Format | Açıklama |
+|---:|---|---|---|
+| 0x00 | JMP | BR | Koşulsuz PC-relative dallanma; COND=ALWAYS, TEST=0. |
+| 0x01 | BR | BR | RA test register'ı üzerinde koşullu dallanma; koşul COND alanında. |
+| 0x02 | CALL | BR | PC-relative çağrı; TEST alanı link RA selector'ıdır. |
+| 0x03 | RET | R2 | A alanındaki link RA register'ından dönüş adresini alır. |
+| 0x04 | TRAP | RI | Yazılım kaynaklı senkron trap; IMM alanı trap cause kodudur. |
+
+**BR formatı ve koşul kodları**
+
+BR payload alanları: COND[3:0], TEST[4:0], RESERVED[10:0], DISP[31:0]. RESERVED alanı sıfır olmalıdır.
+
+| COND | Sembol | Test edilen 64-bit RA değeri |
+|---:|---|---|
+| 0000 | ALWAYS | Koşulsuz; JMP/CALL için kullanılır. |
+| 0001 | EQZ | RA[TEST] == 0 |
+| 0010 | NEZ | RA[TEST] != 0 |
+| 0011 | SLT0 | Signed(RA[TEST]) < 0 |
+| 0100 | SGE0 | Signed(RA[TEST]) >= 0 |
+| 0101 | SGT0 | Signed(RA[TEST]) > 0 |
+| 0110 | SLE0 | Signed(RA[TEST]) <= 0 |
+| 0111–1111 | Reserved | Illegal encoding |
+
+- JMP: COND=ALWAYS ve TEST=0 zorunludur.
+- BR: COND=0001–0110; TEST herhangi bir RA0–RA31 selector'ı olabilir.
+- CALL: COND=ALWAYS; TEST link register selector'ıdır. Çağrı öncesi TEST alanındaki RA kaydının eski değeri kullanılmaz; başarılı kontrol akışı commit'inde return address bu kayda yazılır.
+- JMP/BR için TEST=0 zorunludur (koşullu BR'de TEST koşul kaynağıdır).
+- DISP signed 32-bit byte displacement'tir. Hedef adres `packet_start_PC + sign_extend(DISP)` olarak hesaplanır; DISP 8-byte hizalı olmalıdır. Hedef, 64-bit komut adres alanında ve geçerli instruction boundary üzerinde bulunmalıdır.
+- EXT ile genişletilmiş bir control-flow komutunda packet_start_PC, EXT prefix adresidir. DISP yine packet_start_PC'ye göredir.
+- JMP/BR/CALL tek-word biçiminde tanımlıdır; ilk sürümde EXT'li branch displacement desteklenmez.
+
+**CALL / RET return-address sözleşmesi**
+
+- CALL hedefe dallanmadan önce, çağrı komut paketinin son word'ünden sonraki 64-bit komut adresini TEST ile seçilen RA link register'ına yazar.
+- CALL link register seçimi yazılım/ABI tarafından yapılır. Donanım sabit bir RA register'ını veya RAM stack'i zorunlu kılmaz.
+- RET, R2 formatında A alanındaki RA register'ını byte-addressed dönüş PC'si olarak okur. D=0, W=011 (64-bit), M=000 ve AUX=0 zorunludur.
+- RET hedefi geçerli instruction boundary olmalıdır; aksi durumda instruction-target fault oluşur.
+- İç içe çağrılarda link register değerinin korunması yazılım/ABI sorumluluğundadır; gerekirse başka RA register'ına veya tanımlı SPM alanına açıkça kaydedilir.
+
+**TRAP**
+
+- TRAP, RI formatını kullanır. D=0, A=0, W=000, M=000 zorunludur; IMM signed olmayan 36-bit trap cause kodu olarak yorumlanır.
+- TRAP normal branch değildir; senkron exception/trap giriş mekanizmasını tetikler. Trap vector tablosu, privilege geçişi, context kaydı ve dönüş komutu IRQ/exception tasarım bölümünde tanımlanacaktır.
+- Reserved alan veya geçersiz format kullanımı illegal encoding fault üretir.
+
+### 8.2 Scalar / Integer / Logic primary opcode atamaları
 
 Bu atama, scalar aritmetik ve temel bit/Boolean komutlarını kapsar. Aynı işlem ailesinin register ve immediate biçimleri, mümkün olduğunda aynı primary opcode'u farklı FMT değerleriyle kullanır. Signedness ve karşılaştırma koşulları da komuta ayrılmış alanlarla seçilir.
 
@@ -973,7 +1022,7 @@ Scalar format kısıtları:
 - BEXT/BINS, bu belgedeki R2 bit-field layout ve START/FIELD_WIDTH alanlarını aynen kullanır; numeric opcode'ları sırasıyla 0x39 ve 0x3A'dır.
 - 0x3B–0x3F ve 0x20–0x2F ilk sürümde reserved'dır.
 
-### 8.2 Vector ve Matrix primary opcode atamaları
+### 8.3 Vector ve Matrix primary opcode atamaları
 
 Aşağıdaki değerler bu revizyonla atanmıştır. Her mnemonic varyantı ayrı 8-bit primary opcode kullanır; operand formatı ve W/M alanları ilgili encoding kurallarına göre yorumlanır.
 
@@ -1029,7 +1078,7 @@ Aşağıdaki değerler bu revizyonla atanmıştır. Her mnemonic varyantı ayrı
 - Numeric opcode tablosunda bulunmayan bir mnemonic alias yeni opcode oluşturmaz. Alias yalnızca aynı opcode ve operand alanlarına assembler düzeyinde çevrilebilir.
 - Bu tablo primary opcode atamasıdır; execution latency, issue portu veya ME512'nin çevrim başına tamamlayacağı iş miktarını belirlemez.
 
-### 8.3 Floating-point primary opcode atamaları
+### 8.4 Floating-point primary opcode atamaları
 
 Floating-point komutları için 0x50–0x5F aralığı ayrılmıştır. İlk sürümde 12 primary opcode atanmış, dört değer genişletme için boş bırakılmıştır.
 
@@ -1105,7 +1154,7 @@ Aşağıdaki örnekler tam 64-bit hexadecimal makine kodu değildir; atanmış p
 3. EXT opcode'unun numeric değeri ve gelecekte COUNT>1 çoklu literal semantiği.
 4. DA↔MA 256/512-bit grup hizalaması ISA/encoding düzeyinde tanımlandı; mikro-mimari transfer portları ve timing'i açık.
 6. MA/FA pair komutlarının opcode ve exception ayrıntıları.
-7. Branch koşul kodları ve displacement'in PC'ye göre referans noktası (komut başlangıcı veya sonraki komut).
+7. Branch displacement'in packet başlangıcına göre hesaplanması ve koşul kodları tanımlandı; branch hedef doğrulama fault ayrıntıları exception bölümünde tamamlanacak.
 8. SYS formatının system register/privilege alanları.
 9. Komutlarda predicate/condition alanı gerekip gerekmediği.
 10. Reserved bitlerin gelecekteki uyumluluk politikası.
