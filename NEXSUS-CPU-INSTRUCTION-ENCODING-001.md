@@ -687,6 +687,17 @@ W alanının yorumu opcode ailesine bağlıdır. Örneğin FADD için W=010 FP32
 - Encoding içindeki FA selector, pair'in ilk kaydını gösterir.
 - FA pair komutunda selector'ın LSB biti 0 olmalıdır; aksi durumda illegal-instruction exception oluşur.
 
+### 6.1.1 FP komutlarının register bank eşlemesi
+
+- FADD, FSUB, FMUL, FDIV, FMIN ve FMAX gibi üç operandlı scalar FP komutları R3 kullanır; D/A/B alanları FA selector'larıdır.
+- FMA dört FA operandı nedeniyle R4 kullanır; D/A/B/C alanları FA selector'larıdır.
+- FP32 için W=010, FP64 için W=011, FP128 için W=100 kullanılır. FP128'de her FA selector çift indisli pair başlangıcını göstermelidir.
+- FCMP R3 kullanır ancak bank eşlemesi karma ve sabittir: D alanı hedef RA selector'ı, A ve B alanları kaynak FA selector'larıdır. FCMP hedefi 64-bit RA'ya 0 veya 1 yazar; global condition flag yoktur.
+- FCMP koşul çeşidi opcode/mnemonic varyantıyla (EQ, NE, LT, LE, GT, GE, ORD, UNORD) belirlenir; R3 içindeki W, karşılaştırılan FP biçimini (FP32/64/128) belirtir.
+- FNEG, FABS ve FSQRT tek kaynaklı FP komutlarıdır; ilgili opcode tanımına göre R2 formatı kullanır ve D/A alanları FA selector'larıdır.
+- İlk sürümde FADD/FSUB/FMUL/FDIV/FMA/FSQRT/FMIN/FMAX için yuvarlama roundTiesToEven'dır. FCONV'nin kendi ROUND alanı yalnızca dönüşüm işlemini kontrol eder.
+
+
 ### 6.2 MA / 512-bit
 
 - MA kayıtları 256-bit'tir.
@@ -854,6 +865,7 @@ Aşağıdaki örnekler gerçek hexadecimal makine kodu değildir; opcode değerl
 |---|---|---|
 | `ADD RA3, RA1, RA2` | R3 | OP_ADD, FMT_R3, D=3, A=1, B=2, W=64 |
 | `FADD FA4, FA1, FA2` | R3 | OP_FADD, FMT_R3, D=4, A=1, B=2, W=FP64 |
+| `FCMP.LT RA6, FA1, FA2` | R3 | OP_FCMP_LT, FMT_R3, D=RA6, A=FA1, B=FA2, W=FP64 |
 | `VADD.W32 MA8, MA4, MA12` | R3 | OP_VADD, FMT_R3, D=8, A=4, B=12, W=32 |
 | `FMA FA4, FA1, FA2, FA3` | R4 | OP_FMA, FMT_R4, D=4, A=1, B=2, C=3, W=FP64 |
 | `VMACC.W32 MA8, MA4, MA12, MA16` | R4 | OP_VMACC, FMT_R4, D=8, A=4, B=12, C=16, W=32 |
@@ -876,6 +888,8 @@ Aşağıdaki örnekler gerçek hexadecimal makine kodu değildir; opcode değerl
 9. Komutlarda predicate/condition alanı gerekip gerekmediği.
 10. Reserved bitlerin gelecekteki uyumluluk politikası.
 11. FCONV için NaN, infinity, integer overflow ve saturating/trap durumlarının kesin exception sonuçları.
+12. FP exception sticky flag'lerinin (FPSR) mimari görünürlüğü ve SYS üzerinden okuma/temizleme komutları.
+13. FCMP koşul varyantlarının sayısal opcode ataması; R3 içindeki D=RA, A/B=FA karma bank eşlemesi korunmalıdır.
 
 ---
 
