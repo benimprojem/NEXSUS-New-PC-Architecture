@@ -329,6 +329,40 @@ def build_cache_hierarchies(p: CoreProfile, core_count: int) -> List[CacheHierar
     return [CacheHierarchy(p, None, shared_l3) for _ in range(core_count)]
 
 
+def validate_px_page_descriptors(pages: List[dict]) -> bool:
+    """Validate PX Manager metadata; markers are never executable operations."""
+    if not pages:
+        raise ValueError("PX code stream must contain at least one page")
+    seen = set()
+    for index, page in enumerate(pages):
+        page_id = int(page["logical_page_id"])
+        valid_bytes = int(page["valid_bytes"])
+        marker = page.get("marker")
+        if page_id in seen:
+            raise ValueError(f"duplicate logical page id: {page_id}")
+        seen.add(page_id)
+        if valid_bytes <= 0 or valid_bytes > 2048 or valid_bytes % 8:
+            raise ValueError(f"invalid or misaligned valid_bytes for page {page_id}")
+        is_last = index == len(pages) - 1
+        if valid_bytes == 2048:
+            if marker not in (None, "FULL"):
+                raise ValueError("full 2-KiB pages continue automatically and take no marker")
+            if not is_last and int(pages[index + 1]["logical_page_id"]) != page_id + 1:
+                raise ValueError("full-page sequential continuation must name the next logical page")
+        elif marker == "PX_NEXT":
+            if is_last:
+                raise ValueError("PX_NEXT requires a following logical page")
+            next_id = int(page.get("next_logical_page_id", -1))
+            if next_id != int(pages[index + 1]["logical_page_id"]):
+                raise ValueError("PX_NEXT target does not match the next logical page")
+        elif marker == "PX_END":
+            if not is_last:
+                raise ValueError("PX_END cannot precede another page in the same code stream")
+        else:
+            raise ValueError("partial page requires PX_NEXT or PX_END metadata")
+    return True
+
+
 class CommandFetchModel:
     """Conventional I-cache or PX P0-P7 pool feeding two 2-KiB SPM0 banks."""
     def __init__(self, enabled: bool, p0_capacity_bytes: int = 16384,
