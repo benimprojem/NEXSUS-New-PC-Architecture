@@ -289,10 +289,10 @@ class CrossArchitectureComparisonTests(unittest.TestCase):
             self.assertEqual(results[key]["cores_configured"], 8)
             if key == "nexus_balanced_128":
                 arch = results[key]["register_architecture"]
-                self.assertEqual(arch["selector_bits"], 6)
-                self.assertEqual(arch["total_physical_bytes"], 3584)
+                self.assertEqual(arch["selector_bits"], 5)
+                self.assertEqual(arch["total_physical_bytes"], 1792)
                 self.assertEqual({bank["count"] for bank in
-                                  (arch["RA"], arch["FA"], arch["DA"], arch["MA"])}, {64})
+                                  (arch["RA"], arch["FA"], arch["DA"], arch["MA"])}, {32})
             self.assertEqual(results[key]["kernels"]["same_algorithm"]["ops"], 8)
             if key != "nexus_balanced_128":
                 self.assertEqual(results[key]["kernels"]["same_algorithm"]["p0_counters"]["mode"],
