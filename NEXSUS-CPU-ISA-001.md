@@ -438,7 +438,9 @@ SPM0, 256 adet 64-bit temel kayıt üzerinden doğrudan adreslenir; SPM1–SPM7 
 
 ## 7. Floating-point komutları
 
-Bu bölümdeki tüm FP kaynak ve hedef operandları FA0–FA31 bankındadır. FP32 ve FP64 değerler tek FA kaydında tutulur. FP128 değerler iki ardışık FA kaydını kullanır; pair başlangıcı çift indisli olmalıdır (FA00:FA01, FA02:FA03, …, FA30:FA31). Pair'in düşük 64 biti ilk kayıtta, yüksek 64 biti sonraki kayıttadır. Tek FA kaydına yazan FP32/FP64 işlemleri pair'in diğer kaydını etkilemez.
+Bu bölümdeki tüm FP kaynak ve hedef operandları FA0–FA31 bankındadır. FP32 (IEEE 754 binary32) ve FP64 (binary64) değerler tek FA kaydında tutulur. FP128 (binary128) değerler iki ardışık FA kaydını kullanır; pair başlangıcı çift indisli olmalıdır (FA00:FA01, FA02:FA03, …, FA30:FA31). Pair'in düşük 64 biti ilk kayıtta, yüksek 64 biti sonraki kayıttadır. Tek FA kaydına yazan FP32/FP64 işlemleri pair'in diğer kaydını etkilemez.
+
+### 7.1 Komut ailesi
 
 | Mnemonic | Operand | İşlev | Unit |
 |---|---|---|---|
@@ -446,16 +448,88 @@ Bu bölümdeki tüm FP kaynak ve hedef operandları FA0–FA31 bankındadır. FP
 | FSUB | dst, a, b | FP çıkarma | FPU |
 | FMUL | dst, a, b | FP çarpma | FPU |
 | FDIV | dst, a, b | FP bölme | FPU |
-| FMA | dst, a, b, c | Fused multiply-add | FPU |
+| FMA | dst, a, b, c | Fused multiply-add: a × b + c | FPU |
 | FNEG | dst, src | FP işaret değiştirme | FPU |
 | FABS | dst, src | FP mutlak değer | FPU |
 | FSQRT | dst, src | Karekök | FPU |
 | FMIN | dst, a, b | FP minimum | FPU |
 | FMAX | dst, a, b | FP maksimum | FPU |
-| FCMP | a, b | FP karşılaştırma | FPU |
-| FCONV | dst, src, src_type, dst_type | RA ↔ FA arasında sayısal integer/floating dönüşümü; türler açıkça belirtilir | FPU / conversion path |
+| FCMP | dst, a, b | FP karşılaştırma; RA hedefe 0/1 | FPU |
+| FCONV | dst, src, src_type, dst_type | RA ↔ FA arasında sayısal integer/floating dönüşümü | FPU / conversion path |
 
-FCONV, RA'daki integer değeri FA formatına veya FA'daki floating-point değeri RA integer formatına dönüştürür; kaynak/hedef bankı operandlarda açıkça belirtilir. Başlangıç formatları FP32 ve FP64'tür. FP128, FA pair biçimiyle ISA'da desteklenir; gerçek FPU throughput ve latency mikro-mimari doğrulamasına tabidir.
+FP aritmetik komutlarında bütün kaynaklar komut başlangıcında okunmuş kabul edilir; hedef yazımı kaynak okumalarından sonra commit edilir. Bu nedenle hedefin kaynaklardan biriyle aynı FA register'ı olması, işlem sonucunu değiştirmez. FP128 komutlarında hedef ve ilgili kaynak pair'leri çift indisli başlangıç kullanmalıdır; pair FA31'i aşamaz.
+
+### 7.2 Sayı biçimleri ve temel aritmetik
+
+- FP32, FP64 ve FP128 sırasıyla IEEE 754 binary32, binary64 ve binary128 değer biçimleridir. Bunlar yalnızca register genişliği etiketi değil, işlem hassasiyetini ve üs/aralık biçimini de belirler.
+- FADD, FSUB, FMUL, FDIV ve FSQRT seçilen W biçiminde hesaplanır ve sonucu aynı biçimde hedefe yazar.
+- FP aritmetik için ilk sürümün varsayılan yuvarlama modu **roundTiesToEven** (en yakına; tam ortada çift significand seçimi) olarak sabitlenir. Bu kural FP32, FP64 ve FP128 için aynıdır.
+- Ara hesaplama hassasiyeti, hedef biçimden daha geniş tutulabilir; ancak mimari sonuç, ilgili IEEE 754 işleminin seçilen hedef biçime tek kez yuvarlanmış sonucuyla aynı olmalıdır. Uygulama, ara hassasiyeti artırarak çift yuvarlama kaynaklı farklı mimari sonuç üretemez.
+- FMA, a × b + c işlemini tek fused işlem olarak yapar: çarpım ara sonucu hedef biçime yuvarlanmaz; toplamla birlikte yalnızca bir kez yuvarlanır. FMA, FMUL ardından FADD ile eşdeğer olmak zorunda değildir.
+- FNEG işaret bitini tersine çevirir; FABS işaret bitini sıfırlar. Bu iki komut NaN payload bitlerini ve diğer sayı alanlarını korur; NaN'ı quiet/signaling dönüştürmez ve yalnızca işaret işlemi nedeniyle FP invalid exception üretmez.
+- FMIN/FMAX, IEEE 754-2019 minimumNumber/maximumNumber davranışını izler: yalnızca bir operand NaN ise sayısal operand döner; iki operand da NaN ise quiet NaN döner. Eşit sıfırlarda FMIN -0, FMAX +0 sonucunu seçer.
+- İlk sürümde arithmetic rounding mode komut başına seçilmez. FCONV'nin kendi ROUND alanı, yalnızca integer/floating dönüşümünün yuvarlama davranışını belirler; FADD/FMUL/FMA gibi komutların sabit roundTiesToEven kuralını değiştirmez.
+
+### 7.3 Infinity, NaN, signed zero ve subnormal
+
+- Pozitif/negatif infinity ve signed zero, IEEE 754 binary32/64/128 biçimlerinin parçasıdır ve normal aritmetik operandları olarak desteklenir.
+- Subnormal (denormal) sayılar gradual underflow ile desteklenir. İlk sürümde flush-to-zero veya denormals-are-zero davranışı yoktur.
+- Quiet NaN (qNaN) aritmetik işlemlerde IEEE 754 kurallarına göre yayılır. Signaling NaN (sNaN) kullanımı invalid exception koşuludur ve sonuç quiet NaN olur.
+- Bir işlem birden fazla NaN operandı içeriyorsa sonuç NaN payload seçimi bu ilk ISA sürümünde deterministik olarak garanti edilmez. İşlem sonucu yine quiet NaN olur.
+- +0 ve -0 ayrı bit desenleridir; işaretleri IEEE 754 işlem kurallarına göre korunur. FNEG iki sıfırın işaretini değiştirir; FABS her ikisini de +0 yapar.
+- Infinity ve sıfır kombinasyonlarında (ör. 0 × infinity, 0/0, infinity/infinity) IEEE 754 invalid/divide-by-zero kuralları uygulanır; sonuç ilgili işlemin IEEE 754 varsayılan sonucudur.
+
+### 7.4 FP exception davranışı
+
+İlk sürüm FP işlemleri için IEEE 754 temel exception sınıflarını tanımlar: **invalid operation, division by zero, overflow, underflow ve inexact**.
+
+- Exception oluşması tek başına komutu durdurmaz; işlem IEEE 754 varsayılan sonuç değerini üretir (ör. invalid için quiet NaN, overflow için uygun infinity veya en büyük sonlu değer; sonuç yuvarlama ve işaret kurallarına bağlıdır).
+- İlk sürümde FP exception'lar için trap/interrupt davranışı tanımlı değildir. FP komutları bu exception'lar nedeniyle senkron trap üretmez.
+- Exception durumlarının yazılım tarafından okunup temizleneceği per-core FP status register (FPSR) ve buna erişen SYS komutları henüz tanımlanmamıştır. Bu nedenle sticky flag görünürlüğü ve temizleme arayüzü açık tasarım maddesidir; uygulama içi durumun varlığı ISA tarafından henüz gözlemlenebilir kılınmamıştır.
+- Fault oluşturan mimari bellek/komut hataları ile IEEE 754 FP exception'ları farklıdır. İlki normal fault/commit kurallarına tabidir; ikincisi yukarıdaki varsayılan sonuç üretimidir.
+
+### 7.5 FP karşılaştırma
+
+FCMP'nin hedefi RA bankındadır; kaynakları FA bankındadır. FCMP.<cond> RA_dst, FA_a, FA_b karşılaştırması hedef RA'nın 64-bit değerini 0 veya 1 yapar. Bu komut global condition flag üretmez; branch komutları sonuç RA register'ını açıkça test eder.
+
+| Condition | Sonuç 1 olduğunda |
+|---|---|
+| EQ | a ve b sayısal olarak eşit |
+| NE | a ve b eşit değil veya operandlardan biri NaN (unordered dahil) |
+| LT | a < b, her iki operand ordered |
+| LE | a <= b, her iki operand ordered |
+| GT | a > b, her iki operand ordered |
+| GE | a >= b, her iki operand ordered |
+| ORD | İki operand da NaN değil |
+| UNORD | En az bir operand NaN |
+
+- Ordered ilişkisel koşullarda (LT/LE/GT/GE), NaN içeren karşılaştırma false sonucunu verir.
+- EQ, NaN içeren karşılaştırmada false; NE ise true sonucunu verir.
+- ORD/UNORD yalnızca NaN durumunu sınar; sayısal büyüklük karşılaştırması yapmaz.
+- FCMP sonucu 0/1 olarak tam 64-bit RA hedefe yazılır. Hedef register kaynak verilerle aynı fiziksel kaynak değildir; RA ve FA ayrı banklardır.
+- Signaling NaN karşılaştırması invalid exception koşuludur. Quiet NaN karşılaştırması, yukarıdaki unordered sonuçlarını üretir; ilk sürümde qNaN karşılaştırması tek başına invalid exception oluşturmaz.
+
+### 7.6 FCONV dönüşümü
+
+FCONV, RA'daki integer değeri FA formatına veya FA'daki floating-point değeri RA integer formatına dönüştürür; kaynak/hedef bankı operandlarda açıkça belirtilir. Başlangıç formatları FP32, FP64 ve FP128'tir.
+
+- Örnekler:
+  - FCONV FA3, RA7, i64, f64: RA7'deki signed 64-bit integer değerini FA3'e FP64 olarak dönüştürür.
+  - FCONV RA7, FA3, f64, i32: FA3'teki FP64 değerini signed 32-bit integer'a dönüştürerek RA7'nin alt 32-bit görünümüne yazar.
+  - FCONV FA4:FA5, RA8, i64, f128: RA8'deki signed 64-bit integer değerini FP128'e dönüştürüp FA4:FA5 pair'ine yazar.
+- FCONV bir bit aktarımı değildir; MOV.RA.DA veya MOV.FA.DA ile aynı semantiğe sahip değildir.
+- FCONV'nin ROUND alanı nearest-ties-to-even, toward-zero, toward-negative-infinity veya toward-positive-infinity seçeneklerinden birini seçer. Bu seçim yalnızca dönüşüm komutuna aittir.
+- FCONV NaN/infinity kaynakları, integer hedefe taşma, saturating ve trap flag'lerinin kesin sonuçları henüz tam tanımlı değildir; encoding belgesindeki açık karar maddesi olarak kalır.
+- Encoding alanları, tür kodları, rounding ve conversion flags NEXSUS-CPU-INSTRUCTION-ENCODING-001.md içindeki FCONV alt bölümünde tanımlanır. FP128 kullanıldığında FA pair başlangıcı çift indisli olmalıdır.
+
+### 7.7 FPU issue ve uygulama sınırları
+
+- İlk çekirdek hedefinde en az iki FPU bulunur; uygun bağımsız operand ve hedef register'larla teorik olarak iki FP komutu aynı çevrimde issue edilebilir.
+- İki FPU bulunması, her komutun tek çevrim latency veya her FP biçiminin aynı throughput'a sahip olduğu anlamına gelmez.
+- FP128 işlemleri iki FA register'ı tüketir; pair portları, bypass, pipeline derinliği ve FPU kaynak paylaşımı issue sayısını azaltabilir.
+- FDIV ve FSQRT gibi işlemlerin latency/throughput değerleri mikro-mimari performans belgesinde tanımlanacaktır.
+- FPU0/FPU1 arasında bit-identical mimari sonuç zorunludur; fiziksel uygulama farklı olsa bile bu bölümde tanımlanan yuvarlama ve özel değer kuralları değiştirilemez.
+
 
 ## 8. Vector ve Matrix komutları
 
