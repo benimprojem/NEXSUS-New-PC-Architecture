@@ -68,7 +68,8 @@ FMT alanı için ilk öneri:
 | 0101 | BR | Conditional/unconditional PC-relative branch |
 | 0110 | SYS | System, control ve özel register komutları |
 | 0111 | EXT | Takip eden 64-bit literal/extension word kullanan komut |
-| 1000–1111 | Reserved | Gelecek formatlar |
+| 1000 | R4 | Dört register operandlı işlemler (FMA, VMACC, MADD vb.) |
+| 1001–1111 | Reserved | Gelecek formatlar |
 
 FMT kodları taslak değerlerdir; opcode tablosu dondurulurken sabitlenecektir.
 
@@ -107,7 +108,31 @@ Opcode ailesi operand bankını belirler:
 
 Unary, compare, move veya iki register kullanan komutlarda kullanılır. Komutun tanımına göre D hedef olabilir veya kullanılmayabilir. Kullanılmayan alanlar sıfır olmalıdır.
 
-### 4.3 RI — Register + immediate
+### 4.3 R4 — Dört register operandı
+
+```text
+63       56 55    52 51   47 46   42 41   37 36   32 31  29 28  26 25       0
++----------+--------+-------+-------+-------+-------+------+-----+----------+
+| OP (8)   |FMT (4) | D (5) | A (5) | B (5) | C (5) | W(3) | M(3)| AUX (26) |
++----------+--------+-------+-------+-------+-------+------+-----+----------+
+```
+
+- D: hedef veya accumulator/result register selector
+- A/B/C: üç kaynak register selector'ı
+- W: işlem veya element genişliği
+- M: komuta özgü mod alanı
+- AUX: ek komuta özgü alan; kullanılmıyorsa sıfır olmalıdır
+- Operand bankı, R3 formatındaki gibi opcode ailesinden belirlenir.
+- FP komutlarında FA, vector/matrix komutlarında MA bankı kullanılır. 128-bit FA ve 512-bit MA pair kuralları geçerlidir.
+
+R4 örnekleri:
+- `FMA FA4, FA1, FA2, FA3`
+- `VMACC.W32 MA8, MA4, MA12, MA16`
+- `MADD MA0:MA1, MA2:MA3, MA4:MA5, MA6:MA7` (512-bit pair biçimi; operand şekli ISA tarafından belirlenir)
+
+Bu format, dört ayrı register operandını tek 64-bit instruction word içinde kodlar; komutun çok çevrimli çalışması encoding uzunluğunu değiştirmez.
+
+### 4.4 RI — Register + immediate
 
 ```text
 63       56 55    52 51   47 46   42 41  39 38  36 35                 0
@@ -301,6 +326,8 @@ Aşağıdaki örnekler gerçek hexadecimal makine kodu değildir; opcode değerl
 | `ADD RA3, RA1, RA2` | R3 | OP_ADD, FMT_R3, D=3, A=1, B=2, W=64 |
 | `FADD FA4, FA1, FA2` | R3 | OP_FADD, FMT_R3, D=4, A=1, B=2, W=FP64 |
 | `VADD.W32 MA8, MA4, MA12` | R3 | OP_VADD, FMT_R3, D=8, A=4, B=12, W=32 |
+| `FMA FA4, FA1, FA2, FA3` | R4 | OP_FMA, FMT_R4, D=4, A=1, B=2, C=3, W=FP64 |
+| `VMACC.W32 MA8, MA4, MA12, MA16` | R4 | OP_VMACC, FMT_R4, D=8, A=4, B=12, C=16, W=32 |
 | `LOAD DA12, [RA20+16]` | MEM | D=12, BASE=20, W=64, DISP=16 |
 | `MOV.FA.DA FA3, DA12` | XFER | DB=FA, DI=3, SB=DA, SI=12, W=64 |
 | `MOV.MA.DA MA4, DA0:DA3` | XFER | DB=MA, DI=4, SB=DA, SI=0, W=256 |
