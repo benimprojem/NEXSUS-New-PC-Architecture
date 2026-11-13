@@ -95,6 +95,7 @@ Temel belgeler:
 - [ISA komut seti ve execution-unit eşlemesi](NEXUS%20CPU/NEXSUS-CPU-ISA-001.md)
 - [Instruction Encoding Specification — 64-bit komut kodlaması](NEXUS%20CPU/NEXSUS-CPU-INSTRUCTION-ENCODING-001.md)
 - [SPM ve register görünümleri](NEXUS%20CPU/NEXSUS%20CPU%20%E2%80%94%20SPM,%20Register%20G%C3%B6r%C3%BCn%C3%BCmleri%20ve%20Do%C4%9Frudan%20Alan%20Eri%C5%9Fimi.md)
+- [CPU memory bank topology — 8×64-bit bank group](NEXUS%20CPU/NEXSUS-CPU-MEMORY-BANK-TOPOLOGY-001.md)
 
 
 # 4. FAPU
