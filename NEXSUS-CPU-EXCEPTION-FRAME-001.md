@@ -137,19 +137,22 @@ A process/thread context switch is an OS scheduling operation, not the hardware 
 Exact CSR IDs will be allocated in the CSR map after field semantics are frozen.
 
 ## 12. Baseline decisions and open points
-**Baseline selected:** minimal hardware frame + 8-entry core-local ECS + software bank-selective spill + privileged per-core exception stack + dedicated double-fault record.
+**Baseline selected:** minimal hardware frame + 8-entry core-local ECS + SPM7 depth-banked exception workspace + software bank-selective spill + privileged per-core exception stack + dedicated double-fault record.
 
 **Still to specify:** exact stack CSR encoding/bounds model; frame integrity mechanism; nested same-privilege stack frame ABI; whether ECS depth may be 16+ in high-end cores; FP/vector lazy-state ownership; exact IRET validation/error behavior; reset/debug interactions.
 
 
-## 13. Exception-entry scratch window
+## 13. SPM7 exception workspace
 
-A handler must be able to preserve a live RA register before using it to calculate the spill-frame address. To avoid the classic scratch-register bootstrap problem, each ECS slot has four 64-bit **exception scratch registers** (ESCR0–ESCR3), physically stored in the slot's reserved area.
+SPM7 is the exception-entry temporary workspace. No additional ESCR register bank is introduced.
 
-- ESCR0–ESCR3 are visible only to privileged handler code through CSRR/CSRW.
-- On entry, the active scratch window is selected by the current ECS top; nested entry selects a different slot/window and does not overwrite the outer handler's scratch values.
-- They are not part of the normal RA bank and are not visible to PL0.
-- They are temporary bootstrap storage only; handlers must not use them as persistent local variables across nested calls unless saved in their software frame.
-- IRET discards the current slot's scratch contents when popping that frame.
+- SPM7 is 8 KiB per core, consistent with the SPM bank baseline.
+- The 8 KiB exception workspace is divided into eight 1 KiB slices, one slice for each minimum ECS nesting level.
+- Hardware selects the active slice from the ECS depth before the first handler instruction. Nested entry selects the next slice and cannot overwrite the outer handler's temporary values.
+- The active slice is directly addressable through the SPM7 exception window; the handler does not need to consume an RA register merely to locate its initial scratch storage.
+- SPM7 exception slices are reserved while exception handling is active and are not simultaneously available to interrupted application code.
+- On IRET, the corresponding slice is released for reuse. Its contents are unspecified after release.
+- SPM7 is temporary bootstrap/spill workspace, not the persistent kernel exception stack and not a replacement for the software save frame on KESP.
+- The 1 KiB per-level slice is sufficient for initial scratch preservation and small prologue metadata. Larger RA/FA/DA/MA save sets use the bounded privileged exception stack.
 
-This small per-depth scratch window lets the first handler instructions preserve any normal register they need before touching the privileged stack. It avoids reserving ordinary RA registers globally and avoids automatically spilling all four register banks.
+This reuses existing SPM capacity, avoids extra architectural registers and keeps nested exception scratch state isolated by depth.
