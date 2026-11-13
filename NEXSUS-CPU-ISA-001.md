@@ -598,6 +598,61 @@ MA registerları 256-bit fiziksel genişliktedir. ME512 512-bit yürütme yoludu
 - MMUL/MADD/MTRANS/MREDUCE/MDOT matrix komutlarının tile boyutu, signedness, accumulation hassasiyeti ve sonuç yerleşimi henüz tanımlanmamıştır; bunlar vector lane semantiğinden bağımsız matrix alt bölümünde kapatılacaktır.
 
 
+### 8.5 Matrix tile modeli ve ME512
+
+Matrix komutları, vector lane komutlarından ayrı bir operand modeli kullanır. İlk sürümde kare tile boyutları desteklenir: **2×2, 4×4 ve 8×8**. Tile boyutu, MA register genişliği veya ME512 datapath genişliğiyle aynı kavram değildir.
+
+**Tile boyutları ve eleman genişlikleri**
+
+| Tile şekli | Desteklenen eleman genişlikleri | Tile veri boyutu | Gerekli MA register sayısı |
+|---|---|---:|---:|
+| 2×2 | 8/16/32/64 bit | 32/64/128/256 bit | 1 |
+| 4×4 | 8/16/32/64 bit | 128/256/512/1024 bit | 1/1/2/4 |
+| 8×8 | 8/16/32 bit | 512/1024/2048 bit | 2/4/8 |
+
+- Her MA register'ı 256 bit'tir. Tile verisi, MA register'ları boyunca ardışık ve kesintisiz biçimde paketlenir.
+- Bir tile'ın MA register sayısı: `ceil(N × N × element_width / 256)`. Tile başlangıç selector'ı, bu register grubunun ilk MA register'ını gösterir.
+- Tile register grubu MA0–MA31 sınırını aşamaz. Register grupları birbirleriyle çakışamaz; yalnızca hedef tile'ın kaynak tile'lardan biriyle aynı başlangıç selector'ını kullanmasına, komutun snapshot/commit kuralları çerçevesinde izin verilir.
+- Gruplar, kendi register sayılarının katı olan selector'lardan başlatılır. Örneğin 8-register tile grubu MA0, MA8, MA16 veya MA24'ten başlayabilir. Bu kural operand gruplarının sınırlarını ve decoder kontrolünü sadeleştirir.
+- 8×8 tile için 64-bit eleman genişliği ilk sürümde desteklenmez. Bu sınır, MA register dosyasına sığan açık operand grupları ve MMAC'in dört ayrı tile operandı gerektirmesi dikkate alınarak konmuştur. Daha geniş elemanlar ileride farklı tile aktarım/operand modeliyle değerlendirilebilir.
+- Tile elemanları row-major sıralanır: önce satır 0'ın sütunları, ardından satır 1 ve devamı. İlk eleman bit aralığı tile'ın en düşük anlamlı bitleridir. Son MA register'ında kullanılmayan yüksek bitler yazımda sıfırlanır.
+- ME512, çekirdek başına 512-bit matrix/vector veri yolu genişliğidir; 512-bit bir matris boyutu veya tek çevrimde her tile'ın tamamının işleneceği garantisi değildir. 512 bitten büyük tile operandları dahili dilimlerle işlenebilir. Komut gecikmesi ve throughput'u microarchitecture aşamasında belirlenecektir.
+
+### 8.6 Matrix komutları
+
+İlk matrix ISA kapsamı iki temel komuttur:
+
+| Mnemonic | İşlem | Format |
+|---|---|---|
+| MMUL.S / MMUL.U | D = A × B | R3 |
+| MMAC.S / MMAC.U | D = A × B + C | R4 |
+
+- `N` tile boyutunu (2, 4 veya 8), `W` her matris elemanının genişliğini (8/16/32/64; 8×8 için en fazla 32) belirtir.
+- `S` varyantı elemanları signed two's-complement, `U` varyantı unsigned olarak yorumlar. Kaynak ve hedef tile'ların eleman genişliği aynıdır.
+- Her çıktı elemanı için standart kare matris çarpımı uygulanır: `D[i,j] = Σ(k=0..N-1) A[i,k] × B[k,j]`. MMAC'te C[i,j] bu toplama eklenir.
+- Her çıktı elemanının ara birikimi, ürünlerin toplamını kayıpsız tutacak genişlikte hesaplanır: `2×W + ceil(log2(N))` bit. MMAC'teki C elemanı bu genişliğe signed/unsigned varyantına göre genişletilerek eklenir.
+- Sonuç, hedef tile'da W bit'e modulo `2^W` daraltılarak yazılır. İlk sürümde saturating sonuç, ayrı high-half sonuç veya overflow fault yoktur.
+- Kaynak tile'lar komut başlangıcında snapshot edilir. D, A/B/C ile aynı başlangıç MA selector'ını kullanabilir; sonuç bütün hedef tile için tek mimari commit olarak yazılır. Fault oluşursa hedef tile'ın hiçbir register'ı değiştirilmez.
+- MMUL için D/A/B; MMAC için D/A/B/C operand tile grupları aynı N ve W parametrelerini kullanır. Grupların register aralıkları MA0–MA31 içinde kalmalı ve birbirleriyle çakışmamalıdır; D'nin A, B veya C ile tam alias olması bu çakışma kuralının istisnasıdır.
+- Tile boyutu veya W kombinasyonu desteklenmiyorsa, selector grubu hizasızsa ya da register aralığı MA31'i aşıyorsa `ILLEGAL_OPERAND_CONFIGURATION_FAULT` oluşur; hedef tile değişmez.
+- İlk sürümde rectangular matrix, transpose, mixed-precision, saturating matrix arithmetic, sparse matrix, tile mask, matrix load/store formatı ve matrix descriptor register'ı tanımlanmaz. Tile verisi MA register'larına mevcut register-transfer/vector-data yollarıyla yerleştirilir.
+- MMUL/MMAC numeric opcode değerleri henüz atanmadı.
+
+Örnek assembly gösterimleri:
+
+```asm
+; 4×4 signed 16-bit: her tile bir MA register'ına sığar
+MMUL.S.N4.W16 MA8, MA0, MA4
+
+; 8×8 unsigned 16-bit: her tile dört MA register kullanır
+MMUL.U.N8.W16 MA16, MA0, MA4
+
+; 8×8 signed 32-bit: her tile sekiz MA register kullanır
+MMAC.S.N8.W32 MA24, MA0, MA8, MA16
+```
+
+Son örnekte dört tile grubu MA0–MA31 aralığını tam olarak kullanır. Bu bir ISA operand örneğidir; ME512'nin tek çevrimde 8×8×32-bit MMAC tamamladığı anlamına gelmez.
+
 ## 9. Control-flow komutları
 
 | Mnemonic | Operand | İşlev |
