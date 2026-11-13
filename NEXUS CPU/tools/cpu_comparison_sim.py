@@ -1070,6 +1070,7 @@ def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=N
                 "useful_bytes": sum(x["fetch"].useful_bytes for x in per_core if x["fetch"] is not None),
                 "pool_hits": sum(x["fetch"].pool_hits for x in per_core if x["fetch"] is not None),
                 "pool_misses": sum(x["fetch"].pool_misses for x in per_core if x["fetch"] is not None),
+                "pool_refill_bytes": sum(x["fetch"].pool_refill_bytes for x in per_core if x["fetch"] is not None),
                 "mode": ("PX pool -> SPM0 2x2-KiB" if p.name.startswith("NEXSUS CPU") and
                          (nexus_features is None or nexus_features.get("p0", True))
                          else "conventional I-cache")
@@ -1227,7 +1228,7 @@ def run_fetch_latency_sweep(workloads, conventional_latencies=(8, 16, 24, 32),
         }
     for latency in p0_latencies:
         run = simulate_cpu(
-            target, PROFILES["nexus_balanced_128"], 8,
+            target, PROFILES["nexus_balanced_128"], 1,
             {"spm": True, "p0": True, "p0_capacity_kb": p0_capacity_kb,
              "p0_refill_latency": latency, "px_pool_miss_latency": 120},
         )
