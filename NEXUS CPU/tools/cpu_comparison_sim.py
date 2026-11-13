@@ -850,7 +850,9 @@ def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=N
                 "refills": sum(x["fetch"].refills for x in per_core if x["fetch"] is not None),
                 "refill_bytes": sum(x["fetch"].refill_bytes for x in per_core if x["fetch"] is not None),
                 "wait_cycles": sum(x["fetch"].wait_cycles for x in per_core if x["fetch"] is not None),
-                "mode": ("P0" if nexus_features is None or nexus_features.get("p0", True) else "conventional I-cache") if p.name.startswith("NEXSUS CPU") else "reference profile"
+                "mode": ("P0" if p.name.startswith("NEXSUS CPU") and
+                         (nexus_features is None or nexus_features.get("p0", True))
+                         else "conventional I-cache")
             },
             "parallel_model": "lockstep multicore; private L1; NEXSUS L2 shared per 2 cores, L3 per 4 and L4 per 8; reference CPU caches remain per-core approximations; shared DRAM banks and work-conserving aggregate bus; coherence not modeled"
         }
