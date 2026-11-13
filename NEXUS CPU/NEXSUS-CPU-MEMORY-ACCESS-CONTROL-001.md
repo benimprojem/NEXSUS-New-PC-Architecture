@@ -112,7 +112,7 @@ For XFER.MEM or XFER.START with a nonzero length:
 **WAIT/token behavior:**
 - Successful XFER.WAIT consumes the token and clears its TRA register to zero. Reusing a consumed token is an illegal-token fault.
 - An asynchronous runtime transfer failure is reported synchronously by XFER.WAIT. The failed token is retired by hardware, but the faulting WAIT does not commit its TRA write under precise-exception rules; the old token bits remain in the RA and are stale. The exception handler may clear or overwrite that RA using normal RA operations.
-- A token is local to the initiating core and does not grant new access rights.
+- A token is local to the initiating core and does not grant new access rights. Its 64-bit RA representation is opaque to software and must distinguish a token slot's current generation from stale copies; recycling a slot must never make an old token value valid for a later transfer during the core's active lifetime.
 - A token record remains allocated after the transfer reaches either success or failure, until WAIT consumes it. Completion frees transfer-engine execution resources, not the token record.
 
 ## 7. Domain reachability is not task permission
