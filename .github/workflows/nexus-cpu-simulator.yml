@@ -44,9 +44,21 @@ jobs:
           PY
       - name: Run four-way SPM P0 ablation
         run: python "NEXUS CPU/tools/cpu_comparison_sim.py" --ablation --scale 1
+      - name: Run normalized eight-core comparison
+        run: |
+          python "NEXUS CPU/tools/cpu_comparison_sim.py" --normalized-8core --scale 1 --json > /tmp/nexus-normalized-8core.json
+          python - <<'PY'
+          import json
+          data = json.load(open("/tmp/nexus-normalized-8core.json", encoding="utf-8"))
+          assert len(data) == 4
+          assert {row["cores_configured"] for row in data.values()} == {8}
+          assert len({row["total_ops"] for row in data.values()}) == 1
+          print("PASS: normalized 8-core run, same operation count across all four architectures.")
+          PY
       - name: Run branch predictor sensitivity sweep
         run: |
           python "NEXUS CPU/tools/cpu_comparison_sim.py" --branch-sweep --scale 1 --json > /tmp/nexus-branch-sweep.json
+            /tmp/nexus-normalized-8core.json
           python - <<'PY'
           import json
           data = json.load(open("/tmp/nexus-branch-sweep.json", encoding="utf-8"))
