@@ -451,13 +451,13 @@ class CommandFetchModel:
         self.refill_bytes += self.p0_buffer_bytes
         self.useful_bytes += self.p0_buffer_bytes
 
-    def can_fetch(self, command_address: int, cycle: int) -> bool:
+    def can_fetch(self, command_address: int, cycle: int, sequential: bool = True) -> bool:
         self.complete(cycle)
         if self.enabled:
             block = max(0, command_address) // self.p0_buffer_bytes
             offset = max(0, command_address) % self.p0_buffer_bytes
             self._validate_fetch_address(block, offset)
-            if self.active_block is not None and block != self.active_block:
+            if sequential and self.active_block is not None and block != self.active_block:
                 expected = self._next_logical_page(self.active_block)
                 if expected is None:
                     raise ValueError(f"PX_END reached for page {self.active_block}; no sequential next page")
