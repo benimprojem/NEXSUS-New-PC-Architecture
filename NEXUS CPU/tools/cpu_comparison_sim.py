@@ -45,6 +45,7 @@ class CoreProfile:
     line_bytes: int = 64
     bank_count: int = 8
     bank_beat_bytes: int = 8
+    bank_hash: str = "low"
     dram_bytes_per_cycle: int = 32
     core_count: int = 1
     core_type: str = "uniform"
@@ -94,7 +95,7 @@ PROFILES = {
         "l1_kb": 128, "l2_kb": 1024, "l3_kb": 8192, "l4_kb": 65536,
         "l1_lat": 2, "l2_lat": 8, "l3_lat": 24, "l4_lat": 64, "dram_lat": 120,
         "branch_penalty": 10, "frequency_ghz": 2.0,
-        "dram_bytes_per_cycle": 64
+        "bank_hash": "folded", "dram_bytes_per_cycle": 64
     }
 }
 
@@ -274,7 +275,10 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
                     beats = max(1, math.ceil(op.width / p.bank_beat_bytes))
                     for beat in range(beats):
                         beat_address = op.address + beat*p.bank_beat_bytes
-                        bank = (beat_address // p.bank_beat_bytes) % p.bank_count
+                        if p.bank_hash == "folded":
+                            bank = (((beat_address >> 3) & 7) ^ ((beat_address >> 6) & 7) ^ ((beat_address >> 9) & 7)) % p.bank_count
+                        else:
+                            bank = (beat_address // p.bank_beat_bytes) % p.bank_count
                         start = max(cycle, bank_busy[bank])
                         wait = max(wait, start-cycle)
                         bank_busy[bank] = start + 1
