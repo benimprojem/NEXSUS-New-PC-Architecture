@@ -158,6 +158,29 @@ class SharedCacheGroupTests(unittest.TestCase):
 
 
 
+class ReferenceCacheTopologyTests(unittest.TestCase):
+    def test_amd_and_intel_p_share_llc_but_keep_private_l2(self):
+        for key in ("amd_9950x", "intel_285k_p"):
+            p = sim.profile_from_dict(sim.PROFILES[key])
+            caches = sim.build_cache_hierarchies(p, 8)
+            with self.subTest(profile=key):
+                self.assertIsNot(caches[0].l1, caches[1].l1)
+                self.assertIsNot(caches[0].l2, caches[1].l2)
+                self.assertIs(caches[0].l3, caches[7].l3)
+                caches[0].fill(0x5000, "DRAM")
+                self.assertEqual(caches[7].probe(0x5000)[1], "L3")
+
+    def test_skymont_shares_l2_per_four_core_cluster_and_package_llc(self):
+        p = sim.profile_from_dict(sim.PROFILES["intel_285k_e"])
+        caches = sim.build_cache_hierarchies(p, 8)
+        self.assertIs(caches[0].l2, caches[3].l2)
+        self.assertIsNot(caches[0].l2, caches[4].l2)
+        self.assertIs(caches[0].l3, caches[7].l3)
+        caches[0].fill(0x6000, "DRAM")
+        self.assertEqual(caches[1].probe(0x6000)[1], "L2")
+        self.assertEqual(caches[4].probe(0x6000)[1], "L3")
+
+
 class SpmP0ModelTests(unittest.TestCase):
     def test_spm2_enabled_hits_local_store_and_preserves_work(self):
         workloads = {"hot": [sim.Op(i, "LOAD", address=(i % 32)*64, width=64,
