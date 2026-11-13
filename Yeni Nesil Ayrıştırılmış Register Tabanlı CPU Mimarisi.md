@@ -1159,3 +1159,41 @@ Bellek paylaşım kapsamı çekirdek gruplarına göre kademelendirilir:
 Bu topoloji CPU bellek mimarisinin paylaşım modelidir; belirli bir RAM hücre teknolojisini varsaymaz. Kesin kapasite ve timing değerleri çekirdek sayısı, fabric bant genişliği ve ürün hedefleri belirlendikten sonra eklenecektir.
 
 ISA ayrıntısı: [NEXSUS-CPU-ISA-001.md — §22.9](NEXSUS-CPU-ISA-001.md).
+
+
+## 27. L1–L4 bellek kapasitesi ve açık aktarım modeli
+
+L1/L2/L3/L4 ayrı bellek domain'leridir. Birbirlerine otomatik bağlı bir cache zinciri oluşturmazlar; verinin bir seviyeden diğerine kendiliğinden taşınması veya otomatik kopyalanması beklenmez.
+
+### 27.1 İlk kapasite hedefleri
+
+| Seviye | Paylaşım kapsamı | Domain başına hedef kapasite |
+|---|---:|---:|
+| L1 | 1 çekirdek | 128 KiB |
+| L2 | 2 çekirdek | 1 MiB |
+| L3 | 4 çekirdek | 8 MiB |
+| L4 | 8 çekirdek | 64 MiB |
+
+Kapasite her üst seviyede domain başına 8 kat büyür. Bu değerler başlangıç tasarım hedefidir; gecikme, bant genişliği, port sayısı ve fiziksel bellek yerleşimi ölçümlerden sonra kesinleştirilecektir. 8'den fazla çekirdekli sistemlerde L4, sekizli gruplar veya daha geniş bir sistem domain'i olarak ölçeklenebilir.
+
+### 27.2 Bellek domain'lerinin ayrılığı
+
+- Her çekirdeğin L1'i özeldir.
+- L2 iki çekirdeğin, L3 dört çekirdeğin, L4 ise sekiz ve üzeri çekirdeğin erişebildiği paylaşımlı domain'dir.
+- L1–L4 arasında otomatik aktarım/terfi/düşürme yapılmaz.
+- Bir domain'de bulunan veri başka seviyede otomatik olarak görünür hale gelmez.
+- Aynı zone adresinin paylaşılması, o zone'un erişim kapsamındaki çekirdekler arasında payload kopyalamadan iletişim sağlar. Farklı seviyeye geçiş ise ayrı bir veri taşıma işlemidir.
+
+### 27.3 CPU kontrollü seviye aktarımı
+
+Bir verinin başka bir Lx domain'ine alınması gerektiğinde CPU talimatı ile açık aktarım yapılır. Kaynak seviye/adres, hedef seviye/adres ve uzunluk komutta belirtilir. CPU aktarımı yürütür ve tamamlanma/hata durumunu denetler. Donanımın Lx seviyeleri arasında kendiliğinden kopyalama yaptığı varsayılmaz.
+
+ISA için ilk komut taslağı:
+
+```asm
+XFER L3:destination, L1:source, 4096
+```
+
+Bu örnek 4096 byte veriyi L1'den L3'e CPU kontrolünde taşır. Büyük transferler çok çevrimli olabilir. İleride asenkron başlatma ve bekleme/token biçimi eklenebilir; ancak aktarımın açıkça CPU tarafından istenmesi temel kuraldır.
+
+Ayrıntılı ISA semantiği: [NEXSUS-CPU-ISA-001.md — §22.10–22.11](NEXSUS-CPU-ISA-001.md).
