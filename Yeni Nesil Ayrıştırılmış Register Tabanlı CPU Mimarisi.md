@@ -1051,7 +1051,7 @@ Her çekirdeğe **1 adet 512-bit Matrix Engine (ME)** eklenir.
 - RA/RB/RC/RD görünümleri scalar ALU'ların operand ve sonuç alanıdır.
 - DA bankı data transfer ve staging görevini sürdürür.
 - MA bankı vector/matrix operand ve sonuçlarını taşır.
-- SPM0/SPM1, register pressure ve ara değerler için doğrudan adreslenebilir çalışma alanıdır.
+- SPM0, yürütme tarafındaki geçici komutsal durum ve sonuçlar için; SPM1–SPM7 ise geçici veri ve ara hesaplamalar için doğrudan adreslenebilir çalışma alanlarıdır.
 - SPM erişimi execution unit'lere ortak bir kaynak olarak sunulur; aynı çevrimdeki erişim sayısı port/bank tasarımıyla belirlenecektir.
 
 ## 22.6 Paralel yürütme ilkesi
@@ -1201,7 +1201,7 @@ Ayrıntılı ISA semantiği: [NEXSUS-CPU-ISA-001.md — §22.10–22.11](NEXSUS-
 
 ## 28. P0 program komut ön belleği ve kod/veri ayrımı
 
-NEXSUS CPU'da program komutları ile uygulama verileri farklı RAM alanlarında tutulur. Programın ana kodu **App RAM**'de, uygulama verileri ayrı **Data RAM**'de bulunur. P0, App RAM'den gelen komutları yürütme öncesinde tutan çekirdek-özel komut ön belleğidir. SPM0 ise yürütme aşamasındaki geçici komut kayıt alanıdır.
+NEXSUS CPU'da program komutları ile uygulama verileri farklı RAM alanlarında tutulur. Programın ana kodu **App RAM**'de, uygulama verileri ayrı **Data RAM**'de bulunur. P0, App RAM'den gelen komutları yürütme öncesinde tutan çekirdek-özel komut ön belleğidir. SPM0 ise yürütme aşamasındaki geçici komutsal durum ve sonuç alanıdır; komutları veya fetch kuyruğunu saklamaz.
 
 | Bellek | Görev | Kayıt genişliği | Kapasite |
 |---|---|---:|---:|
@@ -1211,8 +1211,8 @@ NEXSUS CPU'da program komutları ile uygulama verileri farklı RAM alanlarında 
 | L2 | İki çekirdek için paylaşılan veri belleği | Veri erişim genişliklerine bağlı | 1 MiB / ikili grup |
 | L3 | Dört çekirdek için paylaşılan veri belleği | Veri erişim genişliklerine bağlı | 8 MiB / dörtlü grup |
 | L4 | Sekiz veya daha geniş çekirdek grubu için paylaşılan veri belleği | Veri erişim genişliklerine bağlı | 64 MiB / sekizli grup |
-| SPM0 | Yürütme sırasında oluşan geçici komutsal durum, ara değerler ve sonuçlar | 64 bit kayıt | 32 KiB / çekirdek |
-| SPM1–SPM7 | Geçici veri ve ara hesaplama alanları | Byte-addressed; değişken genişlik | Kapasite/bölümlendirme sonraki tasarım aşamasında |
+| SPM0 | Yürütme sırasında oluşan geçici komutsal durum, ara değerler ve sonuçlar | 64-bit temel kayıt; 8–512-bit erişim | 2 KiB / çekirdek (256 kayıt) |
+| SPM1–SPM7 | Geçici veri ve ara hesaplama alanları | Byte-addressed; 8–512-bit erişim | 8 KiB / alan; 56 KiB toplam |
 
 ### 28.1 Kod ve veri ayrımı
 
@@ -1238,9 +1238,9 @@ P0 komut fetch ön belleğidir. SPM alanları CPU'nun yürütme sırasında ihti
 
 - **SPM0:** Yürütme sırasında oluşan geçici komutsal durum, ara değerler ve sonuçlar için kullanılır. Stack benzeri geçici saklama işlevi görür; fakat LIFO zorunluluğu yoktur ve doğrudan adreslenir.
 - SPM0 toplam 32 KiB'tır; 8 × 4 KiB sayfadan oluşur. Her sayfada 512 adet 64-bit kayıt bulunur.
-- **SPM1–SPM7:** Aynı doğrudan adreslenebilir modeli veri tarafında uygular; geçici veriler ve ara hesaplama değerleri burada tutulur. Byte adresleme ve 8/16/32/64/128-bit erişim genişlikleri desteklenir.
+- **SPM1–SPM7:** Aynı doğrudan adreslenebilir modeli veri tarafında uygular; geçici veriler ve ara hesaplama değerleri burada tutulur. Her biri 8 KiB kapasitelidir (toplam 56 KiB); byte adresleme ve 8/16/32/64/128/256/512-bit erişim genişlikleri desteklenir.
 - SPM0–SPM7, P0'dan komut kopyalamak için kullanılmaz. P0'ın görevi komutları App RAM'den fetch etmektir; SPM alanlarının görevi yürütme sırasında oluşan çalışma durumunu saklamaktır.
-- SPM0–SPM7'nin fiziksel bank/port düzeni ve SPM1–SPM7 kapasiteleri sonraki mikro-mimari aşamasında belirlenecektir.
+- SPM0–SPM7'nin fiziksel bank/port düzeni ve geniş erişimlerdeki hizalama/sınır davranışı sonraki mikro-mimari aşamasında kesinleştirilecektir.
 
 ### 28.5 P0 fetch bant genişliği ve yürütme beslemesi
 
