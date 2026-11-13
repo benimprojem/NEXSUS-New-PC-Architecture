@@ -693,7 +693,7 @@ W alanının yorumu opcode ailesine bağlıdır. Örneğin FADD için W=010 FP32
 - FMA dört FA operandı nedeniyle R4 kullanır; D/A/B/C alanları FA selector'larıdır.
 - FP32 için W=010, FP64 için W=011, FP128 için W=100 kullanılır. FP128'de her FA selector çift indisli pair başlangıcını göstermelidir.
 - FCMP R3 kullanır ancak bank eşlemesi karma ve sabittir: D alanı hedef RA selector'ı, A ve B alanları kaynak FA selector'larıdır. FCMP hedefi 64-bit RA'ya 0 veya 1 yazar; global condition flag yoktur.
-- FCMP koşul çeşidi opcode/mnemonic varyantıyla (EQ, NE, LT, LE, GT, GE, ORD, UNORD) belirlenir; R3 içindeki W, karşılaştırılan FP biçimini (FP32/64/128) belirtir.
+- FCMP tek primary opcode kullanır; koşul AUX[3:0] alanıyla seçilir (EQ/NE/LT/LE/GT/GE/ORD/UNORD). R3 içindeki W, karşılaştırılan FP biçimini (FP32/64/128) belirtir; AUX[31:4] sıfır olmalıdır.
 - FNEG, FABS ve FSQRT tek kaynaklı FP komutlarıdır; ilgili opcode tanımına göre R2 formatı kullanır ve D/A alanları FA selector'larıdır.
 - İlk sürümde FADD/FSUB/FMUL/FDIV/FMA/FSQRT/FMIN/FMAX için yuvarlama roundTiesToEven'dır. FCONV'nin kendi ROUND alanı yalnızca dönüşüm işlemini kontrol eder.
 
@@ -963,6 +963,31 @@ Aşağıdaki değerler bu revizyonla atanmıştır. Her mnemonic varyantı ayrı
 - Numeric opcode tablosunda bulunmayan bir mnemonic alias yeni opcode oluşturmaz. Alias yalnızca aynı opcode ve operand alanlarına assembler düzeyinde çevrilebilir.
 - Bu tablo primary opcode atamasıdır; execution latency, issue portu veya ME512'nin çevrim başına tamamlayacağı iş miktarını belirlemez.
 
+### 8.2 Floating-point primary opcode atamaları
+
+Floating-point komutları için 0x50–0x5F aralığı ayrılmıştır. İlk sürümde 12 primary opcode atanmış, dört değer genişletme için boş bırakılmıştır.
+
+| OP | Mnemonic | Format | Açıklama |
+|---:|---|---|---|
+| 0x50 | FADD | R3 | FP toplama |
+| 0x51 | FSUB | R3 | FP çıkarma |
+| 0x52 | FMUL | R3 | FP çarpma |
+| 0x53 | FDIV | R3 | FP bölme |
+| 0x54 | FMA | R4 | Fused multiply-add |
+| 0x55 | FNEG | R2 | İşaret tersleme |
+| 0x56 | FABS | R2 | Mutlak değer |
+| 0x57 | FSQRT | R2 | Kare kök |
+| 0x58 | FMIN | R3 | IEEE minimumNumber davranışı |
+| 0x59 | FMAX | R3 | IEEE maximumNumber davranışı |
+| 0x5A | FCMP | R3 | FP karşılaştırma; koşul AUX alanında |
+| 0x5B | FCONV | XFER | Integer/FP sayısal dönüşüm |
+
+- 0x5C–0x5F FP ailesi için ayrılmıştır; ilk sürümde illegal/reserved kabul edilir.
+- FCMP R3 alanları: D=RA hedef selector'ı, A/B=FA kaynak selector'ları, W=FP32/FP64/FP128 biçimi. AUX[3:0] condition kodudur: 0000=EQ, 0001=NE, 0010=LT, 0011=LE, 0100=GT, 0101=GE, 0110=ORD, 0111=UNORD. AUX[31:4] sıfır olmalıdır. M=000 zorunludur.
+- FCMP.LT gibi assembly yazımları ayrı opcode değildir; FCMP opcode'u ve ilgili condition koduna çevrilen mnemonic alias'larıdır.
+- FCONV, XFER alan yerleşimini ve önceki FCONV payload tanımını kullanır; yalnızca primary opcode 0x5B olarak sabitlenmiştir.
+- FP128 kaynak/hedef FA pair ve even-start selector kuralları geçerlidir. Bu opcode atamaları FP latency, throughput veya exception edge-case kararlarını değiştirmez.
+
 ## 9. Decoder ve P0 akışı
 
 - P0 her zaman 64-bit instruction word kayıtları tutar.
@@ -990,13 +1015,13 @@ Exception türleri, trap vector ve hata raporlama ayrıntıları ayrı system-co
 
 ## 11. Örnek alan eşlemeleri
 
-Aşağıdaki örnekler gerçek hexadecimal makine kodu değildir; opcode değerleri henüz atanmadığı için sembolik alan eşlemesidir.
+Aşağıdaki örnekler tam 64-bit hexadecimal makine kodu değildir; bazı primary opcode değerleri atanmış olsa da bit alanları sembolik gösterilmiştir.
 
 | Assembly | Format | Alanların yorumu |
 |---|---|---|
 | `ADD RA3, RA1, RA2` | R3 | OP_ADD, FMT_R3, D=3, A=1, B=2, W=64 |
-| `FADD FA4, FA1, FA2` | R3 | OP_FADD, FMT_R3, D=4, A=1, B=2, W=FP64 |
-| `FCMP.LT RA6, FA1, FA2` | R3 | OP_FCMP_LT, FMT_R3, D=RA6, A=FA1, B=FA2, W=FP64 |
+| `FADD FA4, FA1, FA2` | R3 | OP=0x50, FMT_R3, D=4, A=1, B=2, W=FP64 |
+| `FCMP.LT RA6, FA1, FA2` | R3 | OP=0x5A, FMT_R3, D=RA6, A=FA1, B=FA2, W=FP64, AUX[3:0]=0010 |
 | `VADD.W32 MA8, MA4, MA12` | R3 | OP_VADD, FMT_R3, D=8, A=4, B=12, W=32 |
 | `FMA FA4, FA1, FA2, FA3` | R4 | OP_FMA, FMT_R4, D=4, A=1, B=2, C=3, W=FP64 |
 | `VMACC.W32 MA8, MA4, MA12, MA16` | R4 | OP_VMACC, FMT_R4, D=8, A=4, B=12, C=16, W=32 |
@@ -1020,7 +1045,7 @@ Aşağıdaki örnekler gerçek hexadecimal makine kodu değildir; opcode değerl
 10. Reserved bitlerin gelecekteki uyumluluk politikası.
 11. FCONV için NaN, infinity, integer overflow ve saturating/trap durumlarının kesin exception sonuçları.
 12. FP exception sticky flag'lerinin (FPSR) mimari görünürlüğü ve SYS üzerinden okuma/temizleme komutları.
-13. FCMP koşul varyantlarının sayısal opcode ataması; R3 içindeki D=RA, A/B=FA karma bank eşlemesi korunmalıdır.
+13. FCMP koşul kodlarının ve AUX reserved bitlerinin assembler doğrulaması; FCMP primary opcode ve condition alanı atanmıştır.
 
 ---
 
