@@ -820,7 +820,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
             "ready_at": [0] * len(shard), "done": [False] * len(shard),
             "issued": [False] * len(shard), "dispatched": [False] * len(shard),
             "rob": deque(), "unit_busy": {k: [0] * v for k, v in p.units.items()},
-            "next_frontend": 0, "frontend_blocked_until": 0, "retired": 0,
+            "next_frontend": 0, "frontend_blocked_until": 0, "retired": 0, "last_pc": None,
             "max_rob": 0, "hits": {"L1":0,"L2":0,"L3":0,"L4":0,"DRAM":0},
             "branch_misses": 0, "branch_number": 0,
             "stalls": {"dependency_blocked_op_cycles": 0,
@@ -892,8 +892,10 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 op = ops[st["next_frontend"]]
                 if st["fetch"] is not None:
                     pc = op.command_address if op.command_address >= 0 else op.seq * 8
-                    if not st["fetch"].can_fetch(pc, cycle):
+                    sequential_fetch = st["last_pc"] is None or pc == st["last_pc"] + 8
+                    if not st["fetch"].can_fetch(pc, cycle, sequential=sequential_fetch):
                         break
+                    st["last_pc"] = pc
                 st["dispatched"][op.seq] = True
                 st["rob"].append(op.seq)
                 st["next_frontend"] += 1
