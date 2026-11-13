@@ -708,10 +708,14 @@ Bu eşleme, FENCE SCOPE alanındaki L1–L4 sıralamasının iki bitlik karşıl
 - Üç opcode da FMT=1101 (MEMXFER) kullanır. FMT uyumsuzluğu veya zorunlu sıfır alanlarının sıfır olmaması illegal encoding'dir.
 - DRA ve SRA, byte adresi tutan 64-bit RA kayıtlarını seçer. LRA, unsigned byte uzunluğunu tutan 64-bit RA kaydını seçer.
 - XFER.START, başlatılan aktarımın çekirdek-yerel token değerini TRA'nın seçtiği RA'ya yazar. XFER.WAIT aynı selector alanıyla token değerini okur. Token başka çekirdekte kullanılamaz.
-- XFER.MEM tamamlanana kadar komut akışını bekletir. XFER.START kabul edildiğinde komut akışına devam eder; hedef veri ancak ilgili XFER.WAIT tamamlandıktan sonra tüketilebilir.
+- **Sıfır uzunluk:** LRA'nın gösterdiği uzunluk 0 ise XFER.MEM bellek erişimi yapmadan başarılı no-op olarak tamamlanır. XFER.START da bellek erişimi başlatmadan tamamlanmış bir token üretir; takip eden XFER.WAIT hemen tamamlanır. Bu durumda adres aralıklarına yönelik bellek erişim/permission kontrolleri yapılmaz; komut biçimi, domain selector ve RA selector geçerliliği yine denetlenir.
+- **RA aliasing:** Komutun ihtiyaç duyduğu bütün kaynak RA değerleri, herhangi bir hedef RA yazılmadan önce snapshot edilir. Bu nedenle START'ta TRA'nın DRA, SRA veya LRA ile aynı RA selector'ını kullanması geçerlidir; token yazımı yalnızca snapshot tamamlandıktan sonra yapılır. WAIT'ta TRA hem token kaynağı hem de başarılı tamamlanma sonrası sıfırlanan hedeftir.
+- **Token yaşam döngüsü:** Token başlatan çekirdeğe ve tek bir kabul edilmiş transfere bağlıdır. Başarılı WAIT token'ı tüketir ve TRA'nın gösterdiği RA'yı 0 yapar. Aynı token ile ikinci WAIT illegal-token fault üretir. Token, başka çekirdekte kullanılamaz.
+- XFER.MEM tamamlanana kadar komut akışını bekletir. XFER.START kabul edildiğinde komut akışına devam eder; hedef veri ancak ilgili XFER.WAIT başarılı olduktan sonra tüketilebilir.
+- **Asenkron hata:** Transferin runtime aşamasında hata ile tamamlanması halinde XFER.WAIT ilgili transfer fault'unu senkron olarak üretir. Hatalı transfer token'ı donanım tarafından terminal olarak tüketilir; faulting WAIT'ın RA yazımı precise-exception kuralı gereği commit edilmez, dolayısıyla TRA eski token değerini korur. Exception handler bu stale değeri normal RA işlemleriyle temizlemeli/üzerine yazmalıdır; aynı token artık geçerli değildir. Hatalı hedef aralık geçerli veri sayılmaz.
 - OP zaten synchronous/start/wait ayrımını yaptığı için payload içinde ikinci bir MODE alanı yoktur.
 - RESERVED alanı ileride genişletme için korunur; v1 decoder bu bitlerden herhangi biri 1 ise komutu reddeder.
-- Bu alan eşlemesi **adaydır ve henüz encoding freeze değildir**. Özellikle sıfır uzunluk, RA aliasing (token hedefinin kaynak/uzunluk RA'sıyla aynı olması) ve token yaşam döngüsü kuralları ISA kararı olarak ayrıca netleştirilmelidir.
+- Alan eşlemesi **adaydır ve henüz encoding freeze değildir**; alan bitleri ve opcode'lar belgelenmiştir, fakat maksimum transfer boyutu, aynı çekirdekte eşzamanlı token kapasitesi ve runtime fault alt türlerinin ayrıntıları mikro-mimari/exception sözleşmesinde tamamlanacaktır.
 
 ## 5. Width alanı
 
@@ -1245,7 +1249,7 @@ Aşağıdaki örnekler tam 64-bit hexadecimal makine kodu değildir; atanmış p
 
 - MEMUPD/MEMXUPD ve ATOM opcode numaraları §8.5 ile atandı; assembler mnemonic alias tablosunun ayrıntılı canonical spelling listesi ayrıca tamamlanacaktır.
 - ATOM ordering, scalar 8/16/32/64-bit işlemler ve CAS/SWAP/FETCH_* operand semantiği taslak olarak tanımlandı; fiziksel coherence, arbitration ve bank locking mikro-mimari aşamasında belirlenecek.
-- MEMXFER için §4.15'te 52-bit payload alan eşlemesi ve 0x86–0x88 opcode davranışı aday olarak tanımlandı. Encoding freeze öncesinde zero-length davranışı, RA selector aliasing, token'ın tüketilme/serbest bırakılma ömrü ve async hata sonucunun raporlanması karara bağlanacaktır.
+- MEMXFER §4.15 zero-length no-op, kaynak snapshot'ı öncesi aliasing, başarılı WAIT'ta token tüketimi/RA temizleme ve async hata raporlama davranışlarını tanımlar. Encoding freeze öncesinde maksimum transfer boyutu, eşzamanlı token kapasitesi ve runtime fault alt türleri tamamlanacaktır.
 
 1. OP ve FMT sayısal kodlarının nihai tablosu.
 3. EXT opcode'unun numeric değeri ve gelecekte COUNT>1 çoklu literal semantiği.
