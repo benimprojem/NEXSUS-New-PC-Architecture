@@ -243,3 +243,75 @@ This allows command prefetch and context restoration to overlap without treating
 **Unchanged:** SPM0 execution workspace; SPM7 exception workspace; P0 refillable command prefetch; full task context remains 1,792 bytes of register payload plus metadata; SPM is directly addressed local memory, not a coherent cache.
 
 **Open:** exact context-slot metadata layout; SPM allocator interface; whether the scheduler dedicates a configurable SPM quota per core; P0 task/code identity tagging details.
+
+## 14. Fixed SPM role partition and resident task-context pool
+
+The baseline per-core SPM allocation is now explicitly partitioned by role. Each SPM bank is 8 KiB.
+
+| Bank | Capacity | Owner / role |
+|---|---:|---|
+| SPM0 | 8 KiB | CPU execution workspace; existing role |
+| SPM1 | 8 KiB | OS-only workspace and OS-defined syscall/I/O exchange area |
+| SPM2 | 8 KiB | OS-managed resident task-context pool |
+| SPM3 | 8 KiB | User/programmer-addressable workspace |
+| SPM4 | 8 KiB | OS-managed resident task-context pool |
+| SPM5 | 8 KiB | OS-managed resident task-context pool |
+| SPM6 | 8 KiB | OS-managed resident task-context pool |
+| SPM7 | 8 KiB | Exception-entry workspace; eight 1 KiB depth slices |
+
+### 14.1 SPM1 — OS workspace and syscall exchange
+
+SPM1 is reserved to the OS. It provides temporary OS working storage and a fast exchange area for syscall arguments, results, and bounded I/O staging such as print/input operations.
+
+- The hardware does not hard-code syscall meanings or fixed sub-addresses.
+- The OS defines the ABI layout, offsets, ownership, valid lengths, and lifetime of each exchange region.
+- User code must enter through the defined syscall interface; it must not directly overwrite OS-owned SPM1 state.
+- Large or long-lived payloads remain in the appropriate App/Data RAM domain and are referenced by address/handle. SPM1 is not a general payload buffer for arbitrary large transfers.
+- OS code must define whether each exchange field is input, output, in/out, and whether it is valid only for the duration of the syscall.
+
+### 14.2 SPM3 — user/programmer workspace
+
+SPM3 is directly addressable by user programs as a fast local working area. It is not a hardware-managed stack and imposes no push/pop or LIFO behavior. Programs may use it for explicitly addressed scratch data, temporary values, and runtime-defined workspace.
+
+SPM3 has one physical 8 KiB capacity per core. Its contents are owned by the currently scheduled execution context when that context is allowed to use it. On a task switch, the OS must preserve live task-owned SPM3 contents in that task's Data RAM context backing (or retain the task/core residency without reassigning SPM3). The next task's SPM3 image is restored before it resumes if that image is live. A program that does not require SPM3 contents to survive a yield may declare/release that workspace through the OS ABI. No implicit cross-core migration of SPM3 contents occurs.
+
+### 14.3 SPM2 and SPM4–SPM6 — resident task register-context slots
+
+Four banks are dedicated to the OS-managed fast task-context pool: SPM2, SPM4, SPM5, and SPM6. Their combined capacity is 32 KiB.
+
+A full RA/FA/DA/MA payload is 1,792 bytes. The existing 64-byte save-frame header brings the base frame to 1,856 bytes, which fits in a 2 KiB slot with 32-byte alignment. Therefore each 8 KiB bank contains four 2 KiB slots:
+
+- 4 banks × 4 slots = **16 resident task-context slots per core**.
+- Each slot holds one full register-bank image and its save-frame header.
+- Task control metadata (PC, STATUS, FP control/status, address-space and memory-domain descriptors, SPM ownership metadata, and scheduling state) remains in the task control block in protected Data RAM; the slot does not duplicate ECS state.
+- A slot is assigned to exactly one task at a time. The OS tracks valid/invalid state, task identity, generation, and ownership. It must complete the save before publishing a slot as valid and complete restore before resuming the task.
+- If more than 16 tasks are runnable/retained on a core, the excess contexts remain in protected Data RAM and can be loaded into a slot when scheduled. **16 is the resident fast-slot maximum, not the system-wide task-count limit.**
+- If the implementation changes slot header size or adds context payload fields, the 2 KiB fit must be revalidated; it must not silently overlap adjacent slots.
+
+The OS may choose any slot ordering and eviction policy, but it must preserve explicit ownership and cannot overwrite a live context. Task-context slots are OS-owned storage; they are not simultaneously available as arbitrary application scratch space.
+
+### 14.4 Task switch overlap with P0 refill
+
+When the scheduler selects a different task, the context and instruction paths may proceed independently:
+
+1. Save the outgoing task's architectural register context into its assigned SPM slot when a slot is available; otherwise save it to protected Data RAM.
+2. Resolve the incoming task's slot and restore RA/FA/DA/MA state. If its context is not resident, load it from protected Data RAM into a free slot or directly restore through the established transfer path.
+3. In parallel, initiate/refill P0 from the incoming task's App RAM instruction stream using the task's saved PC and address-space mapping.
+4. Do not dispatch the incoming task until both its required architectural state and the first required instruction(s) are ready and all address-space/permission state is installed.
+5. P0 contents are discarded/replaced as needed; P0 is not copied into the task's 2 KiB context slot and is not part of the saved architectural context.
+
+This overlap is an implementation opportunity, not a guarantee that context restore and P0 refill always finish in the same cycle. The scheduler must handle either path completing first.
+
+### 14.5 Capacity summary
+
+| Purpose | SPM capacity |
+|---|---:|
+| OS workspace + syscall exchange (SPM1) | 8 KiB |
+| User/programmer workspace (SPM3) | 8 KiB |
+| Resident task register-context pool (SPM2, SPM4–SPM6) | 32 KiB |
+| Execution workspace (SPM0) | 8 KiB |
+| Exception workspace (SPM7) | 8 KiB |
+| **Total per core** | **64 KiB** |
+
+This partition replaces the earlier flexible SPM1–SPM6 task-slot allocation proposal. The fixed role partition is the baseline; changing it requires an explicit OS/platform configuration rather than implicit sharing.
+
