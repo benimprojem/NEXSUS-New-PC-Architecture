@@ -327,3 +327,22 @@ Use a **common IRQ entry** and a compact **cause-indexed exception table**:
 **Frozen:** CSR width=64; CSR ID width=12; STATUS/CAUSE fields above; PL0/PL1/PL2; 8-bit IRQ priority; VECTORBASE 4 KiB alignment; exception slots + common IRQ + fatal vector; unified IRET; STATUS.IE canonical.
 
 **Open:** source/token widths; IRQMASK selector; IRQCLAIM/EOI payload layout; numeric cause table; reset PC; exception-frame implementation; CSR instruction encoding/opcodes; NMI/timer CSRs.
+
+
+### 14.6 Timer and inter-core notification CSRs
+
+The following provisional IDs extend the CSR map; detailed behavior is specified in **NEXSUS-SYSTEM-TIMER-INTERCORE-IRQ-001.md**.
+
+| ID | Name | Access | Description |
+|---:|---|---|---|
+| 0x032 | TIME | R/O | System-wide monotonic 64-bit counter; not wall-clock time |
+| 0x033 | TIMECMP | privileged R/W | Per-core absolute deadline in TIME domain |
+| 0x034 | TIMERCTL | restricted R/W | Per-core timer enable/mode and read-only pending/missed status |
+| 0x060 | IPI_SEND | privileged W/O | Request an IPI to a target core/mailbox; metadata only |
+| 0x061 | IPI_STATUS | R/O | IPI acceptance/error status |
+| 0x062 | IPI_MAILBOX | privileged R/W window | Mailbox metadata and receiver-visible sequence |
+| 0x063 | IPI_ACK | privileged W/O | Acknowledge a consumed mailbox sequence/slot |
+
+TIME frequency is platform-discovered and is not fixed by the ISA. TIME wraps modulo 2^64; modular deadline comparisons are valid within a half-range (<2^63 ticks). Timer expiration is a source event routed through the IRQ Controller, never a direct CPU bypass. Timer-source pending and IRQ-controller pending are separate states.
+
+IPI is a core-to-core interrupt notification, not a data transfer. Sender publishes shared data with RELEASE before IPI; receiver consumes with ACQUIRE. Mailbox overflow/lost sequence must be observable and recoverable. Mailbox acknowledgement and IRQEOI are separate operations. Exact IPI_SEND packing, mailbox capacity, and source IDs remain platform-defined.
