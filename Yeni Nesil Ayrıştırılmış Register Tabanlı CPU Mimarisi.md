@@ -1241,6 +1241,16 @@ P0 komutları fetch aşamasında hazır tutar; SPM0 ise dispatch edilmiş ve yü
 - SPM0 komut ön belleği değildir; App RAM'den komut fetch etmez ve P0'ın yerini almaz.
 - P0 fetch, SPM0 dispatch/yürütme aşamasına hizmet eder.
 
+### 28.5 P0 fetch bant genişliği ve yürütme beslemesi
+
+P0 kayıtlarının 64-bit olması, fetch veri yolunun da 64-bit olması gerektiği anlamına gelmez.
+
+- İlk mikro-mimari hedefi P0 ile fetch/decode tarafı arasında **512-bit (8 adet 64-bit komut sözcüğü) tepe okuma genişliği** sağlamaktır.
+- Bu, sekiz komutun aynı çevrimde yürütüleceği anlamına gelmez. İlk issue hedefi 2 ALU + 2 FPU + 1 ME512 olmak üzere en fazla beş bağımsız komut/çevrimdir.
+- Fetch edilen fakat henüz issue edilmeyen komutlar decode/dispatch akışında sıraya alınır; SPM0 yürütme tarafındaki geçici komut kayıtlarını tutar.
+- 512-bit değer tepe fetch bant genişliği hedefidir; her çevrim garanti edilen efektif bant genişliği değildir. Branch, P0 miss, hizalama, port ve App RAM gecikmesi gerçek beslemeyi etkiler.
+- Fetch genişliği güç/alan/performans ölçümleriyle değiştirilebilir; P0'ın 64-bit komut kaydı ve 8 KiB / 16 KiB kapasite seçenekleri bundan bağımsızdır.
+
 ### 28.4 P0 ve veri domain'leri arasında aktarım
 
 P0 ile L1–L4 veri domain'leri birbirinden ayrıdır. App RAM'den P0'a otomatik komut refill edilmesi dışında kod ve veri domain'leri arasında örtük kopyalama yapılmaz. Kodun açıkça başka bir domain'e taşınması veya değiştirilmesi gerekiyorsa CPU kontrollü aktarım ve kod-yürütme senkronizasyonu gerekir.
