@@ -398,17 +398,10 @@ The exception-entry storage model is defined in **NEXSUS-CPU-EXCEPTION-FRAME-001
 | 0x01A | DFCAUSE | R/O | Double-fault cause and entry-failure status |
 | 0x01B | DFPC | R/O | PC captured for double-fault diagnosis |
 
-KESP/KELIMIT are per-core. On a lower-to-higher privilege transition, hardware switches to the configured privileged exception stack before executing the handler. The interrupted application stack is not used as the privileged handler stack. ECS is protected core-local storage and is separate from all RA/FA/DA/MA registers, SPM0 and ordinary RAM.
+KESP/KELIMIT are per-core. On a lower-to-higher privilege transition, hardware switches to the configured privileged exception stack before executing the handler. The interrupted application stack is not used as the privileged handler stack. ECS is protected core-local control storage and is separate from all RA/FA/DA/MA registers, SPM0, SPM7 exception workspace and ordinary RAM.
 
-Hardware automatically saves control/return metadata only. RA/FA/DA/MA register payloads are saved by compiler-generated or handwritten handler prologues according to the interrupt ABI and actual bank usage. IRET validates and pops exactly one ECS frame; it does not restore general register payloads. IRQEOI and IRET remain separate operations.
+Hardware automatically saves control/return metadata only. SPM7 provides eight 1 KiB depth-selected exception scratch slices. RA/FA/DA/MA register payloads are saved by compiler-generated or handwritten handler prologues according to the interrupt ABI and actual bank usage. IRET validates and pops exactly one ECS frame; it does not restore general register payloads. IRQEOI and IRET remain separate operations.
 
 
 
-| ID | Name | Access | Description |
-|---:|---|---|---|
-| 0x01C | ESCR0 | privileged R/W | Active ECS frame exception scratch word 0 |
-| 0x01D | ESCR1 | privileged R/W | Active ECS frame exception scratch word 1 |
-| 0x01E | ESCR2 | privileged R/W | Active ECS frame exception scratch word 2 |
-| 0x01F | ESCR3 | privileged R/W | Active ECS frame exception scratch word 3 |
-
-ESCR0–ESCR3 are four 64-bit scratch words physically associated with each ECS slot. CSRR/CSRW access the currently active top-frame window; nested exception entry selects a separate window. They are bootstrap storage for the handler prologue, not additional general-purpose registers.
+CSR IDs 0x01C–0x01F remain reserved in this baseline. Exception-entry scratch storage uses the SPM7 depth-banked workspace; no additional scratch CSR bank is defined.
