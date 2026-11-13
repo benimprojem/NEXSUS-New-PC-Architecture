@@ -96,7 +96,7 @@ PROFILES = {
         "l1_kb": 128, "l2_kb": 1024, "l3_kb": 8192, "l4_kb": 65536,
         "l1_lat": 2, "l2_lat": 8, "l3_lat": 24, "l4_lat": 64, "dram_lat": 120,
         "branch_penalty": 10, "frequency_ghz": 3.0,
-        "bank_hash": "folded", "dram_bytes_per_cycle": 32
+        "bank_hash": "folded", "dram_bytes_per_cycle": 64
     }
 }
 
