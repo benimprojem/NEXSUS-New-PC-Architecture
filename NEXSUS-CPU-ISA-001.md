@@ -265,7 +265,7 @@ Bu örnek sadece 512-bit operand/result register eşlemesini gösterir; matris s
 - ME512 ile ALU/FPU komutları bağımsız register ve kaynaklar kullanıyorsa paralel ilerleyebilir.
 - ME512'nin iç tile/accumulator kapasitesi 512-bit dış operand yolundan ayrı bir mikro-mimari konudur.
 
-## 15. Scalar register bank portları ve paralel issue
+## 15. Register bank portları ve paralel issue
 
 İlk mikro-mimari için port sayıları **tasarım hedefi** olarak tanımlanır (final silikon gereksinimi değil):
 
