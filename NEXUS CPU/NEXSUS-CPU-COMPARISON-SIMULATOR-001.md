@@ -1,19 +1,19 @@
 # NEXSUS CPU — Cross-Architecture Comparison Simulator
 
 **Document ID:** NEXSUS-CPU-COMPARISON-SIMULATOR-001  
-**Status:** Simulator v0.1 scaffold; single-stream kernel model only  
+**Status:** Simulator v0.2; controlled 8-core dependency-component model (shared-memory contention still pending)  
 **Purpose:** Compare one deterministic mixed workload across AMD Zen 5, Intel Arrow Lake P/E cores, and configurable NEXSUS CPU candidates.
 
 ## 1. Comparison targets
 
 | Target | Processor | Core model | Physical organization |
 |---|---|---|---|
-| AMD | Ryzen 9 9950X | Zen 5 | 16 homogeneous cores, 32 hardware threads |
-| Intel P | Core Ultra 9 285K | Lion Cove | 8 Performance cores |
-| Intel E | Core Ultra 9 285K | Skymont | 16 Efficient cores |
-| NEXSUS | NEXSUS candidate profile | Current proposed CPU blocks | Configurable; default 8 cores is a simulation scenario, not an architecture decision |
+| AMD | Ryzen 9 9950X | Zen 5 | Controlled comparison uses 8 Zen 5 cores; SMT disabled in this phase |
+| Intel P | Core Ultra 9 285K | Lion Cove | 8 P-cores |
+| Intel E | Core Ultra 9 285K | Skymont | Separate 8 E-core reference profile; not mixed with P-core profile |
+| NEXSUS | NEXSUS candidate profile | Current proposed CPU blocks | Minimum comparison configuration: 8 cores |
 
-AMD and Intel are represented by separate core profiles. The Intel P and E cores must never be averaged into one generic core. The first model uses one hardware thread per core; AMD SMT and OS scheduling are later milestones.
+AMD and Intel are represented by separate core profiles. The Intel P and E cores must never be averaged into one generic core. Controlled phase uses exactly 8 active cores for every target, one hardware thread per core, with SMT disabled. AMD and Intel SKU maximum core counts are intentionally not used in this experiment; this isolates per-core architecture and avoids winning by core-count advantage. A later full-SKU phase can compare 16C/32T AMD and 8P+16E Intel.
 
 ## 2. Shared workload algorithm
 
@@ -41,7 +41,7 @@ The target model is an event/cycle-driven CPU model with these components:
 6. L1/L2/L3/L4/DRAM access classification and per-bank serialization.
 7. Multicore task scheduling and shared-cache/memory contention (planned after v0.1).
 
-The current v0.1 script implements a simplified single-stream pipeline, dependency tracking, issue-resource limits, in-order retirement, branch stalls, a deterministic LRU L1–L4 cache approximation and a simple local bank-serialization model. It deliberately does not claim to model multicore speedup yet.
+The v0.2 script partitions independent dependency components across eight cores, simulates each core's pipeline, and uses the slowest participating core to determine kernel completion. It includes dependency tracking, issue-resource limits, in-order retirement, branch stalls, deterministic LRU private-cache approximations and local bank serialization. Shared LLC contention, a globally shared memory controller/bank queue, inter-core coherence traffic and SMT are still pending; current multicore results are therefore an intermediate model, not final throughput predictions.
 
 ## 4. Known public reference points and model assumptions
 
@@ -66,9 +66,22 @@ Already specified architectural anchors:
 - P0 command cache; 64-bit command records and 512-bit peak refill interface.
 - RA/FA/DA/MA register banks and SPM0–SPM7.
 
-NEXSUS dispatch/retire width, scheduling model, branch predictor, ROB-equivalent capacity, cache/bank latency, clock and core count are not frozen. The script's current NEXSUS profile values are deliberately provisional knobs used to make the first run possible. They must not be quoted as architecture decisions or predicted silicon performance.
+NEXSUS dispatch/retire width, scheduling model, branch predictor, ROB-equivalent capacity, cache/bank latency, clock and core count are not frozen. The script's current NEXSUS profile values are deliberately provisional knobs used to make the comparison model runnable. They must not be quoted as architecture decisions or predicted silicon performance.
 
-## 5. Fairness and measurement rules
+## 5. Controlled clock and core-count experiment
+
+The first architecture-isolation experiment uses:
+- Exactly 8 active cores for AMD, Intel P-core, Intel E-core reference and NEXSUS.
+- Exactly 3.0 GHz common reference clock for CPU pipeline and modeled memory timing.
+- Identical DRAM latency (120 reference cycles) and aggregate modeled bandwidth (32 bytes/reference cycle).
+- Identical workload graph, input sizes and branch-event pattern.
+- One hardware thread per core; SMT is disabled in this phase.
+
+This is a normalized synchronous reference-clock model. It does not claim that commercial desktop CPUs physically clock external DDR memory at the CPU core frequency. Real DRAM has its own clock and controller timing; those are intentionally normalized here so that the initial comparison isolates architecture. A later physical-calibration phase can restore real memory clock ratios and timings.
+
+The Intel E-core profile is reported separately as an 8-core E-core reference, not mixed into an 8P+16E whole-chip result. NEXSUS is always configured with at least eight cores in this comparison.
+
+## 6. Fairness and measurement rules
 
 - All CPU profiles receive the same logical algorithm, input sizes, dependency graph and deterministic branch pattern.
 - Compare single-thread performance separately from multicore throughput.
@@ -78,18 +91,18 @@ NEXSUS dispatch/retire width, scheduling model, branch predictor, ROB-equivalent
 - Use measured machine benchmarks to calibrate real AMD/Intel profiles. A model that cannot reproduce reference measurements is not ready for NEXSUS design decisions.
 - Keep known, estimated and unknown parameters separately labelled.
 
-## 6. Roadmap
+## 7. Roadmap
 
 | Version | Scope | Acceptance condition |
 |---|---|---|
-| v0.1 | Deterministic kernels, dependency scheduling, basic cache and bank approximation | Script runs repeatably; unit tests pass |
-| v0.2 | True multicore scheduling, AMD SMT, Intel P/E placement, task migration and shared LLC | Scaling and contention tests pass |
-| v0.3 | NEXSUS P0/App RAM path, SPM roles, L1–L4 domain model, 8-bank controllers, MEMXFER | Existing NEXSUS contracts represented without invented ISA |
+| v0.1 | Deterministic kernels, dependency scheduling, basic cache and bank approximation | Initial scaffold |
+| v0.2 | Controlled 8-core scheduling with equal reference clocks; dependency-component parallelism | Per-core partition and clock-normalization checks pass |
+| v0.3 | Shared LLC/memory-controller contention, coherence, true P/E placement, SMT and NEXSUS P0/SPM/App RAM/L1–L4/8-bank/MEMXFER | Existing NEXSUS contracts represented without invented ISA |
 | v0.4 | Interrupts, exceptions, context save/restore, atomic operations and memory ordering | Architectural conformance scenarios pass |
 | v0.5 | Calibration against actual Ryzen 9 9950X and Core Ultra 9 285K measurements | Error bounds reported per kernel |
 | v1.0 | Stable comparative simulator and repeatable benchmark suite | Reproducible reports and documented limitations |
 
-## 7. Run
+## 8. Run
 
 From the repository root:
 
@@ -100,7 +113,7 @@ python "NEXUS CPU/tools/cpu_comparison_sim.py" --scale 2 --json
 
 The script is a research model, not a substitute for RTL simulation, gem5, vendor performance counters or physical silicon measurements.
 
-## 8. Primary references
+## 9. Primary references
 
 - AMD Ryzen 9 9950X specifications: https://www.amd.com/en/products/processors/desktops/ryzen/9000-series/amd-ryzen-9-9950x.html
 - AMD Zen 5 Hot Chips overview: https://hc2024.hotchips.org/assets/program/conference/day2/24_HC2024.AMD.Cohen.Subramony.final.pdf
