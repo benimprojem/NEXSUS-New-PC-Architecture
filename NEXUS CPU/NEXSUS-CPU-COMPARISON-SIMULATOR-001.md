@@ -1,7 +1,7 @@
 # NEXSUS CPU — Cross-Architecture Comparison Simulator
 
 **Document ID:** NEXSUS-CPU-COMPARISON-SIMULATOR-001  
-**Status:** Simulator v0.2.4-dev; shared bank/bus arbitration primitive added and unit-tested, but not yet connected to the multicore execution loop  
+**Status:** Simulator v0.2.4-dev; lockstep multicore execution submits same-cycle DRAM misses to one shared bank/bus controller; validation in progress  
 **Purpose:** Compare one deterministic mixed workload across AMD Zen 5, Intel Arrow Lake P/E cores, and configurable NEXSUS CPU candidates.
 
 ## 1. Comparison targets
@@ -45,19 +45,25 @@ The target model is an event/cycle-driven CPU model with these components:
 6. L1/L2/L3/L4/DRAM access classification and per-bank serialization.
 7. Multicore task scheduling and shared-cache/memory contention (planned after v0.1).
 
-The v0.2.3 script partitions independent dependency components across eight cores, simulates each core's pipeline, and uses the slowest participating core to determine kernel completion. To avoid multiplying the chip-wide DRAM bandwidth by the core count, the 32-byte/reference-cycle aggregate ceiling is divided into a fixed 4-byte/reference-cycle share per configured core. The text report also provides a per-kernel breakdown (cycles, operations, IPC, active cores and DRAM access count) alongside the composite total. The suite now adds isolated integer, FP, generic vector and branch-throughput kernels to help identify which execution resource limits each profile. It includes dependency tracking, issue-resource limits, in-order retirement, branch stalls, deterministic LRU private-cache approximations and local bank serialization. Shared LLC contention, a globally shared memory controller/bank queue, cross-core bank conflicts, dynamic work-conserving bandwidth redistribution, inter-core coherence traffic and SMT are still pending; current multicore results are therefore an intermediate model, not final throughput predictions. The fixed equal-share cap is conservative but not equivalent to a real shared controller: an idle core's unused share cannot be borrowed by another core. The generic vector kernel does not yet represent ME512's 512-bit paired-register behavior, matrix dimensions or data movement.
+The v0.2.4-dev simulator partitions independent dependency components across cores and advances all core pipelines on a shared global cycle. DRAM misses are collected across cores and arbitrated by one shared bank/bus controller; bandwidth is work-conserving rather than statically divided per core. The text report also provides a per-kernel breakdown (cycles, operations, IPC, active cores and DRAM access count) alongside the composite total. The suite now adds isolated integer, FP, generic vector and branch-throughput kernels to help identify which execution resource limits each profile. It includes dependency tracking, issue-resource limits, in-order retirement, branch stalls, deterministic LRU private-cache approximations and local bank serialization. Shared LLC contention, a globally shared memory controller/bank queue, cross-core bank conflicts, dynamic work-conserving bandwidth redistribution, inter-core coherence traffic and SMT are still pending; current multicore results are therefore an intermediate model, not final throughput predictions. The fixed equal-share cap is conservative but not equivalent to a real shared controller: an idle core's unused share cannot be borrowed by another core. The generic vector kernel does not yet represent ME512's 512-bit paired-register behavior, matrix dimensions or data movement.
 
-### 3.1 Shared memory-controller arbitration primitive (v0.2.4-dev)
+### 3.1 Lockstep multicore shared memory controller (v0.2.4-dev)
 
-The simulator now contains a standalone `SharedMemoryController` primitive. It accepts a batch of same-cycle requests from multiple cores and reserves:
-- one 64-bit beat per bank per cycle, with same-bank conflicts serialized;
-- aggregate DRAM bus service under one chip-wide bytes/reference-cycle ceiling;
-- rotating core priority between arbitration batches;
-- work-conserving bus use: a core may consume otherwise-idle aggregate bandwidth rather than being capped at a fixed per-core quota.
+The simulator now advances all active core shards on one global cycle. Each core retains a private pipeline, ROB, execution-unit slots and currently private cache model. Per cycle, the simulator:
+1. Completes ready operations and retires in order on every core.
+2. Dispatches each core's next operations within its frontend/ROB limits.
+3. Selects ready issue candidates independently on each core.
+4. Collects all selected DRAM misses from every core into one same-cycle request batch.
+5. Calls one shared controller to arbitrate bank beats and aggregate bus service, then assigns completion times.
 
-The controller is deliberately exposed as a batch API. A future lockstep scheduler must first collect all eligible requests from all cores for a cycle, then submit that batch. Calling it separately once per core would reintroduce ordering bias and is not an acceptable integration. The current `simulate_cpu()` path still uses independent per-core simulations and the conservative static equal-share bandwidth cap; therefore these new arbitration tests validate the controller primitive only, not whole-chip multicore timing. Cross-core arbitration is not yet represented in benchmark results.
+The shared controller models one 64-bit beat per bank per cycle and a chip-wide aggregate DRAM bus ceiling. Same-bank requests serialize; different banks may overlap. Bus service is work-conserving: there is no static per-core bandwidth quota, so an active core may use otherwise-idle bandwidth. Core arbitration rotates between batches.
 
-The primitive's regression tests cover same-bank serialization, different-bank overlap, aggregate bus limiting, a single core borrowing idle bandwidth, and rotating priority. It does not yet model bank refresh, read/write turnaround, queue depth/backpressure, request aging, separate App RAM and Data RAM controllers, or shared L2/L3/L4. Those remain later integration/calibration work.
+Only actual DRAM misses consume the physical bank/bus model. L4 is still treated as a cache level in the current simulator, not as a physical DRAM bank. This distinction avoids conflating logical cache hierarchy with physical memory topology.
+
+Regression coverage includes direct controller tests and lockstep integration tests for same-bank contention, independent-bank overlap, and shared aggregate bandwidth.
+
+**Important remaining approximations:** L1/L2/L3/L4 caches are still private per core in the simulator, whereas the proposed NEXSUS architecture shares L2 per two cores, L3 per four cores and L4 across eight or more cores. Cache-line ownership, coherence/visibility, physical App RAM vs Data RAM controllers, refresh, read/write turnaround, queue depth/backpressure, request aging and Fabric QoS are not yet implemented. The controller is a timing abstraction, not RTL or a calibrated DRAM model. The reference 32 B/cycle bus ceiling and 120-cycle DRAM latency remain normalized experimental assumptions.
+
 
 ## 4. Known public reference points and model assumptions
 
@@ -89,7 +95,7 @@ NEXSUS dispatch/retire width, scheduling model, branch predictor, ROB-equivalent
 The first architecture-isolation experiment uses:
 - Exactly 8 active cores for AMD, Intel P-core, Intel E-core reference and NEXSUS.
 - Exactly 3.0 GHz common reference clock for CPU pipeline and modeled memory timing.
-- Identical DRAM latency (120 reference cycles) and chip-wide aggregate modeled bandwidth (32 bytes/reference cycle) for every profile, including NEXSUS. In v0.2.3 this is conservatively divided into a fixed 4 bytes/reference-cycle share per configured core.
+- Identical DRAM latency (120 reference cycles) and chip-wide aggregate modeled bandwidth (32 bytes/reference cycle) for every profile, including NEXSUS. The v0.2.4-dev shared controller enforces the aggregate ceiling without a fixed per-core quota.
 - Identical workload graph, input sizes and branch-event pattern.
 - One hardware thread per core; SMT is disabled in this phase.
 
@@ -126,7 +132,7 @@ The original NEXSUS profile is retained unchanged as the baseline. Three additio
 | STORE units | 1 | **4** | **4** | **4** |
 | BR units | 1 | 1 | 2 | 2 |
 
-All four NEXSUS profiles retain the same provisional cache capacities/latencies, 8-bank folded mapping, 32-byte/reference-cycle chip-wide aggregate DRAM bandwidth (4 bytes/reference-cycle static share per configured core), operation latencies and 3.0 GHz reference clock. This isolates the effect of execution and pipeline width in the current simplified model. The candidates are not yet constrained by physical area, power, wiring, queue implementation, bank-port availability or clock closure.
+All four NEXSUS profiles retain the same provisional cache capacities/latencies, 8-bank folded mapping, 32-byte/reference-cycle chip-wide aggregate DRAM bandwidth through the shared work-conserving controller, operation latencies and 3.0 GHz reference clock. This isolates the effect of execution and pipeline width in the current simplified model. The candidates are not yet constrained by physical area, power, wiring, queue implementation, bank-port availability or clock closure.
 
 The 8L4S profile tests whether a wider memory issue subsystem improves streaming and mixed workloads while keeping compute resources moderately sized. The wide-balanced profile additionally expands integer, FP, vector, branch and pipeline capacity. Balanced-128 keeps the wide-balanced execution/front-end widths but reduces the ROB-like window from 192 to 128 to test whether the larger window is necessary. The 8 LOAD + 4 STORE figures represent modeled concurrent issue slots, not a guarantee that every access completes in the same cycle: dependencies, memory latency, bank conflicts and later shared-controller arbitration still constrain throughput.
 
@@ -141,7 +147,7 @@ The report now includes:
 - branch-recovery cycles;
 - cumulative modeled memory-latency exposure (`latency - 1` summed per issued LOAD/STORE); this is not measured stall time.
 
-These are diagnostic counters, not mutually exclusive wall-clock durations. Some count per-operation events and others count cycles; they must not be added together as elapsed time. The v0.2.3 model no longer grants each core the full 32-byte/reference-cycle chip-wide bandwidth: it caps each configured core at a static 4-byte/reference-cycle share. However, each simulated core still has private bank scheduling state, so same-bank conflicts between cores are not modeled. The fixed split can also underutilize bandwidth when some cores are idle; a lockstep global controller must replace it. The memory-latency exposure counter is descriptive latency accounting, not a count of cycles during which the pipeline was actually stalled. Shared memory arbitration must be implemented before treating 8L4S throughput as a realistic whole-chip prediction.
+These are diagnostic counters, not mutually exclusive wall-clock durations. Some count per-operation events and others count cycles; they must not be added together as elapsed time. The v0.2.4-dev model replaces the static per-core split with lockstep global bank arbitration. The shared controller currently models same-cycle DRAM miss contention, but shared cache groups, coherence and physical controller details remain approximations. The memory-latency exposure counter is descriptive latency accounting, not a count of cycles during which the pipeline was actually stalled. Shared memory arbitration must be implemented before treating 8L4S throughput as a realistic whole-chip prediction.
 
 ## 7. Roadmap
 
@@ -151,7 +157,7 @@ These are diagnostic counters, not mutually exclusive wall-clock durations. Some
 | v0.2 | Controlled 8-core scheduling with equal reference clocks; dependency-component parallelism | Per-core partition and clock-normalization checks pass |
 | v0.2.1 | Experimental 8L4S and wide-balanced NEXSUS profiles; initial stall diagnostics | Compare candidate outputs and inspect dominant resource stalls |
 | v0.2.2 | Balanced-128 candidate; distinguish blocked-operation-cycle events from cycle counters and latency exposure | Run the 128-vs-192 window comparison and verify counter semantics |
-| v0.2.3 | Enforce 32 B/cycle chip-wide DRAM cap through a static equal share; add regression tests | Verify bandwidth is not multiplied by core count |\n| v0.2.4-dev | Add standalone shared bank/bus arbitration primitive and focused tests | Same-bank conflicts, independent-bank overlap, work-conserving bus, rotating core priority pass; multicore loop integration remains pending |
+| v0.2.3 | Enforce 32 B/cycle chip-wide DRAM cap through a static equal share; add regression tests | Verify bandwidth is not multiplied by core count |\n| v0.2.4-dev | Integrate lockstep core scheduling with one shared bank/bus controller; remove static per-core bandwidth split | Same-bank contention and independent-bank overlap covered; shared cache groups and coherence remain pending |
 | v0.3 | Shared LLC/memory-controller contention, coherence, true P/E placement, SMT and NEXSUS P0/SPM/App RAM/L1–L4/8-bank/MEMXFER | Existing NEXSUS contracts represented without invented ISA |
 | v0.4 | Interrupts, exceptions, context save/restore, atomic operations and memory ordering | Architectural conformance scenarios pass |
 | v0.5 | Calibration against actual Ryzen 9 9950X and Core Ultra 9 285K measurements | Error bounds reported per kernel |
