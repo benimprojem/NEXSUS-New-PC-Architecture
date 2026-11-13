@@ -30,8 +30,8 @@
 | RDn | RAn alt 8-bit görünümü | 8-bit erişim |
 | DA00–DA63 | 64 × 64-bit | Data staging / transfer |
 | MA00–MA31 | 32 × 256-bit | Vector/matrix operands |
-| SPM0 | 32 KiB; 8 × 4 KiB | 64-bit kayıt-temelli çalışma alanı |
-| SPM1 | Sayfalı, byte-addressed | Değişken genişlikli çalışma alanı |
+| SPM0 | 32 KiB; 8 × 4 KiB | 64-bit doğrudan adreslenebilir geçici yürütme durumu/sonuç alanı |
+| SPM1–SPM7 | Sayfalı, byte-addressed | Değişken genişlikli geçici veri alanları |
 
 RB/RC/RD yazmalarında etkilenmeyen üst bitlerin korunması mimari tercihidir. Register-view detayları SPM/register dokümanında tanımlanır.
 
@@ -557,13 +557,13 @@ P0 ile SPM0 farklı aşamalara hizmet eder ve birbirinin yerine geçmez:
 | Bellek | İşlev | Kayıt genişliği | Kapasite |
 |---|---|---:|---:|
 | P0 | App RAM'den komut fetch eden ön bellek | 64 bit sabit | 8 KiB standart; 16 KiB genişletilebilir / çekirdek |
-| SPM0 | Dispatch edilmiş/yürütülmekte olan komutların geçici kayıt alanı | 64 bit kayıt | 32 KiB / çekirdek |
+| SPM0 | Yürütme sırasında oluşan geçici komutsal durum, ara değerler ve sonuçlar | 64 bit kayıt | 32 KiB / çekirdek |
 
 - P0, sıradaki komutları fetch aşamasında hazır tutar.
-- SPM0, P0'dan alınarak yürütme akışına sokulmuş komutların geçici kayıt/çalışma alanıdır.
+- SPM0, CPU çalışırken yürütme sırasında oluşan geçici komutsal durumu, ara değerleri ve sonuçları tutar. Stack benzeri geçici saklama alanıdır; ancak zorunlu LIFO düzeni yoktur ve doğrudan adreslenir.
 - SPM0'ın 8 × 4 KiB sayfa düzeni korunur; toplam 32 KiB ve sayfa başına 512 adet 64-bit kayıt bulunur.
-- P0 fetch aşamasına, SPM0 ise dispatch/yürütme aşamasına hizmet eder.
-- P0'dan SPM0'a geçiş, komut akışının fetch'ten yürütme tarafına aktarılmasıdır; App RAM'den P0'a yapılan refill işleminden farklıdır.
+- SPM1–SPM7, aynı doğrudan adreslenebilir modeli veri tarafında uygular; geçici veriler ve ara hesaplama değerlerini tutar.
+- P0 yalnızca App RAM'den komut fetch eder; SPM0'a komut kuyruğu veya komut kopyası aktarılmaz.
 
 Fetch genişliği, branch davranışı, miss oranı ve komut besleme bant genişliği ölçüldükten sonra P0'ın bank sayısı, line size, refill genişliği ve portları mikro-mimari aşamasında belirlenecektir.
 
