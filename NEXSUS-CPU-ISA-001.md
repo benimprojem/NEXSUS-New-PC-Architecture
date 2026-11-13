@@ -95,14 +95,14 @@ Bu bölümdeki scalar/integer komutlarının kaynak ve hedef operandları RA0–
 
 ## 5. Data transfer ve adres komutları
 
-LOAD ve STORE veri belleği ile DA bankı arasında çalışır. Scalar hesaplama için DA'dan RA'ya, floating-point hesaplama için DA'dan FA'ya açık register-transfer komutları kullanılır. FA ile RA arasında sayısal tür dönüşümü FCONV ile yapılır.
+LOAD ve STORE veri belleği ile DA bankı arasında çalışır. Bellek domain'i her komutta açıkça seçilir; **area** L1'i, **zone** ise paylaşılan L2/L3/L4 alanlarını hedefleyen üst seviye yerleşim/paylaşım kavramlarıdır. LOAD/STORE bir domain'den gerçek veri okur veya yazar; domain'ler arasında otomatik kopyalama yapmaz. Scalar hesaplama için DA'dan RA'ya, floating-point hesaplama için DA'dan FA'ya açık register-transfer komutları kullanılır. FA ile RA arasında sayısal tür dönüşümü FCONV ile yapılır.
 
 | Mnemonic | Operand | İşlev | Unit / path |
 |---|---|---|---|
-| LOAD | DA, [addr] | DATA memory → DA register | Load/store |
-| STORE | [addr], DA | DA register → DATA memory | Load/store |
+| LOAD.L1 / LOAD.L2 / LOAD.L3 / LOAD.L4 | DA, [addr] | Seçilen veri domain'inden DA register grubuna ham bit okuma | Load/store |
+| STORE.L1 / STORE.L2 / STORE.L3 / STORE.L4 | [addr], DA | DA register grubundan seçilen veri domain'ine ham bit yazma | Load/store |
 | LEA | RA, [base+offset] | Adres hesaplama | ALU |
-| MOV.RA.DA | RA, DA | DA'dan integer/scalar registera 64-bit aktarım | Register path |
+| MOV.RA.DA | RA, DA | DA'dan integer/scalar registera açık 64-bit bit aktarımı | Register path |
 | MOV.DA.RA | DA, RA | RA'dan DA staging'e 64-bit aktarım | Register path |
 | MOV.FA.DA | FA, DA | DA bitlerini FA kayıt konteynerine aktarma | Register path |
 | MOV.DA.FA | DA, FA | FA kayıt bitlerini DA staging'e aktarma | Register path |
@@ -110,7 +110,31 @@ LOAD ve STORE veri belleği ile DA bankı arasında çalışır. Scalar hesaplam
 | MOV.DA.MA | DAx:DAx+3, MA | MA'daki 256-bit veriyi dört ardışık DA kaydına alma | Matrix data path |
 | COPY | dst, src, length | Bellek alanı/blok kopyalama | Transfer path (TBD) |
 
-DAx:DAx+3 gösterimi dört ardışık 64-bit DA kaydını, toplam 256-bit veri grubunu ifade eder; register aralığı DA31'i aşamaz. Grup hizalama kuralı ve register portlarının mikro-mimari yerleşimi ayrıca belirlenecektir.
+DAx:DAx+3 gösterimi dört ardışık 64-bit DA kaydını, toplam 256-bit veri grubunu ifade eder. LOAD/STORE için DA selector, erişimin kullandığı ilk kaydı gösterir. Gerekli DA kayıt sayısı W=8/16/32/64 için 1, W=128 için 2, W=256 için 4 ve W=512 için 8'dir. DA aralığı DA31'i aşamaz; MEM erişimlerinde 128/256/512-bit grup başlangıcına ek selector hizalaması ilk taslakta zorunlu değildir.
+
+### 5.1 LOAD/STORE genişlik ve domain semantiği
+
+- W, bellekten okunacak veya belleğe yazılacak tam bit sayısını belirler: 8, 16, 32, 64, 128, 256 veya 512.
+- Domain suffix'i hedefi belirler: .L1, .L2, .L3 veya .L4. Bu seçim encoding'de MEM.AM[2:1] alanına karşılık gelir.
+- MEM.AM[0]=0, ilk sürümdeki base + signed displacement adresleme biçimidir; diğer adresleme biçimleri ayrılmıştır.
+- LOAD ham bitleri DA'ya getirir. 8/16/32-bit yüklemelerde DA kaydının kullanılmayan üst bitleri sıfırlanır; 64-bit ve daha geniş erişimler DA kayıtlarını tam doldurur.
+- STORE yalnızca W kadar bit yazar. Son DA kaydında erişim genişliğinin dışında kalan bitler belleğe aktarılmaz.
+- LOAD sign-extension yapmaz ve signed/unsigned tür seçmez. DA bir staging bankıdır; sayısal yorumlama sonraki açık register transferi veya FCONV aşamasında yapılır.
+- Geniş erişimlerde ardışık bellek parçaları artan adres sırasıyla ardışık DA selector'larına yerleştirilir. Her 64-bit DA kaydının iç byte sırası endian kararıyla birlikte kesinleştirilecektir.
+- 64-bit effective address, RA[BASE] + signed 32-bit DISP ile hesaplanır. Domain erişim izni, sınır ve hata kontrolleri geçerlidir.
+- Doğal hizalama ve misaligned erişimlerin desteklenip desteklenmeyeceği henüz açık karardır.
+
+Örnekler (W ve AM alanları semboliktir; gerçek opcode değerleri henüz atanmadı):
+
+~~~asm
+LOAD.L1 DA4, [RA10 + 0]       ; 64-bit, DA4
+LOAD.L2.W128 DA8:DA9, [RA12 + 16]
+LOAD.L3.W256 DA12:DA15, [RA14 + 0]
+LOAD.L4.W512 DA16:DA23, [RA18 + 64]
+
+STORE.L1.W32 [RA20 + 4], DA2
+STORE.L3.W256 [RA22 + 0], DA12:DA15
+~~~
 
 Örnek bank akışı:
 
