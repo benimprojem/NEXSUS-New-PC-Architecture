@@ -241,3 +241,53 @@ The 4 KiB SPM0 size and 2×2 KiB bank organization are the current architecture 
 ### Full-page task termination
 
 If the final task page is exactly 2 KiB, it needs no PX_END marker. The code-region descriptor carries an explicit stream-end/final-page flag (`stream_end=true` or equivalent code-region length metadata). PX_END remains reserved for a partial final page. A full non-final page continues automatically to the next logical page.
+
+
+## 12. L0I task-based code staging (architecture update)
+
+The application-code path now includes a dedicated 64 KiB L0I before the PX pool:
+
+```text
+App RAM -> L0I (64 KiB) -> PX P0–P7 (8 x 2 KiB) -> SPM0 (4 KiB, 2 x 2 KiB)
+```
+
+### 12.1 L0I role and data width
+
+- L0I is an application-instruction cache/staging level; it contains executable application code only, not task data or register images.
+- Its proposed capacity is 64 KiB per core, organized as 32 logical 2 KiB page regions for the initial model.
+- The baseline App-code transfer path is a single 64-bit (8-byte) read lane. One transfer beat carries one 64-bit instruction word. The number of beats per cycle, clock relationship, outstanding request depth and arbitration latency remain configurable and are not frozen by the lane width.
+- Multiword/multilane reads are excluded from the baseline. A future four-lane option means four independent 64-bit paths (256 bits aggregate) and requires additional ports, routing, buffering and arbitration; it is a separate simulator experiment, not an assumed current capability.
+- L0I is not an execution bypass: code still enters the PX pool and then SPM0 before instruction execution.
+
+### 12.2 Incremental App RAM fills
+
+L0I is filled progressively in chunks rather than waiting for a complete 64 KiB refill. The OS identifies task/code regions and gives the prefetch policy task-aware priorities. App RAM reads may target non-contiguous source addresses. Completed chunks become valid independently; a partially filled region must never be advertised as a complete 2 KiB PX source page unless its valid-byte range and page metadata explicitly describe a legal partial page.
+
+### 12.3 Task-based L0I-to-PX transfers
+
+L0I-to-PX selection is not a sequential address walk. The OS chooses which task and logical code pages should be staged, including pages whose App RAM source addresses are far apart. It submits requests containing task ID/generation, logical page ID, source code-region/address, valid byte count, stream-boundary metadata and priority/deadline hints.
+
+PX Manager:
+- validates task ownership, generation, code-region bounds and executable permissions;
+- checks whether the requested source page is fully valid in L0I;
+- allocates an available P0–P7 physical slot;
+- copies the selected logical 2 KiB page (or its declared valid partial-page length) into PX;
+- validates PX_NEXT/PX_END/full-page continuation metadata;
+- publishes the PX page READY atomically only after data and metadata are complete.
+
+The OS owns scheduling policy and task/page priority. PX Manager owns hardware safety, physical slot allocation, transfer execution, completion state and protection against stale or unauthorized requests. OS does not directly write executable bytes into SPM0 or bypass PX validation.
+
+### 12.4 Independent pipeline stages and queues
+
+Model three independently progressing stages:
+1. App RAM -> L0I chunk-fill queue;
+2. L0I -> PX task/page-transfer queue;
+3. PX -> inactive SPM0 bank refill queue.
+
+Each stage has its own request, in-flight, completion and error state. A downstream stage may consume already-valid data while an upstream stage continues filling other chunks/pages. Backpressure is applied only to the affected request/resource; do not require the entire L0I to become full before PX work can begin.
+
+The simulator must model queue capacity, service width, source latency, arbitration, contention, task priority, fairness/aging and valid-data dependencies. Do not assume zero latency or unlimited outstanding transfers.
+
+### 12.5 Replacement and task isolation
+
+L0I entries are tagged by task/code-region identity and generation, with logical page/chunk range and valid-byte information. Replacement must not evict data referenced by an in-flight PX transfer. Shared immutable code may be deduplicated only when executable identity and permissions match; otherwise task ownership remains isolated. A stale generation must never satisfy a new task's request.
