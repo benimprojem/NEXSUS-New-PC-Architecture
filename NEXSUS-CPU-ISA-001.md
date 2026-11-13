@@ -288,3 +288,52 @@ MA'nın 4 read portu, 512-bit pair okumasında iki 256-bit register dilimini bir
 - ME512 accumulator/tiling ve matrix shape formatı.
 - Integer MUL/DIV ve FP DIV/SQRT latency/throughput.
 - Precise exception, branch recovery, interrupt/context-save semantiği.
+
+
+## 19. RA register view / partial-write kesinleştirme
+
+RA, RB, RC ve RD ayrı fiziksel register bankları değildir; aynı 64-bit RA hücresinin genişlik görünümleridir.
+
+| Görünüm | Genişlik | Bit aralığı |
+|---|---:|---|
+| RA[n] | 64-bit | [63:0] |
+| RB[n] | 32-bit | [31:0] |
+| RC[n] | 16-bit | [15:0] |
+| RD[n] | 8-bit | [7:0] |
+
+### 19.1 Write-mask davranışı
+
+- RA write: 64 bitin tamamını günceller.
+- RB write: yalnızca [31:0] güncellenir; [63:32] korunur.
+- RC write: yalnızca [15:0] güncellenir; [63:16] korunur.
+- RD write: yalnızca [7:0] güncellenir; [63:8] korunur.
+- Küçük görünümden okuma, ilgili düşük bitleri zero-extend veya instruction tarafından belirtilen sign-extend ile üretir. Signed/unsigned yorumlama opcode/type bilgisinden gelir; register içeriğini değiştirmez.
+- Aynı fiziksel RA hücresine aynı cycle içinde birden fazla view write yapılması yasaktır; scheduler tek yazmayı seçer veya komutları erteler.
+- RA write ile aynı hücreye RB/RC/RD write çakışırsa tek sonuç üretilmelidir; öncelik kuralı yerine issue-time conflict rejection tercih edilir.
+
+### 19.2 Operand ve forwarding
+
+- Bir instruction operandını RA[n] üzerinden okur; RB/RC/RD kullanımı yalnızca operand genişliğini ve bit seçimini değiştirir.
+- Sonuç yazımı, hedef görünümün write-mask'i ile RA hücresine uygulanır.
+- Forwarding/bypass, fiziksel RA hücresine ve write-mask sonucuna göre yapılır; alias isimleri farklı olsa bile dependency aynı hücre üzerinden izlenir.
+- Partial-write sonrası aynı RA hücresini okuyan komut, güncel 64-bit birleşik değeri görmelidir.
+- Forwarding'in mask merge maliyeti ve latency'si pipeline tasarımında belirlenecek; ISA davranışı bu kurala bağlıdır.
+
+### 19.3 Örnek davranış
+
+Başlangıç: `RA05 = 0x1122334455667788`
+
+- `MOV RB05, 0xAABBCCDD` → `RA05 = 0x11223344AABBCCDD`
+- `MOV RC05, 0x1234` → `RA05 = 0x11223344AABB1234`
+- `MOV RD05, 0xEF` → `RA05 = 0x11223344AABB12EF`
+
+Bu örnekler little-endian memory byte sıralamasını değil, register bit dilimlerini tanımlar.
+
+## 20. Issue scheduler için RA erişim kuralı
+
+- Her scalar source operand, bir RA read slotu tüketir; immediate/constant operand RA portu tüketmez.
+- Aynı RA hücresinin birden fazla komutta okunması, fiziksel read-port implementasyonu destekliyorsa broadcast/reuse ile tek porttan karşılanabilir; bu optimizasyon garanti değildir.
+- Scalar destination write, RA bankında bir write slotu tüketir. RB/RC/RD write da aynı slotu tüketir ve maskeli güncelleme gerektirir.
+- Aynı cycle içinde aynı RA hücresine iki destination yazılamaz.
+- 6 read / 3 write ilk port hedefi sabit issue genişliği garantisi değildir. Scheduler; ALU/FPU komutlarını port sayısı, operand reuse, immediate, bypass ve hedef register çakışmasına göre seçer.
+- Register bank replication, operand queue veya ek portlar ileride throughput artırımı için değerlendirilebilir; ISA'nın görünür RA semantiğini değiştirmez.
