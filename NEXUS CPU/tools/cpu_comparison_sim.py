@@ -802,7 +802,7 @@ def partition_dependency_components(ops: List[Op], core_count: int) -> List[List
             if op.label.startswith("P0 working set"):
                 command_pc = (new_seq % 256) * 8
             elif op.label.startswith("P0 starvation"):
-                command_pc = (new_seq % 2048) * 8
+                command_pc = new_seq * 8
             elif op.label.startswith("P0 sequential") or op.label.startswith("P0 branch"):
                 command_pc = new_seq * 8
             else:
