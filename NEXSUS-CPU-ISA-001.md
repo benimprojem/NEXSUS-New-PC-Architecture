@@ -252,7 +252,7 @@ Memory komutlarının numeric OP atamaları Encoding belgesi §8.5–§8.6 ile e
 | 0x87 | XFER.START | MEMXFER |
 | 0x88 | XFER.WAIT | MEMXFER |
 
-MEMXFER, register bank XFER (0x85) ile aynı komut değildir. Kaynak/hedef L1–L4 domain'leri, RA içindeki byte adresleri ve RA içindeki byte uzunluğu ile CPU kontrollü kopyalama yapar. Synchronous XFER.MEM tamamlanana kadar bekler; XFER.START token üretir; XFER.WAIT token'ın tamamlanmasını bekler. Başlangıç validation, completion, kaynak sabitliği, hedefin geçerliliği ve runtime-fault kuralları Encoding §4.14'te tanımlıdır.
+MEMXFER, register bank XFER (0x85) ile aynı komut değildir. Kaynak/hedef L1–L4 domain'leri, RA içindeki byte adresleri ve RA içindeki byte uzunluğu ile CPU kontrollü kopyalama yapar. Synchronous XFER.MEM tamamlanana kadar bekler; XFER.START token üretir; XFER.WAIT token'ın tamamlanmasını bekler. Her iki uç için erişim izni, aralık ve sahiplik kontrolleri `NEXSUS-CPU-MEMORY-ACCESS-CONTROL-001.md` belgesindeki kurallara tabidir. MEMXFER'ın alan yerleşimi ve tam field-level encoding semantiği Instruction Encoding belgesinde henüz tamamlanmamıştır; bu nedenle SYS/FENCE olan §4.14 bu komut için referans değildir.
 
 ## 5.3 Little-endian bellek ve register-grup sıralaması
 
