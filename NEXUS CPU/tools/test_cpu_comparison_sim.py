@@ -19,9 +19,11 @@ class BandwidthPolicyTests(unittest.TestCase):
                 )
 
     def test_vendor_profiles_use_same_chip_wide_bandwidth_ceiling(self):
-        for key in ("amd_9950x", "intel_285k_p", "intel_285k_e", "nexus_balanced_128"):
+        expected = {"amd_9950x3d2": 32, "intel_xeon_698x": 160,
+                    "apple_m6": 48, "nexus_balanced_128": 64}
+        for key, bandwidth in expected.items():
             with self.subTest(profile=key):
-                self.assertEqual(sim.PROFILES[key]["dram_bytes_per_cycle"], 32)
+                self.assertEqual(sim.PROFILES[key]["dram_bytes_per_cycle"], bandwidth)
 
 
 class SharedMemoryControllerTests(unittest.TestCase):
@@ -159,8 +161,8 @@ class SharedCacheGroupTests(unittest.TestCase):
 
 
 class ReferenceCacheTopologyTests(unittest.TestCase):
-    def test_amd_and_intel_p_share_llc_but_keep_private_l2(self):
-        for key in ("amd_9950x", "intel_285k_p"):
+    def test_amd_and_intel_xeon_share_llc_but_keep_private_l2(self):
+        for key in ("amd_9950x3d2", "intel_xeon_698x"):
             p = sim.profile_from_dict(sim.PROFILES[key])
             caches = sim.build_cache_hierarchies(p, 8)
             with self.subTest(profile=key):
@@ -170,15 +172,13 @@ class ReferenceCacheTopologyTests(unittest.TestCase):
                 caches[0].fill(0x5000, "DRAM")
                 self.assertEqual(caches[7].probe(0x5000)[1], "L3")
 
-    def test_skymont_shares_l2_per_four_core_cluster_and_package_llc(self):
-        p = sim.profile_from_dict(sim.PROFILES["intel_285k_e"])
-        caches = sim.build_cache_hierarchies(p, 8)
-        self.assertIs(caches[0].l2, caches[3].l2)
-        self.assertIsNot(caches[0].l2, caches[4].l2)
-        self.assertIs(caches[0].l3, caches[7].l3)
+    def test_arm_m6_profile_has_private_l2_and_shared_llc(self):
+        p = sim.profile_from_dict(sim.PROFILES["apple_m6"])
+        caches = sim.build_cache_hierarchies(p, 12)
+        self.assertIsNot(caches[0].l2, caches[1].l2)
+        self.assertIs(caches[0].l3, caches[11].l3)
         caches[0].fill(0x6000, "DRAM")
-        self.assertEqual(caches[1].probe(0x6000)[1], "L2")
-        self.assertEqual(caches[4].probe(0x6000)[1], "L3")
+        self.assertEqual(caches[1].probe(0x6000)[1], "L3")
 
 
 class SpmP0ModelTests(unittest.TestCase):
@@ -220,9 +220,9 @@ class SpmP0ModelTests(unittest.TestCase):
         p0 = sim.CommandFetchModel(True)
         conventional = sim.CommandFetchModel(False)
         self.assertEqual(p0.capacity_bytes, 16384)
-        self.assertEqual(p0.p0_buffer_bytes, 8192)
+        self.assertEqual(p0.p0_buffer_bytes, 2048)
         self.assertEqual(conventional.lines.capacity, 32768 // 64)
-        self.assertEqual((p0.refill_latency, conventional.refill_latency), (128, 32))
+        self.assertEqual((p0.refill_latency, conventional.refill_latency), (48, 32))
     
     def test_spm2_reduces_dependent_hot_chain_latency(self):
         ops = []
@@ -238,25 +238,27 @@ class SpmP0ModelTests(unittest.TestCase):
         self.assertEqual(sum(x["retired"] for x in on["cores"]), 256)
         self.assertEqual(sum(x["retired"] for x in off["cores"]), 256)
 
-    def test_p0_p1_ping_pong_prefetches_next_8k_block(self):
+    def test_spm0_ping_pong_prefetches_next_2k_page(self):
         fetch = sim.CommandFetchModel(True)
         self.assertFalse(fetch.can_fetch(0, 0))
-        fetch.complete(128)
-        self.assertTrue(fetch.can_fetch(0, 128))
+        fetch.complete(48)
+        self.assertTrue(fetch.can_fetch(0, 48))
         self.assertEqual(fetch.p0_buffers[0], 0)
-        self.assertEqual(fetch.p0_pending, (1, 256, 1))
-        self.assertFalse(fetch.can_fetch(8192, 129))
-        fetch.complete(256)
-        self.assertTrue(fetch.can_fetch(8192, 256))
+        self.assertEqual(fetch.p0_pending, (1, 96, 1))
+        self.assertFalse(fetch.can_fetch(2048, 49))
+        fetch.complete(96)
+        self.assertTrue(fetch.can_fetch(2048, 96))
         self.assertEqual(fetch.p0_buffers, [0, 1])
-        self.assertEqual(fetch.p0_pending, (2, 384, 0))
+        self.assertEqual(fetch.p0_pending, (2, 144, 0))
         self.assertEqual(fetch.prefetches, 3)
 
-    def test_p0_p1_each_hold_8k_while_conventional_cache_is_32k(self):
+    def test_px_pool_has_eight_2k_slots_and_spm0_has_two_2k_banks(self):
         p0 = sim.CommandFetchModel(True)
         conventional = sim.CommandFetchModel(False)
         self.assertEqual(p0.capacity_bytes, 16 * 1024)
-        self.assertEqual(p0.p0_buffer_bytes, 8 * 1024)
+        self.assertEqual(p0.capacity_bytes // p0.p0_buffer_bytes, 8)
+        self.assertEqual(p0.p0_buffer_bytes, 2 * 1024)
+        self.assertEqual(len(p0.p0_buffers), 2)
         self.assertEqual(conventional.capacity_bytes, 32 * 1024)
         self.assertEqual(conventional.lines.capacity, 512)
 
@@ -284,9 +286,11 @@ class CrossArchitectureComparisonTests(unittest.TestCase):
             ]
         }
         results = {}
-        for key in ("amd_9950x", "intel_285k_p", "intel_285k_e", "nexus_balanced_128"):
+        expected_cores = {"amd_9950x3d2": 16, "intel_xeon_698x": 86,
+                          "apple_m6": 12, "nexus_balanced_128": 8}
+        for key, core_count in expected_cores.items():
             results[key] = sim.simulate_cpu(workloads, sim.PROFILES[key])
-            self.assertEqual(results[key]["cores_configured"], 8)
+            self.assertEqual(results[key]["cores_configured"], core_count)
             if key == "nexus_balanced_128":
                 arch = results[key]["register_architecture"]
                 self.assertEqual(arch["selector_bits"], 5)
@@ -317,7 +321,7 @@ class CrossArchitectureComparisonTests(unittest.TestCase):
         sweep = sim.run_fetch_latency_sweep(workloads)
         self.assertEqual(sweep["operations_per_run"], 128)
         self.assertEqual(set(sweep["results"]), {
-            "amd_9950x", "intel_285k_p", "intel_285k_e",
+            "amd_9950x3d2", "intel_xeon_698x", "apple_m6",
             "nexus_conventional", "nexus_p0",
         })
         self.assertEqual(set(sweep["results"]["nexus_conventional"]), {"8", "16", "24", "32"})
@@ -360,5 +364,5 @@ if __name__ == "__main__":
 class TestNexusMemoryBandwidthRevision(unittest.TestCase):
     def test_nexus_has_double_reference_dram_bandwidth(self):
         self.assertEqual(sim.PROFILES["nexus_balanced_128"]["dram_bytes_per_cycle"], 64)
-        for key in ("amd_9950x", "intel_285k_p", "intel_285k_e"):
-            self.assertEqual(sim.PROFILES[key]["dram_bytes_per_cycle"], 32)
+        for key, expected in (("amd_9950x3d2", 32), ("intel_xeon_698x", 160), ("apple_m6", 48)):
+            self.assertEqual(sim.PROFILES[key]["dram_bytes_per_cycle"], expected)
