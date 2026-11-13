@@ -41,6 +41,8 @@ class CandidateProfileTests(unittest.TestCase):
         b = dict(sim.PROFILES["nexus_wide_balanced"])
         self.assertEqual(a.pop("rob"), 128)
         self.assertEqual(b.pop("rob"), 192)
+        a.pop("name")
+        b.pop("name")
         self.assertEqual(a, b)
 
 
