@@ -40,7 +40,10 @@ jobs:
           python - <<'PY'
           import json
           data = json.load(open("/tmp/nexus-cpu-results.json", encoding="utf-8"))
-          print("CONTROLLED 8-CORE ARCHITECTURE COMPARISON")
+          expected = {"amd_9950x3d2", "intel_xeon_698x", "apple_m6", "nexus_balanced_128"}
+          assert set(data) == expected, set(data)
+          assert len({row["total_ops"] for row in data.values()}) == 1
+          print("NATIVE PROFILE ARCHITECTURE COMPARISON")
           for key, result in data.items():
               print(f'{key}: cycles={result["total_cycles"]} ops={result["total_ops"]} IPC={result["aggregate_ipc"]}')
               for name, kernel in result["kernels"].items():
@@ -62,7 +65,6 @@ jobs:
       - name: Run branch predictor sensitivity sweep
         run: |
           python "NEXUS CPU/tools/cpu_comparison_sim.py" --branch-sweep --scale 1 --json > /tmp/nexus-branch-sweep.json
-            /tmp/nexus-normalized-8core.json
           python - <<'PY'
           import json
           data = json.load(open("/tmp/nexus-branch-sweep.json", encoding="utf-8"))
@@ -84,7 +86,6 @@ jobs:
       - name: Run instruction fetch latency sensitivity sweep
         run: |
           python "NEXUS CPU/tools/cpu_comparison_sim.py" --fetch-sweep --json > /tmp/nexus-fetch-sweep.json
-            /tmp/nexus-branch-sweep.json
           python - <<'PY'
           import json
           data = json.load(open("/tmp/nexus-fetch-sweep.json", encoding="utf-8"))
@@ -102,4 +103,6 @@ jobs:
             /tmp/nexus-cpu-results.json
             /tmp/nexus-p0-sweep.json
             /tmp/nexus-fetch-sweep.json
+            /tmp/nexus-branch-sweep.json
+            /tmp/nexus-normalized-8core.json
           if-no-files-found: ignore
