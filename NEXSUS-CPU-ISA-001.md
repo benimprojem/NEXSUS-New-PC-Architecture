@@ -82,8 +82,16 @@ Bu bölümdeki scalar/integer komutlarının kaynak ve hedef operandları RA0–
 | BSET | dst, bit | Bit set | ALU |
 | BCLR | dst, bit | Bit clear | ALU |
 | BTST | src, bit | Bit test | ALU |
-| BEXT | dst, src, start, width | Bit-field extract | ALU |
-| BINS | dst, src, start, width | Bit-field insert | ALU |
+| BEXT | dst, src, start, width | Seçilen bit aralığını çıkarır; sonuç zero-extend edilir | ALU |
+| BINS | dst, src, start, width | Kaynağın düşük bitlerini hedefte seçilen aralığa yerleştirir; diğer bitleri korur | ALU |
+
+### 4.1 BEXT / BINS bit-field semantiği
+
+- `start` sıfır tabanlı bit konumudur; `width` 1–64 arası bit sayısıdır.
+- `start + width`, seçilen RA görünüm genişliğini (8/16/32/64) aşamaz.
+- `BEXT dst, src, start, width`, kaynak alanı hedefin düşük bitlerine çıkarır ve hedefin seçili görünümündeki kalan üst bitleri sıfırlar. İşlem zero-extend eder.
+- `BINS dst, src, start, width`, kaynağın düşük `width` bitini hedefte `start` konumuna yerleştirir; hedefin alan dışındaki bitleri korunur.
+- Her iki komut R2 formatını kullanır; START ve FIELD_WIDTH, AUX alanındadır. Bit yerleşimi encoding belgesinde tanımlıdır.
 
 ## 5. Data transfer ve adres komutları
 
