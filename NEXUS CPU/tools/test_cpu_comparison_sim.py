@@ -219,9 +219,9 @@ class SpmP0ModelTests(unittest.TestCase):
     def test_p0_capacity_and_refill_parameters_are_explicit(self):
         p0 = sim.CommandFetchModel(True)
         conventional = sim.CommandFetchModel(False)
-        self.assertEqual(p0.lines.capacity, 8192 // 64)
+        self.assertEqual(p0.capacity_bytes, 16384)\n        self.assertEqual(p0.p0_buffer_bytes, 8192)
         self.assertEqual(conventional.lines.capacity, 32768 // 64)
-        self.assertEqual((p0.refill_latency, conventional.refill_latency), (8, 32))
+        self.assertEqual((p0.refill_latency, conventional.refill_latency), (128, 32))
     
     def test_spm2_reduces_dependent_hot_chain_latency(self):
         ops = []
@@ -236,6 +236,20 @@ class SpmP0ModelTests(unittest.TestCase):
         self.assertLess(on["cycles"], off["cycles"])
         self.assertEqual(sum(x["retired"] for x in on["cores"]), 256)
         self.assertEqual(sum(x["retired"] for x in off["cores"]), 256)
+
+    def test_p0_p1_ping_pong_prefetches_next_8k_block(self):
+        fetch = sim.CommandFetchModel(True)
+        self.assertFalse(fetch.can_fetch(0, 0))
+        fetch.complete(128)
+        self.assertTrue(fetch.can_fetch(0, 128))
+        self.assertEqual(fetch.p0_buffers[0], 0)
+        self.assertEqual(fetch.p0_pending, (1, 256, 1))
+        self.assertFalse(fetch.can_fetch(8192, 129))
+        fetch.complete(256)
+        self.assertTrue(fetch.can_fetch(8192, 256))
+        self.assertEqual(fetch.p0_buffers, [0, 1])
+        self.assertEqual(fetch.p0_pending, (2, 384, 0))
+        self.assertEqual(fetch.prefetches, 3)
 
     def test_p0_capacity_is_smaller_than_conventional_fetch_cache(self):
         p0 = sim.CommandFetchModel(True)
