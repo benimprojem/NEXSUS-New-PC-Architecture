@@ -122,6 +122,12 @@ LOAD ve STORE veri belleği ile DA bankı arasında çalışır. Bellek domain'i
 |---|---|---|---|
 | LOAD.L1 / LOAD.L2 / LOAD.L3 / LOAD.L4 | DA, [addr] | Seçilen veri domain'inden DA register grubuna ham bit okuma | Load/store |
 | STORE.L1 / STORE.L2 / STORE.L3 / STORE.L4 | [addr], DA | DA register grubundan seçilen veri domain'ine ham bit yazma | Load/store |
+| ATOM.LOAD | DA, [addr] | Seçilen domain'den atomic scalar değer okuma; ordering seçilebilir | Load/store + atomic serialization |
+| ATOM.STORE | [addr], DA | Atomic scalar değer yazma; ordering seçilebilir | Load/store + atomic serialization |
+| CAS | DAold, [addr], DAexpected, DAnew | Compare-and-swap; eski değeri döndürür, eşleşmede yeni değeri yazar | Atomic RMW |
+| SWAP | DAold, [addr], DAnew | Atomic değer değişimi; eski değeri döndürür | Atomic RMW |
+| FETCH_ADD / FETCH_SUB | DAold, [addr], DAoperand | Atomic toplama/çıkarma; eski değeri döndürür | Atomic RMW |
+| FETCH_AND / FETCH_OR / FETCH_XOR | DAold, [addr], DAoperand | Atomic bitwise güncelleme; eski değeri döndürür | Atomic RMW |
 | LOAD/STORE.POSTINC / PREINC / POSTDEC / PREDEC | DA, [base+offset] | Bellek erişimiyle birlikte RA taban register'ını W/8 kadar otomatik güncelleme | Load/store |
 | LEA | RA, [base+offset] | Adres hesaplama | ALU |
 | MOV.RA.DA | RA, DA | DA'dan integer/scalar registera açık 64-bit bit aktarımı | Register path |
@@ -281,6 +287,70 @@ STORE.POSTINC.L3.W256 [RA20], DA8:DA11
 
 POSTINC/PREINC/POSTDEC/PREDEC, assembler mnemonic suffix'leridir. Sayısal opcode ataması yapılmamıştır; encoding alan yerleşimi `NEXSUS-CPU-INSTRUCTION-ENCODING-001.md` içinde MEMUPD/MEMXUPD olarak tanımlanır.
 
+### 5.5 Atomic bellek işlemleri
+
+Atomic komutlar, aynı bellek konumuna birden fazla çekirdeğin eşzamanlı eriştiği durumlarda bölünemez okuma/değiştirme/yazma işlemleri sağlar. İlk ISA sürümünde atomic erişimler 8, 16, 32 veya 64 bit tek scalar değerle sınırlıdır; 128/256/512-bit atomic işlem yoktur.
+
+**Komut ailesi**
+
+| Komut | İşlev | Dönüş değeri |
+|---|---|---|
+| ATOM.LOAD | Atomic scalar load | Okunan değer DA hedefinde |
+| ATOM.STORE | Atomic scalar store | Yok |
+| CAS | Compare-and-swap | Değiştirme öncesi eski değer |
+| SWAP | Atomic exchange | Değiştirme öncesi eski değer |
+| FETCH_ADD / FETCH_SUB | Atomic modulo toplama/çıkarma | İşlem öncesi eski değer |
+| FETCH_AND / FETCH_OR / FETCH_XOR | Atomic bitwise işlem | İşlem öncesi eski değer |
+
+**Operand ve sonuç kuralları**
+- Atomic komutlar seçilen L1/L2/L3/L4 domain'inde RA taban register'ı + signed displacement adreslemesini kullanır. İlk ATOM biçiminde indexed ve absolute addressing yoktur; gerekirse LEA ile adres önceden hesaplanır.
+- ATOM.LOAD ve bütün RMW komutları eski bellek değerini DA hedef register'ına yazar. W=8/16/32 ise DA'nın kullanılmayan üst bitleri sıfırlanır.
+- ATOM.STORE kaynak değeri DA register'ının düşük W bitinden alır.
+- CAS, beklenen değeri (expected) ve yazılacak yeni değeri (desired) iki ayrı DA kaydından okur. Bellekteki eski değer expected ile eşitse desired yazılır; değilse bellek değişmez. Her iki durumda da eski bellek değeri sonuç DA kaydına döner.
+- CAS başarısı, dönen eski değer ile expected değer karşılaştırılarak belirlenir. İlk sürümde ayrı success flag veya status register üretilmez. Sonuç DA selector'ı ile expected DA selector'ı farklı olmalıdır; aksi halde illegal encoding oluşur.
+- SWAP ve FETCH_* kaynak operandları komut başlangıcında snapshot edilir. Sonuç DA ile kaynak DA aynı selector olabilir; sonuç yazımı kaynak operandı okunduktan sonra gerçekleşir.
+- FETCH_ADD/FETCH_SUB W-bit unsigned bit-pattern üzerinde modulo 2^W çalışır; taşma wrap-around'dur. FETCH_AND/OR/XOR W-bit bitwise işlemlerdir. Signed/unsigned sıralama karşılaştırması bu ilk komut ailesinde bulunmaz.
+- Atomic bellek adresi W/8 byte'a doğal hizalı olmalıdır. Misalignment `ALIGNMENT_FAULT` üretir.
+
+**Memory ordering**
+
+| Ordering | Anlam |
+|---|---|
+| RELAXED | Atomicity korunur; ek sıralama garantisi yoktur |
+| ACQUIRE | Atomic işlemden sonraki bellek işlemlerini acquire kurallarına göre sıralar |
+| RELEASE | Atomic işlemden önceki bellek işlemlerini release kurallarına göre sıralar |
+| ACQ_REL | Acquire ve release kurallarının ikisini uygular |
+| SEQ_CST | Sequentially consistent atomic sıralama sağlar |
+
+- ATOM.LOAD: RELAXED, ACQUIRE veya SEQ_CST kullanabilir. RELEASE ve ACQ_REL illegal encoding'dir.
+- ATOM.STORE: RELAXED, RELEASE veya SEQ_CST kullanabilir. ACQUIRE ve ACQ_REL illegal encoding'dir.
+- CAS, SWAP ve FETCH_* read-modify-write komutları beş ordering seçeneğinin tümünü kullanabilir.
+- Ordering seçimi tek başına L1–L4 domain'leri arasında veri kopyalamaz, otomatik coherence oluşturmaz veya zone sahipliğini değiştirmez.
+
+**Çekirdekler arası kapsam ve atomicity**
+- L1 her çekirdeğe özel olduğundan L1 atomic işlemleri o çekirdeğin yerel senkronizasyon kapsamındadır.
+- L2 iki çekirdek, L3 dört çekirdek, L4 ise ilgili sekizli veya daha geniş paylaşım grubunun atomic serialization kapsamıdır. Aynı shared domain içindeki bütün çekirdekler aynı adrese yapılan atomic işlemlerde ortak bir sıralama görmelidir.
+- Atomic işlemler aynı adres ve aynı erişim genişliğindeki atomic işlemlere karşı indivisible/linearizable olmalıdır. Aynı nesne üzerinde farklı genişlikte veya örtüşen aralıklı atomic işlemlerin birbirine göre davranışı ilk sürümde garanti edilmez; paylaşılan nesne için tek genişlik kullanılmalıdır.
+- Aynı konuma eşzamanlı atomic ve non-atomic erişim, ayrıca senkronizasyonla korunmadıkça data race kabul edilir.
+- Atomic serialization ve memory ordering mimari sözleşmedir. Fiziksel arbiter, bank locking, cache-coherence/visibility ve fabric mesajlaşma protokolü mikro-mimari tasarımında belirlenecektir.
+
+**Fault davranışı**
+- Address overflow, alignment, domain bounds, permission veya mapping/access fault durumunda bellek değiştirilmez.
+- Faulting ATOM.LOAD/CAS/SWAP/FETCH_* hedef DA register'ını değiştirmez. Faulting ATOM.STORE veya RMW kısmi yazma yapamaz.
+- ATOM komutları için adresleme, domain ve izin denetimleri normal LOAD/STORE ile uyumludur; yalnızca atomic erişim genişliği ve ordering kısıtları farklıdır.
+
+Örnekler:
+
+```asm
+ATOM.LOAD.ACQUIRE.L2.W64 DA0, [RA10]
+ATOM.STORE.RELEASE.L2.W64 [RA10], DA1
+CAS.ACQ_REL.L2.W64 DA2, [RA10], DA3, DA4
+SWAP.SEQ_CST.L3.W32 DA5, [RA12], DA6
+FETCH_ADD.RELAXED.L1.W64 DA7, [RA14], DA8
+FETCH_AND.ACQ_REL.L4.W64 DA9, [RA20], DA10
+```
+
+Bu mnemonic'ler sembolik assembly gösterimleridir. ATOM formatının bit yerleşimi ve ORDER kodları `NEXSUS-CPU-INSTRUCTION-ENCODING-001.md` belgesinde tanımlanır; numeric opcode ataması henüz yapılmamıştır.
 ## 6. SPM komutları
 
 SPM0 kayıt-ofsetiyle, SPM1–SPM7 byte-ofsetiyle adreslenir. Bu komut isimleri taslak mnemonic'lerdir.
