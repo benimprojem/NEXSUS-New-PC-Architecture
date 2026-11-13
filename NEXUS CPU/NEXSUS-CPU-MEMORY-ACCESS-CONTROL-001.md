@@ -202,6 +202,25 @@ CPU ve Fabric istekleri şu servis sınıflarıyla ele alınır:
 - IRQ/exception'ın kendisi bellek sıralaması veya senkronizasyon sağlamaz. URGENT yalnızca handler'ın gerekli bellek erişimlerine latency önceliği verir.
 
 Kesin quantum, ağırlık, URGENT bütçesi ve cycle bazlı latency sınırları mikro-mimari parametrelerdir; bunlar bellek clock'u, bank/port sayısı ve Fabric yükü ölçüldükten sonra belirlenir. Mimari olarak starvation koruması ve sınırlı burst zorunludur.
+
+## 10.3 Arbitration doğrulama senaryoları
+
+İleride hazırlanacak bellek/Fabric simülatöründe en az şu davranışlar doğrulanmalıdır:
+
+| Senaryo | Beklenen sonuç |
+|---|---|
+| Farklı domain veya bağımsız bankalara eşzamanlı istek | İstekler ortak global sıra nedeniyle beklemez; kaynaklar uygunsa paralel ilerler. |
+| Aynı bankada CPU-DEMAND ve BULK sürekli talep üretiyor | Her iki aktif sınıf da adil servis alır; BULK sürekli ertelenmez. |
+| Sürekli URGENT talep akışı | URGENT bütçesi sınırlanır; diğer aktif sınıflara servis devam eder. |
+| Uzun MEMXFER ile CPU LOAD/STORE aynı bankayı kullanıyor | XFER quantum sınırında yield eder; CPU erişimleri araya girebilir ve XFER daha sonra devam eder. |
+| MEMXFER yield sırasında | Kaynak read-reservation ve hedef write-reservation/unpublished durumu korunur. |
+| Uzun süre bekleyen BACKGROUND isteği | Aging nedeniyle etkin önceliği yükselir ve servis alır. |
+| Exception/IRQ handler context-frame erişimi | CPU hardware URGENT etiketi uygular; SPM7 internal erişimi L1–L4 kuyruğuna girmez. |
+| PL0 yazılımı URGENT sınıfını taklit etmeye çalışıyor | Talep CPU-DEMAND olarak sınıflandırılır; privilege sınırı aşılmaz. |
+| ATOM RMW arbitration'a kabul edildi | Atomic serialization/indivisibility tamamlanır; başka sınıfın isteği RMW ortasında araya girmez. |
+| Bir hedef backpressure uyguluyor | İstek korunur ve bekler; bağımsız hedef/bank trafiği çalışmayı sürdürür. |
+
+Bu senaryolar cycle-accurate latency sayısı belirlemez. Önce sınıf adaleti, bounded burst, doğru reservation yaşam döngüsü ve bağımsız kaynak paralelliği doğrulanır; cycle hedefleri gerçek mikro-mimari parametreler seçildikten sonra eklenir.
 ## 11. Task switch and permission-state transition
 
 Before PL0 resumes for a new task, the scheduler must establish:
