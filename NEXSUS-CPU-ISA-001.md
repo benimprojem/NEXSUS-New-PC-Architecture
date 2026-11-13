@@ -70,7 +70,7 @@ Bu bölümdeki scalar/integer komutlarının kaynak ve hedef operandları RA0–
 | ABS | dst, src | Mutlak değer | ALU |
 
 
-**Primary opcode eşlemesi:** Scalar/integer/logic komutlarının numeric opcode'ları `NEXSUS-CPU-INSTRUCTION-ENCODING-001.md` bölüm 8.1'de atanmıştır. ADD/ADDI, SUB/SUBI ve AND/ANDI, OR/ORI, XOR/XORI aynı primary opcode'u R3 ve RI formatlarıyla paylaşır. DIV/MOD/MIN/MAX signedness'i opcode yerine R3 M[0] alanından seçer; CMP koşulu AUX[3:0] alanındadır.
+**Primary opcode eşlemesi:** Scalar/integer/logic komutlarının numeric opcode'ları `NEXSUS-CPU-INSTRUCTION-ENCODING-001.md` bölüm 8.2'de atanmıştır. ADD/ADDI, SUB/SUBI ve AND/ANDI, OR/ORI, XOR/XORI aynı primary opcode'u R3 ve RI formatlarıyla paylaşır. DIV/MOD/MIN/MAX signedness'i opcode yerine R3 M[0] alanından seçer; CMP koşulu AUX[3:0] alanındadır.
 
 ### 3.2 Scalar integer aritmetik semantiği
 
@@ -159,7 +159,7 @@ MOVI64 RA4, 0x123456789ABCDEF0
 | BEXT | dst, src, start, width | Seçilen bit aralığını çıkarır; sonuç zero-extend edilir | ALU |
 | BINS | dst, src, start, width | Kaynağın düşük bitlerini hedefte seçilen aralığa yerleştirir; diğer bitleri korur | ALU |
 
-**Primary opcode eşlemesi:** AND/OR/XOR ve immediate alias'ları 0x1D–0x1F; NOT, shift/rotate ve BSET/BCLR/BTST/BEXT/BINS komutları 0x30–0x3A aralığındadır. Numeric atamalar ve alan kısıtları Instruction Encoding belgesi bölüm 8.1'de tanımlıdır.
+**Primary opcode eşlemesi:** AND/OR/XOR ve immediate alias'ları 0x1D–0x1F; NOT, shift/rotate ve BSET/BCLR/BTST/BEXT/BINS komutları 0x30–0x3A aralığındadır. Numeric atamalar ve alan kısıtları Instruction Encoding belgesi bölüm 8.2'de tanımlıdır.
 
 ### 4.2 Shift, rotate ve bit komutları
 
