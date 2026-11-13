@@ -116,7 +116,7 @@ class SelectedNexusProfileTests(unittest.TestCase):
                          (8, 8, 10, 8, 128))
         self.assertEqual(p["units"], {
             "INT": 4, "FP": 4, "VEC": 2, "LOAD": 8,
-            "STORE": 4, "BR": 2, "CTX": 1, "ATOM": 1,
+            "STORE": 4, "BR": 2, "CTX": 1, "ATOM": 1, "ME512": 1,
         })
 
 
