@@ -379,6 +379,22 @@ class ME512WorkloadTests(unittest.TestCase):
         self.assertIn("ME512", sim.PROFILES["nexus_balanced_128"]["units"])
 
 
+class BranchSweepIntegrationTests(unittest.TestCase):
+    def test_branch_sweep_preserves_work_and_separates_predictable_from_random(self):
+        workloads = sim.build_composite_workload(scale=1)
+        result = sim.run_branch_predictor_sweep(workloads, sim.PROFILES["nexus_balanced_128"])
+        for row in result["kernels"].values():
+            self.assertTrue(row["ops_preserved"])
+        self.assertLess(
+            result["kernels"]["scalar_control"]["mispredicts_compact_predictor"],
+            result["kernels"]["scalar_control"]["mispredicts_predictor_off"],
+        )
+        self.assertEqual(
+            result["kernels"]["branch_stress"]["mispredicts_compact_predictor"],
+            result["kernels"]["branch_stress"]["mispredicts_predictor_off"],
+        )
+
+
 class PXMetadataTests(unittest.TestCase):
     def test_full_pages_auto_continue_and_partial_final_uses_px_end(self):
         pages = [
