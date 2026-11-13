@@ -392,13 +392,17 @@ class CommandFetchModel:
     def __init__(self, enabled: bool, p0_capacity_bytes: int = 16384,
                  conventional_capacity_bytes: int = 32768,
                  p0_refill_latency: int = 48, conventional_refill_latency: int = 8,
-                 p0_buffer_bytes: int = 2048, page_descriptors: dict | None = None):
+                 p0_buffer_bytes: int = 2048, page_descriptors: dict | None = None,
+                 pool_miss_latency: int = 120):
         self.enabled = enabled
         self.capacity_bytes = p0_capacity_bytes if enabled else conventional_capacity_bytes
         self.lines = LRU(self.capacity_bytes, 64)
         self.refill_latency = p0_refill_latency if enabled else conventional_refill_latency
         self.p0_buffer_bytes = p0_buffer_bytes
         self.page_descriptors = {int(k): v for k, v in (page_descriptors or {}).items()}
+        self.pool_miss_latency = pool_miss_latency
+        self.pool_initialized = False
+        self.pool_refill_bytes = 0
         self.p0_buffers = [None, None]  # SPM0-A/B, 2 KiB each
         self.p0_pending = None
         self.pending = {}
@@ -450,16 +454,24 @@ class CommandFetchModel:
         if valid_bytes <= 0 or valid_bytes > self.p0_buffer_bytes or valid_bytes % 8:
             raise ValueError(f"invalid valid_bytes/alignment for PX page {block}")
 
-    def _pool_touch(self, block: int):
+    def _pool_touch(self, block: int) -> bool:
+        max_pages = max(1, self.capacity_bytes // self.p0_buffer_bytes)
+        if not self.pool_initialized:
+            # OS launch-time staging: fill the available PX pool with the first
+            # logical pages before the task is dispatched.
+            for page in range(block, block + max_pages):
+                self.pool_pages[page] = None
+            self.pool_initialized = True
         if block in self.pool_pages:
             self.pool_hits += 1
             self.pool_pages.move_to_end(block)
-        else:
-            self.pool_misses += 1
-            self.pool_pages[block] = None
-            max_pages = max(1, self.capacity_bytes // self.p0_buffer_bytes)
-            if len(self.pool_pages) > max_pages:
-                self.pool_pages.popitem(last=False)
+            return True
+        self.pool_misses += 1
+        self.pool_pages[block] = None
+        self.pool_refill_bytes += self.p0_buffer_bytes
+        if len(self.pool_pages) > max_pages:
+            self.pool_pages.popitem(last=False)
+        return False
 
     def _start_p0_prefetch(self, block: int, cycle: int, allow_active_bank: bool = False):
         if block in self.p0_buffers or (self.p0_pending and self.p0_pending[0] == block):
@@ -471,8 +483,9 @@ class CommandFetchModel:
             if not allow_active_bank:
                 return  # do not overwrite a bank still consumed by sequential fetch
             self.active_block = None  # branch redirect abandons the old sequential stream
-        self._pool_touch(block)
-        self.p0_pending = (block, cycle + self.refill_latency, bank)
+        pool_hit = self._pool_touch(block)
+        source_delay = 0 if pool_hit else self.pool_miss_latency
+        self.p0_pending = (block, cycle + self.refill_latency + source_delay, bank)
         self.prefetches += 1
         self.refills += 1
         self.refill_bytes += self.p0_buffer_bytes
@@ -841,6 +854,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 p0_capacity_bytes=int(features.get("p0_capacity_kb", 16)) * 1024,
                 p0_refill_latency=int(features.get("p0_refill_latency", 48)),
                 page_descriptors=features.get("px_page_descriptors"),
+                pool_miss_latency=int(features.get("px_pool_miss_latency", 120)),
                 conventional_capacity_bytes=int(features.get("conventional_icache_kb", 32)) * 1024,
                 conventional_refill_latency=int(features.get("conventional_refill_latency", 8)),
             )
@@ -1156,18 +1170,21 @@ def run_nexus_ablation(workloads: Dict[str, List[Op]], profile_dict: dict) -> di
     }
 
 
-def run_p0_capacity_sweep(workloads, profile_dict, capacities_kb=(4, 8, 16, 32), refill_latency=48):
-    """Sweep only P0 capacity; preserve the same operation graph and all other settings."""
+def run_p0_capacity_sweep(workloads, profile_dict, capacities_kb=(4, 8, 16, 32),
+                            refill_latency=48, pool_miss_latency=120):
+    """Single-core 64-KiB sequential code stream; vary only PX pool capacity."""
+    target = {"p0_starvation": workloads["p0_starvation"]}
     rows = {}
     for capacity_kb in capacities_kb:
         run = simulate_cpu(
-            workloads, profile_dict, 8,
+            target, profile_dict, 1,
             {"spm": True, "p0": True, "p0_capacity_kb": capacity_kb,
-             "p0_refill_latency": refill_latency},
+             "p0_refill_latency": refill_latency, "px_pool_miss_latency": pool_miss_latency},
         )
         rows[str(capacity_kb)] = {
             "capacity_kb": capacity_kb,
             "refill_latency_cycles": refill_latency,
+            "pool_miss_latency_cycles": pool_miss_latency,
             "total_cycles": run["total_cycles"],
             "total_ops": run["total_ops"],
             "kernels": {name: {"cycles": row["cycles"], "ops": row["ops"],
@@ -1175,23 +1192,23 @@ def run_p0_capacity_sweep(workloads, profile_dict, capacities_kb=(4, 8, 16, 32),
                         for name, row in run["kernels"].items()},
         }
     return {
-        "experiment": "NEXSUS P0 capacity sensitivity sweep",
-        "profile": profile_dict["name"], "cores": 8,
+        "experiment": "NEXSUS PX pool capacity sensitivity sweep",
+        "profile": profile_dict["name"], "cores": 1,
         "same_workload_operation_count": next(iter(rows.values()))["total_ops"],
-        "assumptions": "P0 refill latency and all core/memory parameters held constant; only P0 capacity changes.",
+        "assumptions": "A 64-KiB sequential code stream; first pool pages staged at dispatch; later PX-pool misses pay the configured App-RAM source latency. Only pool capacity changes.",
         "results": rows,
     }
 
 
 def run_fetch_latency_sweep(workloads, conventional_latencies=(8, 16, 24, 32),
-                            p0_latencies=(64, 96, 128, 160), p0_capacity_kb=16):
+                            p0_latencies=(32, 34, 48, 64, 96), p0_capacity_kb=16):
     """Compare reference I-cache refill assumptions with NEXSUS P0 refill assumptions."""
     target = {"p0_starvation": workloads["p0_starvation"]}
     rows = {"amd_9950x3d2": {}, "intel_xeon_698x": {}, "apple_m6": {},
             "nexus_conventional": {}, "nexus_p0": {}}
     for key in ("amd_9950x3d2", "intel_xeon_698x", "apple_m6"):
         for latency in conventional_latencies:
-            run = simulate_cpu(target, PROFILES[key], 8,
+            run = simulate_cpu(target, PROFILES[key], 1,
                                {"conventional_refill_latency": latency})
             kernel = run["kernels"]["p0_starvation"]
             rows[key][str(latency)] = {
@@ -1200,7 +1217,7 @@ def run_fetch_latency_sweep(workloads, conventional_latencies=(8, 16, 24, 32),
             }
     for latency in conventional_latencies:
         run = simulate_cpu(
-            target, PROFILES["nexus_balanced_128"], 8,
+            target, PROFILES["nexus_balanced_128"], 1,
             {"spm": True, "p0": False, "conventional_refill_latency": latency},
         )
         kernel = run["kernels"]["p0_starvation"]
@@ -1212,7 +1229,7 @@ def run_fetch_latency_sweep(workloads, conventional_latencies=(8, 16, 24, 32),
         run = simulate_cpu(
             target, PROFILES["nexus_balanced_128"], 8,
             {"spm": True, "p0": True, "p0_capacity_kb": p0_capacity_kb,
-             "p0_refill_latency": latency},
+             "p0_refill_latency": latency, "px_pool_miss_latency": 120},
         )
         kernel = run["kernels"]["p0_starvation"]
         rows["nexus_p0"][str(latency)] = {
@@ -1225,11 +1242,11 @@ def run_fetch_latency_sweep(workloads, conventional_latencies=(8, 16, 24, 32),
         raise AssertionError(f"fetch sweep changed operation count: {counts}")
     return {
         "experiment": "Conventional instruction-cache vs NEXSUS P0 refill sensitivity",
-        "cores": 8, "kernel": "p0_starvation",
+        "cores": 1, "kernel": "p0_starvation",
         "operations_per_run": next(iter(counts)),
         "conventional_capacity_kb": 32,
         "p0_capacity_kb": p0_capacity_kb,
-        "assumptions": "Only refill latency varies within each path; same 16 KiB command working-set trace and operation count.",
+        "assumptions": "Single-core 64-KiB sequential code stream; conventional I-cache uses bounded multi-line prefetch; PX uses a 16-KiB pool with 120-cycle source miss penalty; only transfer latency varies within each path.",
         "results": rows,
     }
 
