@@ -628,7 +628,13 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
     for core_id, st in enumerate(states):
         st["cache"] = cache_hierarchies[core_id]
         if is_nexus:
-            st["fetch"] = CommandFetchModel(bool(features["p0"]))
+            st["fetch"] = CommandFetchModel(
+                bool(features["p0"]),
+                p0_capacity_bytes=int(features.get("p0_capacity_kb", 8)) * 1024,
+                p0_refill_latency=int(features.get("p0_refill_latency", 8)),
+                conventional_capacity_bytes=int(features.get("conventional_icache_kb", 32)) * 1024,
+                conventional_refill_latency=int(features.get("conventional_refill_latency", 32)),
+            )
     pending_fills = []
     controller = SharedMemoryController(
         bank_count=p.bank_count, beat_bytes=p.bank_beat_bytes,
@@ -890,14 +896,54 @@ def run_nexus_ablation(workloads: Dict[str, List[Op]], profile_dict: dict) -> di
     }
 
 
+def run_p0_capacity_sweep(workloads, profile_dict, capacities_kb=(4, 8, 16, 32), refill_latency=8):
+    """Sweep only P0 capacity; preserve the same operation graph and all other settings."""
+    rows = {}
+    for capacity_kb in capacities_kb:
+        run = simulate_cpu(
+            workloads, profile_dict, 8,
+            {"spm": True, "p0": True, "p0_capacity_kb": capacity_kb,
+             "p0_refill_latency": refill_latency},
+        )
+        rows[str(capacity_kb)] = {
+            "capacity_kb": capacity_kb,
+            "refill_latency_cycles": refill_latency,
+            "total_cycles": run["total_cycles"],
+            "total_ops": run["total_ops"],
+            "kernels": {name: {"cycles": row["cycles"], "ops": row["ops"],
+                               "p0": row["p0_counters"]}
+                        for name, row in run["kernels"].items()},
+        }
+    return {
+        "experiment": "NEXSUS P0 capacity sensitivity sweep",
+        "profile": profile_dict["name"], "cores": 8,
+        "same_workload_operation_count": next(iter(rows.values()))["total_ops"],
+        "assumptions": "P0 refill latency and all core/memory parameters held constant; only P0 capacity changes.",
+        "results": rows,
+    }
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--scale", type=int, default=1)
     ap.add_argument("--nexus-cores", type=int, default=8)
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--ablation", action="store_true", help="run four-way NEXSUS SPM/P0 ablation")
+    ap.add_argument("--p0-capacity-kb", type=int, default=8, help="NEXSUS P0 capacity in KiB")
+    ap.add_argument("--p0-refill-cycles", type=int, default=8, help="provisional P0 refill latency")
+    ap.add_argument("--p0-sweep", action="store_true", help="run 4/8/16/32 KiB P0 capacity sweep")
     args = ap.parse_args()
     workloads = build_composite_workload(args.scale)
+    if args.p0_sweep:
+        result = run_p0_capacity_sweep(workloads, PROFILES["nexus_balanced_128"],
+                                        refill_latency=args.p0_refill_cycles)
+        if args.json:
+            print(json.dumps(result, indent=2))
+        else:
+            print("NEXSUS P0 CAPACITY SENSITIVITY — PROVISIONAL MODEL")
+            for row in result["results"].values():
+                print(f'{row["capacity_kb"]:>2} KiB: cycles={row["total_cycles"]} ops={row["total_ops"]}')
+        return
     if args.ablation:
         result = run_nexus_ablation(workloads, PROFILES["nexus_balanced_128"])
         if args.json:
@@ -916,12 +962,16 @@ def main():
     for key in ("amd_9950x","intel_285k_p","intel_285k_e"):
         profiles[key] = simulate_cpu(workloads, PROFILES[key])
     for key in ("nexus_balanced_128",):
-        profiles[key] = simulate_cpu(workloads, PROFILES[key], max(8, args.nexus_cores))
+        profiles[key] = simulate_cpu(
+            workloads, PROFILES[key], max(8, args.nexus_cores),
+            {"spm": True, "p0": True, "p0_capacity_kb": args.p0_capacity_kb,
+             "p0_refill_latency": args.p0_refill_cycles},
+        )
     if args.json:
         print(json.dumps(profiles, indent=2))
         return
     print("NEXSUS CPU COMPOSITE WORKLOAD — CONTROLLED 8-CORE MODEL v0.2.4-dev")
-    print("All targets: 8 cores, 3.0 GHz reference clock, 120-cycle DRAM latency, 32 B/cycle chip-wide DRAM ceiling; work-conserving shared controller.")
+    print("All targets: exactly 8 modeled cores, one thread/core, 3.0 GHz reference clock, 120-cycle DRAM latency, 32 B/cycle chip-wide DRAM ceiling; identical logical workload graphs.")
     print("Parallelism: lockstep cores; NEXSUS private L1 and shared L2/2-core, L3/4-core, L4/8-core groups; shared DRAM banks and aggregate bus; coherence remains unmodeled.")
     print(f"{'CPU profile':48} {'cycles':>12} {'ops':>10} {'IPC':>8} {'time ms*':>12}")
     for result in profiles.values():
@@ -945,7 +995,7 @@ def main():
                   f"{c['execution_unit_blocked_op_cycles']:10d} {c['frontend_limited_cycles']:9d} "
                   f"{c['rob_full_cycles']:8d} {c['branch_recovery_cycles']:10d} "
                   f"{c['memory_latency_exposure_cycles']:10d}")
-    print("*Time uses configured reference clock, not measured sustained turbo.")
+    print("*Time uses configured reference clock, not measured sustained turbo. Reference cache sharing/port behavior and front-end details are approximations; NEXSUS P0 is separately modeled.")
 
 if __name__ == "__main__":
     main()
