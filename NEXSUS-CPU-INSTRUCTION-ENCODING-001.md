@@ -228,7 +228,12 @@ DA kayıtları 64-bit olduğundan erişim genişliğine göre gereken kayıt say
 - 128/256/512-bit erişimlerde ardışık 64-bit parçalar artan bellek adresi sırasıyla artan DA selector'larına eşlenir. Her kaydın kendi içindeki byte sıralaması global endian kararıyla belirlenecektir.
 - STORE yalnızca istenen W bitini bellek alanına yazar; son DA kaydındaki erişim genişliği dışında kalan bitler yazılmaz.
 - LOAD/STORE ham bit aktarımı yapar. LOAD signed/unsigned yorumlama veya sign-extension yapmaz. Signed/unsigned yorum, DA'dan RA/FA'ya sonraki açık dönüşüm/transfer aşamasında yapılır.
-- Effective address, domain izni, alan sınırı ve bellek erişim hataları ilgili memory exception mekanizmasına tabidir; doğal hizalama ve misaligned erişim davranışı henüz dondurulmamıştır.
+- **Doğal hizalama zorunludur.** EA, erişim boyutunun byte karşılığına (W/8) tam bölünmelidir. Örnek: W=16 için 2-byte, W=64 için 8-byte, W=512 için 64-byte hizalama gerekir. W=8 için her byte adresi geçerlidir.
+- İlk ISA sürümünde misaligned LOAD/STORE desteklenmez; hizalama ihlali `ALIGNMENT_FAULT` üretir. Donanım erişimi otomatik olarak birden fazla erişime bölmez. Gelecekte unaligned erişim gerekiyorsa ayrı opcode/mod ile açıkça tanımlanır.
+- Erişim aralığı `[EA, EA + W/8 - 1]` 64-bit adres uzayını taşırırsa `ADDRESS_OVERFLOW_FAULT` oluşur. Aralığın seçilen L1/L2/L3/L4 domain'inde tamamen geçerli olması gerekir; domain sınırını aşmak `MEMORY_BOUNDS_FAULT` üretir.
+- Erişim izni yoksa `MEMORY_PERMISSION_FAULT`; eşleme/erişim hedefi mevcut değilse `MEMORY_ACCESS_FAULT` oluşur. Hata, komutu başlatan çekirdeğe senkron olarak raporlanır.
+- LOAD fault durumunda hedef DA kayıtlarının hiçbiri mimari olarak güncellenmez. STORE için tüm aralık, izin ve sınır kontrolleri yazma commit'inden önce tamamlanır; bu kontrollerden biri başarısızsa hiçbir byte yazılmaz.
+- Başarılı 128/256/512-bit LOAD/STORE tek bir mimari komuttur; mikro-mimari bunu birden fazla beat'e bölebilir. Bu, başka çekirdeklerin aynı aralığa eşzamanlı erişimine karşı kendiliğinden atomicity garantisi vermez. Gerekli eşzamanlama/atomic davranış ayrı komutlarla sağlanır.
 
 ### 4.7 XFER — Register bankları arası açık aktarım
 
