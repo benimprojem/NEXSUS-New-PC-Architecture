@@ -701,6 +701,7 @@ CPU ile ilgili teknik belgeler `NEXUS CPU/` klasöründe merkezi olarak tutulur.
 - [SPM and P0 Initial Ablation Results](NEXUS%20CPU/NEXSUS-CPU-SPM-P0-ABLATION-RESULTS-001.md) — İlk dört profilli deneyin sonuçları, kernel bazlı çevrimler ve model varsayımları.
 - [CPU Comparison Simulator](NEXUS%20CPU/NEXSUS-CPU-COMPARISON-SIMULATOR-001.md) — AMD Zen 5, Intel Arrow Lake P/E ve NEXSUS için ortak algoritma ve simülasyon modeli.
 - [Cross-Architecture Comparison Results](NEXUS%20CPU/NEXSUS-CPU-CROSS-ARCHITECTURE-RESULTS-001.md) — Aynı 8 çekirdekli algoritma testinin AMD/Intel/NEXSUS sonuçları, P0 kapasite taraması ve sınırlamalar.
+- [CPU Architecture Revision — 2026-11-13](NEXUS%20CPU/NEXSUS-CPU-ARCHITECTURE-REVISION-2026-11-13.md) — 64-entry register banks and P0/P1 8+8 KiB ping-pong command buffers.
 - [CPU Comparison Simulator source](NEXUS%20CPU/tools/cpu_comparison_sim.py) — İlk çalıştırılabilir davranışsal simülatör prototipi.
 - [CPU Simulator Architecture](NEXUS%20CPU/NEXSUS-CPU-SIMULATOR-ARCHITECTURE-001.md) — NEXSUS ve referans CPU için ortak algoritma, fonksiyonel/çevrimsel simülasyon ve karşılaştırma planı.
 
