@@ -178,6 +178,30 @@ MEMXFER için mevcut domain controller/Fabric transaction metadata'sı üzerinde
 6. Rezervasyon byte-range ve domain kapsamındadır. Uygulama cache-line/bank/beat seviyesinde daha geniş iç arbitration yapabilir; mimari olarak ilgisiz aralıklara busy fault veremez.
 
 Normal LOAD/STORE aynı aralıkta XFER rezervasyonuyla çakışırsa fail-fast fault kullanılır; bekleme yapılmaz. Bu, aynı task'ın hedefi okumadan önce WAIT çalıştırmasını ve kaynak verisini transfer sürerken değiştirmemesini zorunlu kılar; WAIT'e ulaşmayı engelleyen deadlock riskini önler. Farklı aralık ve domain'lerdeki istekler paralel kalır.
+
+## 10.2 Bellek arbitration, QoS ve starvation koruması
+
+Arbitration, erişim izni doğrulandıktan sonra ve hedef domain/bank seviyesinde yapılır. L1–L4 için tek bir global FIFO/kilit kullanılmaz. Bağımsız bankalar ve domain'ler kendi isteklerini paralel ilerletebilir.
+
+CPU ve Fabric istekleri şu servis sınıflarıyla ele alınır:
+
+| Sınıf | İstek türü |
+|---|---|
+| URGENT | CPU exception/IRQ handler ve context-frame için donanımca işaretlenen erişimler |
+| CPU-DEMAND | Normal CPU LOAD/STORE/ATOM |
+| LATENCY-SENSITIVE | Gecikme hedefi tanımlanmış yetkili Fabric/Node erişimleri |
+| BULK | MEMXFER ve büyük DMA/Fabric payload beat/chunk işlemleri |
+| BACKGROUND | Ertelenebilir bakım ve arka plan istekleri |
+
+- URGENT servisinin bütçesi sınırlıdır; diğer sınıflar için de servis kapasitesi korunur. URGENT işaretini yalnızca CPU hardware aktif exception/IRQ durumuna göre üretebilir; PL0 bunu kendisi yükseltemez.
+- Kalan kapasite ağırlıklı adil arbitration ile dağıtılır. Bekleme süresi arttıkça aging etkin önceliği yükseltir; aktif bir sınıf süresiz aç bırakılamaz.
+- Uzun transferler sınırlı beat/chunk quantum'larıyla yürütülür. MEMXFER quantum sınırında duraklatılabilir; kaynak/hedef range reservation ve token yaşam döngüsü transfer tamamlanana kadar korunur.
+- Bir XFER'ın duraklatılması, source range'in sabit kalması veya destination range'in unpublished kalması kurallarını değiştirmez. WAIT yalnızca gerçek terminal completion/failure sonucunu bekler.
+- ATOM işlemleri bankaya erişim için sınırsız öncelik almaz; ancak kabul edildiklerinde kendi atomic serialization/indivisibility kurallarına uyar.
+- Banka/port çakışması yalnızca ilgili kaynağı bekletir. Ayrı bankalar, bağımsız domain'ler ve aynı bankada paralel erişime uygun bağımsız portlar çalışmayı sürdürür.
+- IRQ/exception'ın kendisi bellek sıralaması veya senkronizasyon sağlamaz. URGENT yalnızca handler'ın gerekli bellek erişimlerine latency önceliği verir.
+
+Kesin quantum, ağırlık, URGENT bütçesi ve cycle bazlı latency sınırları mikro-mimari parametrelerdir; bunlar bellek clock'u, bank/port sayısı ve Fabric yükü ölçüldükten sonra belirlenir. Mimari olarak starvation koruması ve sınırlı burst zorunludur.
 ## 11. Task switch and permission-state transition
 
 Before PL0 resumes for a new task, the scheduler must establish:
