@@ -15,8 +15,8 @@ This specification reuses the existing NEXSUS register banks and memory system. 
 | Bank | Registers | Width each | Full bank size |
 |---|---:|---:|---:|
 | RA | 64 | 64-bit | 512 B |
-| FA | 32 | 64-bit | 256 B |
-| DA | 32 | 64-bit | 256 B |
+| FA | 64 | 64-bit | 512 B |
+| DA | 64 | 64-bit | 512 B |
 | MA | 64 | 256-bit | 2,048 B |
 | **Total** | **256** | — | **3,584 B** |
 
@@ -279,13 +279,13 @@ SPM2 has one physical 8 KiB capacity per core. Its contents are owned by the cur
 
 Four banks are dedicated to the OS-managed fast task-context pool: SPM3, SPM4, SPM5, and SPM6. Their combined capacity is 32 KiB.
 
-A full RA/FA/DA/MA payload is 1,792 bytes. The existing 64-byte save-frame header brings the base frame to 3,648 bytes, which fits in a 2 KiB slot with 32-byte alignment. Therefore each 8 KiB bank contains four 4 KiB slots:
+A full RA/FA/DA/MA payload is 1,792 bytes. The existing 64-byte save-frame header brings the base frame to 3,648 bytes, which fits in a 2 KiB slot with 32-byte alignment. Therefore each 8 KiB bank contains two 4 KiB slots:
 
-- 4 banks × 4 slots = **8 resident task-context slots per core**.
+- 4 banks × 2 slots = **8 resident task-context slots per core**.
 - Each slot holds one full register-bank image and its save-frame header.
 - Task control metadata (PC, STATUS, FP control/status, address-space and memory-domain descriptors, SPM ownership metadata, and scheduling state) remains in the task control block in protected Data RAM; the slot does not duplicate ECS state.
 - A slot is assigned to exactly one task at a time. The OS tracks valid/invalid state, task identity, generation, and ownership. It must complete the save before publishing a slot as valid and complete restore before resuming the task.
-- If more than 16 tasks are runnable/retained on a core, the excess contexts remain in protected Data RAM and can be loaded into a slot when scheduled. **16 is the resident fast-slot maximum, not the system-wide task-count limit.**
+- If more than 8 tasks are runnable/retained on a core, the excess contexts remain in protected Data RAM and can be loaded into a slot when scheduled. **16 is the resident fast-slot maximum, not the system-wide task-count limit.**
 - If the implementation changes slot header size or adds context payload fields, the 2 KiB fit must be revalidated; it must not silently overlap adjacent slots.
 
 The OS may choose any slot ordering and eviction policy, but it must preserve explicit ownership and cannot overwrite a live context. Task-context slots are OS-owned storage; they are not simultaneously available as arbitrary application scratch space.
