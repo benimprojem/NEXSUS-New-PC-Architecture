@@ -1199,33 +1199,40 @@ Bu örnek 4096 byte veriyi L1'den L3'e CPU kontrolünde taşır. Büyük transfe
 Ayrıntılı ISA semantiği: [NEXSUS-CPU-ISA-001.md — §22.10–22.11](NEXSUS-CPU-ISA-001.md).
 
 
-## 28. P0 program komut belleği ve kod/veri ayrımı
+## 28. P0 program komut ön belleği ve kod/veri ayrımı
 
-NEXSUS CPU'da program komutları ile uygulama verileri farklı bellek domain'lerinde tutulur. Bu amaçla P0, komut belleği olarak L1–L4 veri belleklerinden ayrı tanımlanır.
+NEXSUS CPU'da program komutları ile uygulama verileri farklı bellek domain'lerinde tutulur. Programın ana kod belleği, komut ön belleği P0 ve uygulama veri bellekleri birbirinden ayrıdır.
 
-| Bellek | Görev | Erişim modeli |
-|---|---|---|
-| P0 | Program komutları ve yürütülebilir kod | Instruction fetch |
-| L1 | Çekirdeğe özel veri belleği | Yerel veri LOAD/STORE |
-| L2 | İki çekirdek için paylaşılan veri belleği | Paylaşılan veri erişimi |
-| L3 | Dört çekirdek için paylaşılan veri belleği | Paylaşılan veri erişimi |
-| L4 | Sekiz veya daha geniş çekirdek grubu için veri belleği | Geniş paylaşımlı veri erişimi |
+| Bellek | Görev | Kayıt genişliği | İlk kapasite hedefi |
+|---|---|---:|---:|
+| P0 | Instruction-fetch için program komut ön belleği | 64 bit sabit | 32 KiB / çekirdek |
+| L1 | Çekirdeğe özel veri belleği | Veri erişim genişliklerine bağlı | 128 KiB / çekirdek |
+| L2 | İki çekirdek için paylaşılan veri belleği | Veri erişim genişliklerine bağlı | 1 MiB / ikili grup |
+| L3 | Dört çekirdek için paylaşılan veri belleği | Veri erişim genişliklerine bağlı | 8 MiB / dörtlü grup |
+| L4 | Sekiz veya daha geniş çekirdek grubu için veri belleği | Veri erişim genişliklerine bağlı | 64 MiB / sekizli grup |
+| SPM0 | Yürütme sırasında geçici komut/kayıt alanı | 64 bit kayıt | 32 KiB / çekirdek |
 
 ### 28.1 P0'ın mimari kuralları
 
-- P0 yalnızca program komutlarını/kodunu barındıran program belleği domain'idir.
-- Instruction fetch yolu P0'a yönelir; normal uygulama verisi L1–L4 domain'lerinde tutulur.
-- P0, L1'in parçası veya L1–L4 cache hiyerarşisinin bir seviyesi değildir.
-- P0 ile L1–L4 arasında otomatik veri/kod kopyalama veya migration yapılmaz.
-- Program yükleme ve kod güncelleme işlemleri CPU tarafından açıkça kontrol edilir.
-- P0'a yazma, kod yürütme izni ve değiştirilmiş komutların fetch birimine görünür olması ayrı koruma ve senkronizasyon kuralları gerektirir.
+- P0, ana program kod belleğinden instruction-fetch birimine komut sağlayan ön bellek katmanıdır; programın tamamının P0'a sığması zorunlu değildir.
+- P0 kayıtları daima 64 bit genişliğindedir. 32 KiB P0, 4.096 adet komut sözcüğü tutar.
+- 16 KiB (2.048 komut) ve 64 KiB (8.192 komut) olası küçük/büyük yapılandırmalardır; başlangıç hedefi çekirdek başına 32 KiB'tır.
+- Instruction fetch P0 üzerinden yürütülür. P0, L1–L4 veri belleklerinin parçası değildir.
+- P0 ile L1–L4 arasında otomatik kod/veri kopyalama veya migration yapılmaz.
+- Programın yüklenmesi ve kod güncellemeleri CPU tarafından açıkça yönetilir.
+- P0'a yazma, kod yürütme izni ve değiştirilen komutların fetch birimine görünür olması ayrı koruma ve senkronizasyon kuralları gerektirir.
 
-### 28.2 Kod/veri ayrımının sonucu
+### 28.2 SPM0 ile görev ayrımı
 
-Bu modelde uygulama kodu ve uygulama verisi ayrı bellek alanlarında yaşar. Böylece veri belleğinin kapasitesi program koduyla tüketilmez; komut fetch ve veri erişimi de farklı bellek yolları/domain'leri üzerinden tasarlanabilir. P0 kapasitesi, gecikmesi, bant genişliği ve bank sayısı henüz belirlenmemiştir; bunlar sonraki bellek bant genişliği ve çekirdek ölçekleme çalışmasında netleştirilecektir.
+P0 komutları yürütme birimine hazır tutarken SPM0, yürütme sırasında ihtiyaç duyulan geçici komut/kayıt alanıdır. SPM0, komut ön belleği değildir ve P0'ın yerini almaz.
+
+- SPM0 için mevcut 8 × 4 KiB sayfa düzeni korunur; toplam kapasite 32 KiB olur.
+- SPM0 kayıtları 64 bit genişliğindedir; her 4 KiB sayfada 512 kayıt bulunur.
+- P0'dan gelen komutların yürütme akışında kullanılacak geçici kayıtları SPM0'da tutulabilir.
+- P0 ve SPM0 ayrı bellek kaynaklarıdır; görevleri ve erişim yolları birbirine karıştırılmamalıdır.
 
 ### 28.3 Domain'ler arası aktarım
 
 P0 dahil farklı bellek domain'leri arasında veri veya kod taşınması gerektiğinde aktarım CPU tarafından açıkça başlatılır. `XFER` çok çevrimli ve parçalara bölünmüş çalışır. Aktarım sürerken bağımsız ALU/FPU/ME işleri, bellek ve yürütme kaynakları çakışmadığı sürece ilerleyebilir. Asenkron kullanımda `XFER.START` token üretir ve `XFER.WAIT token` tamamlanmayı bekler.
 
-ISA komut semantiği: [NEXSUS-CPU-ISA-001.md — §22.11–22.12](NEXSUS-CPU-ISA-001.md).
+ISA komut semantiği: [NEXSUS-CPU-ISA-001.md — §22.11–22.13](NEXSUS-CPU-ISA-001.md).
