@@ -377,6 +377,11 @@ class ME512WorkloadTests(unittest.TestCase):
                 self.assertEqual(result["kernels"]["me512"]["ops"], 4)
                 self.assertEqual(result["kernels"]["me512"]["cycles"] > 0, True)
         self.assertIn("ME512", sim.PROFILES["nexus_balanced_128"]["units"])
+        self.assertEqual(sim.PROFILES["nexus_balanced_128"]["matrix_unit"], "ME512")
+        self.assertEqual(sim.PROFILES["intel_xeon_698x"]["matrix_unit"], "AMX")
+        self.assertEqual(sim.PROFILES["amd_9950x3d2"]["matrix_unit"], "VEC")
+        self.assertEqual(sim.PROFILES["apple_m6"]["vector_bits"], 128)
+        self.assertEqual(sim.PROFILES["amd_9950x3d2"]["vector_bits"], 512)
 
 
 class BranchSweepIntegrationTests(unittest.TestCase):
