@@ -24,18 +24,31 @@
 
 | Register | Fiziksel yapı | Rol |
 |---|---|---|
-| RA00–RA63 | 64 × 64-bit | Application/scalar state |
-| RBn | RAn alt 32-bit görünümü | 32-bit erişim |
-| RCn | RAn alt 16-bit görünümü | 16-bit erişim |
-| RDn | RAn alt 8-bit görünümü | 8-bit erişim |
-| DA00–DA63 | 64 × 64-bit | Data staging / transfer |
-| MA00–MA31 | 32 × 256-bit | Vector/matrix operands |
+| RA0–RA31 | 32 × 64-bit | Integer, adres ve scalar state |
+| FA0–FA31 | 32 × 64-bit | Floating-point state; FP32/FP64 ve eşli FP128 |
+| DA0–DA31 | 32 × 64-bit | Data staging / transfer |
+| MA0–MA31 | 32 × 256-bit | Vector/matrix operands |
+| RBn | RAn alt 32-bit görünümü | 32-bit integer erişim |
+| RCn | RAn alt 16-bit görünümü | 16-bit integer erişim |
+| RDn | RAn alt 8-bit görünümü | 8-bit integer erişim |
 | SPM0 | 2 KiB; 256 × 64-bit kayıt | Doğrudan adreslenebilir geçici yürütme durumu/sonuç alanı; 8–512-bit erişim |
 | SPM1–SPM7 | 8 KiB × 7; byte-addressed | Her biri 8–512-bit erişimli geçici veri alanı |
 
-RB/RC/RD yazmalarında etkilenmeyen üst bitlerin korunması mimari tercihidir. Register-view detayları SPM/register dokümanında tanımlanır.
+RA/RB/RC/RD aynı RA fiziksel kaydının alt-bit görünümleridir; küçük görünüm yazmalarında etkilenmeyen üst bitler korunur. FA ayrı fiziksel banktır ve RA view alias'ı değildir. FA'nın FP128 işlemleri çift numaralı başlangıç kaydından başlayan iki kayıtlı pair kullanır. Register ayrıntıları SPM/register dokümanında tanımlanır.
+
+### 2.1 Register bank ve operand kuralları
+
+- RA0–RA31: integer/scalar/address operandları; integer ve bitwise komutların varsayılan bankı.
+- FA0–FA31: floating-point operandları; FP32/FP64 tek kayıt, FP128 çift kayıt.
+- DA0–DA31: load/store staging ve açık register-bank transferleri.
+- MA0–MA31: 256-bit vector/matrix operandları; 512-bit ME512 işlemlerinde çift MA kaydı.
+- RBn/RCn/RDn: yalnızca RAn kayıtlarının 32/16/8-bit alt görünümleri; FA/DA/MA için alias değildir.
+- Komut mnemonic'i ve operand bankı birlikte operand türünü belirler. Bir bankın operandı başka bankın operandı yerine örtük kullanılamaz.
+- FCONV sayısal integer↔floating dönüşümünü yapar; MOV.* transferleri yalnızca tanımlı register bit aktarımı/paketleme işlevlerini yapar.
 
 ## 3. Scalar / Integer / Logic komutları
+
+Bu bölümdeki scalar/integer komutlarının kaynak ve hedef operandları RA0–RA31 bankındadır. RB/RC/RD, ilgili RA kaydının 32/16/8-bit alt görünümünü seçer. FA, DA ve MA operandları bu komutların örtük alternatifleri değildir.
 
 | Mnemonic (taslak) | Operand biçimi | İşlev | Unit |
 |---|---|---|---|
@@ -74,17 +87,20 @@ RB/RC/RD yazmalarında etkilenmeyen üst bitlerin korunması mimari tercihidir. 
 
 ## 5. Data transfer ve adres komutları
 
+LOAD ve STORE veri belleği ile DA bankı arasında çalışır. Scalar hesaplama için DA'dan RA'ya, floating-point hesaplama için DA'dan FA'ya açık register-transfer komutları kullanılır. FA ile RA arasında sayısal tür dönüşümü FCONV ile yapılır.
+
 | Mnemonic | Operand | İşlev | Unit / path |
 |---|---|---|---|
-| LOAD | dst, [addr] | DATA memory → register | Load/store |
-| STORE | [addr], src | Register → DATA memory | Load/store |
-| LEA | dst, [base+offset] | Adres hesaplama | ALU |
-| MOV.DA | DA, RA/view | Scalar → data register | Register path |
-| MOV.RA | RA/view, DA | Data → scalar register | Register path |
-| MOV.MA | MA, DA/RA | Operand hazırlama | Matrix data path |
-| MOV.DA.MA | MA, DA | Data → MA | Matrix data path |
-| MOV.MA.DA | DA, MA | MA → data staging | Matrix data path |
-| COPY | dst, src, length | Alan/blok kopyalama | Transfer engine (TBD) |
+| LOAD | DA, [addr] | DATA memory → DA register | Load/store |
+| STORE | [addr], DA | DA register → DATA memory | Load/store |
+| LEA | RA, [base+offset] | Adres hesaplama | ALU |
+| MOV.RA.DA | RA, DA | DA'dan integer/scalar registera 64-bit aktarım | Register path |
+| MOV.DA.RA | DA, RA | RA'dan DA staging'e 64-bit aktarım | Register path |
+| MOV.FA.DA | FA, DA | DA bitlerini FA kayıt konteynerine aktarma | Register path |
+| MOV.DA.FA | DA, FA | FA kayıt bitlerini DA staging'e aktarma | Register path |
+| MOV.MA.DA | MA, DA | DA verisini MA operandına paketleme/yükleme | Matrix data path |
+| MOV.DA.MA | DA, MA | MA dilimini DA staging'e alma | Matrix data path |
+| COPY | dst, src, length | Bellek alanı/blok kopyalama | Transfer path (TBD) |
 
 Memory adres genişliği 64-bit olabilir; register selector genişlikleri bundan bağımsızdır.
 
@@ -105,6 +121,8 @@ SPM0, 256 adet 64-bit temel kayıt üzerinden doğrudan adreslenir; SPM1–SPM7 
 
 ## 7. Floating-point komutları
 
+Bu bölümdeki tüm FP kaynak ve hedef operandları FA0–FA31 bankındadır. FP32 ve FP64 değerler tek FA kaydında tutulur. FP128 değerler iki ardışık FA kaydını kullanır; pair başlangıcı çift indisli olmalıdır (FA00:FA01, FA02:FA03, …, FA30:FA31). Pair'in düşük 64 biti ilk kayıtta, yüksek 64 biti sonraki kayıttadır. Tek FA kaydına yazan FP32/FP64 işlemleri pair'in diğer kaydını etkilemez.
+
 | Mnemonic | Operand | İşlev | Unit |
 |---|---|---|---|
 | FADD | dst, a, b | FP toplama | FPU |
@@ -120,9 +138,11 @@ SPM0, 256 adet 64-bit temel kayıt üzerinden doğrudan adreslenir; SPM1–SPM7 
 | FCMP | a, b | FP karşılaştırma | FPU |
 | FCONV | dst, src, type | FP/integer dönüşüm | FPU / conversion path |
 
-Başlangıç formatları FP32 ve FP64'tür. FP128 mimari tür desteği olarak planlanır; donanım desteği/performansı ayrı doğrulanır.
+Başlangıç formatları FP32 ve FP64'tür. FP128, FA pair biçimiyle ISA'da desteklenir; gerçek FPU throughput ve latency mikro-mimari doğrulamasına tabidir.
 
 ## 8. Vector ve Matrix komutları
+
+Bu bölümdeki vektör/matris kaynak ve hedef operandları MA0–MA31 bankındadır. DA yalnızca açık veri hazırlama/çıkarma transferinde kullanılır.
 
 MA registerları 256-bit fiziksel genişliktedir. ME512 512-bit yürütme yoludur; iki MA registerı veya tanımlı 512-bit birleşik operand biçimi kullanılabilir.
 
@@ -251,13 +271,14 @@ Bu örnek sadece 512-bit operand/result register eşlemesini gösterir; matris s
 
 | Register bank | Read port hedefi | Write port hedefi | Açıklama |
 |---|---:|---:|---|
-| RA (64-bit) | 6 | 3 | 2–3 ALU ve 2 FPU için operand besleme hedefi |
-| DA (64-bit) | 4 | 2 | Load/store ve data staging |
-| MA (256-bit) | 4 × 256-bit | 2 × 256-bit | ME512 pair ve vector data |
+| RA (32 × 64-bit) | 4 × 64-bit | 2 × 64-bit | Integer ALU operandları ve scalar/adres state |
+| FA (32 × 64-bit) | 4 × 64-bit | 2 × 64-bit | İki FPU için FP operandları; FP128 pair iki kayıt dilimi tüketir |
+| DA (32 × 64-bit) | 4 × 64-bit | 2 × 64-bit | Load/store ve açık data staging |
+| MA (32 × 256-bit) | 4 × 256-bit | 2 × 256-bit | ME512 pair ve vector data |
 | SPM0 | 2 × 64-bit | 1 × 64-bit | 64-bit temel kayıt erişimi; 8–512-bit geniş erişimler çok kayıtlı olabilir |
 | SPM1–SPM7 | 2 variable-width | 1 variable-width | 8–512-bit byte/field access; bank implementation TBD |
 
-RA port hedefleri ideal koşulda 3 adet 2-source ALU komutu ve 2-source FPU komutlarını aynı çevrimde beslemeye tek başına yetmez; operand reuse, immediate, bypass ve dispatch sınırlaması gerekir. Bu nedenle tablo **azami port hedefi değil, ilk planlama değeridir**; issue scheduler port/operand kaynaklarına göre komut seçer. RA register rename/physical bank çoğaltma henüz kararlaştırılmadı.
+RA ve FA artık ayrı fiziksel banklardır; FPU operandları FA'dan, ALU operandları RA'dan beslenir. Her bank için 4 read / 2 write portu ilk planlama hedefidir; bu değer sabit issue garantisi değildir. Scheduler operand sayısı, pair erişimi, bypass ve hedef çakışmalarına göre komut seçer. Fiziksel bank çoğaltma/rename henüz kararlaştırılmadı.
 
 MA'nın 4 read portu, 512-bit pair okumasında iki 256-bit register dilimini birlikte besleme hedefidir. Pair için 2 read port tüketimi varsayılır; iki pair operandı aynı anda okunduğunda 4 port kullanılır. ME512 sonucu pair'e yazarken iki 256-bit write portu tüketir.
 
@@ -274,15 +295,15 @@ MA'nın 4 read portu, 512-bit pair okumasında iki 256-bit register dilimini bir
 
 1. Aynı çevrimde aynı register'a birden fazla yazma hedefi verilmez; arbitration veya issue rejection gerekir.
 2. Bir komutun yazacağı register, aynı çevrimde bağımlı komutun kaynak operandı olarak kullanılamaz; forwarding varsa bypass ile çözülür.
-3. RA/RB/RC/RD aynı fiziksel RA registerının görünümüdür; bir view'a yazma diğer view okumalarını günceller.
+3. RA/RB/RC/RD aynı fiziksel RA registerının görünümüdür; bir view'a yazma diğer view okumalarını günceller. FA ayrı banktır; FA pair işlemleri iki FA kaydına bağımlılık ve write-hazard oluşturur.
 4. MA pair kullanan ME512 komutu, pair'in iki fiziksel MA registerını komut tamamlanana veya pipeline'ın güvenli release noktasına kadar rezerve eder.
 5. SPM read/write port/bank conflict scheduler tarafından çözülür.
 6. Load-use, FP dependency, matrix dependency ve memory ordering kuralları pipeline/ISA ayrıntı belgesinde genişletilecektir.
 
 ## 18. Açık karar / sonraki tasarım konusu
 
-- RA register bankının multiport maliyeti; banked/replicated/renamed alternatifleri.
-- FPU ve ALU operandlarının ortak RA portlarını nasıl kullanacağı; dedicated operand queue/bypass seçenekleri.
+- RA ve FA banklarının multiport maliyeti; banked/replicated/renamed alternatifleri.
+- FA pair erişimlerinin port, hizalama ve forwarding maliyeti.
 - MA pair komutlarının register allocation ve ABI'de nasıl temsil edileceği.
 - SPM0/SPM1–SPM7 fiziksel bank/port düzeni ve aynı cycle erişim.
 - ME512 accumulator/tiling ve matrix shape formatı.
