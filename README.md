@@ -698,6 +698,7 @@ CPU ile ilgili teknik belgeler `NEXUS CPU/` klasöründe merkezi olarak tutulur.
 - [Memory Bank Topology](NEXUS%20CPU/NEXSUS-CPU-MEMORY-BANK-TOPOLOGY-001.md) — 8×64-bit bank grubu, adres dağıtımı ve bank eşzamanlılığı.
 - [Bank Controller Behavior](NEXUS%20CPU/NEXSUS-CPU-BANK-CONTROLLER-001.md) — Bank kuyruğu, çoklu-bank kabulü, arbitration ve geniş erişim tamamlama kuralları.
 - [SPM and P0 Ablation Plan](NEXUS%20CPU/NEXSUS-CPU-SPM-P0-ABLATION-PLAN-001.md) — SPM ve P0'ın bağımsız/birleşik katkısını ölçmek için kontrollü deney profilleri, adil fallback yolları ve hedef kernel'ler.
+- [SPM and P0 Initial Ablation Results](NEXUS%20CPU/NEXSUS-CPU-SPM-P0-ABLATION-RESULTS-001.md) — İlk dört profilli deneyin sonuçları, kernel bazlı çevrimler ve model varsayımları.
 - [CPU Comparison Simulator](NEXUS%20CPU/NEXSUS-CPU-COMPARISON-SIMULATOR-001.md) — AMD Zen 5, Intel Arrow Lake P/E ve NEXSUS için ortak algoritma ve simülasyon modeli.
 - [CPU Comparison Simulator source](NEXUS%20CPU/tools/cpu_comparison_sim.py) — İlk çalıştırılabilir davranışsal simülatör prototipi.
 - [CPU Simulator Architecture](NEXUS%20CPU/NEXSUS-CPU-SIMULATOR-ARCHITECTURE-001.md) — NEXSUS ve referans CPU için ortak algoritma, fonksiyonel/çevrimsel simülasyon ve karşılaştırma planı.
