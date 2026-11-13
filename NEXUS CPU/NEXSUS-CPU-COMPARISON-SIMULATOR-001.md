@@ -38,10 +38,10 @@ The target model is an event/cycle-driven CPU model with these components:
 3. Dependency-aware issue and execution-resource availability.
 4. Out-of-order completion and in-order retirement.
 5. Branch recovery stalls.
-6. L1/L2/L3/DRAM access classification and per-bank serialization.
+6. L1/L2/L3/L4/DRAM access classification and per-bank serialization.
 7. Multicore task scheduling and shared-cache/memory contention (planned after v0.1).
 
-The current v0.1 script implements a simplified single-stream pipeline, dependency tracking, issue-resource limits, in-order retirement, branch stalls, a deterministic LRU cache approximation and a simple local bank-serialization model. It deliberately does not claim to model multicore speedup yet.
+The current v0.1 script implements a simplified single-stream pipeline, dependency tracking, issue-resource limits, in-order retirement, branch stalls, a deterministic LRU L1–L4 cache approximation and a simple local bank-serialization model. It deliberately does not claim to model multicore speedup yet.
 
 ## 4. Known public reference points and model assumptions
 
@@ -60,7 +60,7 @@ Already specified architectural anchors:
 - 128 KiB private L1 per core.
 - 1 MiB L2 shared by two cores.
 - 8 MiB L3 shared by four cores.
-- 64 MiB L4 shared by eight or more cores.
+- 64 MiB L4 shared by eight or more cores. The v0.1 model includes this L4 capacity and a provisional 64-cycle latency assumption; this latency is not frozen.
 - 8-bank × 64-bit bank-group candidate.
 - Separate App RAM instruction path and Data RAM data path.
 - P0 command cache; 64-bit command records and 512-bit peak refill interface.
