@@ -625,7 +625,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 beats = max(1, math.ceil(st["ops"][seq].width / p.bank_beat_bytes))
                 service_delay = max(
                     reservation["bank_wait"],
-                    reservation["bus_wait"] + reservation["bus_service_cycles"]
+                    reservation["bus_wait"] + max(0, reservation["bus_service_cycles"] - 1)
                 )
                 latency = max(latency, p.dram_lat + service_delay)
             st["ready_at"][seq] = cycle + latency
