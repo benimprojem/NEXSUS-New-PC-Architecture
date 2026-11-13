@@ -164,3 +164,8 @@ The following remain OS/simulator policy or implementation choices rather than a
 ## 13. SPM access-control reference
 
 The scheduler must enforce the privilege and ownership boundaries in `NEXSUS-CPU-SPM-ACCESS-PROTECTION-001.md`. In particular, it must not expose SPM3–SPM6 context slots to PL0, must assign SPM2 to exactly the currently running task on that core, and must not repurpose SPM7 for scheduling or ordinary OS work. SPM2 ownership and the incoming task's memory permissions must be valid before returning to PL0.
+
+
+## 14. Memory protection reference
+
+The scheduler must apply `NEXSUS-CPU-MEMORY-PROTECTION-DOMAINS-001.md` during dispatch and migration. Incoming task-private App RAM/Data RAM ranges and shared grants must be validated before PL0 resumes; outgoing ownership and in-flight shared/Fabric operations must be handled before memory is reassigned or reclaimed.
