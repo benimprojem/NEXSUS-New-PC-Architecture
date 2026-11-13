@@ -337,3 +337,33 @@ Bu örnekler little-endian memory byte sıralamasını değil, register bit dili
 - Aynı cycle içinde aynı RA hücresine iki destination yazılamaz.
 - 6 read / 3 write ilk port hedefi sabit issue genişliği garantisi değildir. Scheduler; ALU/FPU komutlarını port sayısı, operand reuse, immediate, bypass ve hedef register çakışmasına göre seçer.
 - Register bank replication, operand queue veya ek portlar ileride throughput artırımı için değerlendirilebilir; ISA'nın görünür RA semantiğini değiştirmez.
+
+
+## 21. SPM erişim ve bank-conflict modeli (ilk taslak)
+
+SPM0 ve SPM1, RA/DA/MA register banklarından ayrı erişim kaynaklarıdır. SPM komutu register operandı kullanıyorsa register portu tüketimi ayrıca hesaba katılır.
+
+### SPM0
+
+- 32 KiB alan, 8 adet 4 KiB page/bank olarak düzenlenir.
+- Her page içinde 512 adet 64-bit record bulunur.
+- Adres: `(page_id, record_offset)`; record_offset 0..511 aralığındadır.
+- İlk erişim hedefi: cycle başına 2 adet 64-bit read ve 1 adet 64-bit write.
+- Aynı bankaya aynı cycle içinde birden fazla erişim gelirse port kapasitesi aşan erişimler stall/issue ertelemesine girer.
+
+### SPM1
+
+- Byte-addressed ve değişken genişlikli alan erişimini destekler.
+- 8/16/32/64/128-bit erişimlerde alignment ve sayfa sınırı davranışı ayrıca tanımlanacaktır.
+- İlk hedef 2 read + 1 write erişimidir; gerçek paralellik bank dağılımına bağlıdır.
+- Aynı byte/field üzerinde çakışan write'lar aynı cycle'da issue edilmez.
+- Maskeli/partial update, ilgili alan dışındaki bitleri korur.
+
+### Scheduler kuralları
+
+1. SPM read/write port sayısı ve bank conflict, SPM komutlarını sınırlayabilir; ALU/FPU issue'dan bağımsız değildir.
+2. SPM read sonucunun aynı cycle'da kullanılması, doğrudan combinational path garantisi değildir; latency/load-use kuralı mikro-mimariyle belirlenecektir.
+3. SPM COPY/field işlemleri çok cycle veya transfer engine üzerinden yürüyebilir; tek cycle varsayılmaz.
+4. SPM0/SPM1 bank sayısı ve interleave/hash adresleme henüz kesin değildir. Page sayısı ile fiziksel bank sayısı aynı kavram kabul edilmez.
+
+Bu bölüm port hedeflerini tanımlar; kesin timing ve bank mapping sonraki mikro-mimari revizyonda sabitlenecektir.
