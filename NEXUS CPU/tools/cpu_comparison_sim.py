@@ -826,13 +826,80 @@ def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=N
             "aggregate_ipc": round(total_ops/max(1,total_cycles),3),
             "time_ms_at_configured_clock": round(total_cycles/(p.frequency_ghz*1e6),6)}
 
+def run_nexus_ablation(workloads: Dict[str, List[Op]], profile_dict: dict) -> dict:
+    """Run the four controlled NEXSUS SPM/P0 combinations on identical work."""
+    variants = {
+        "N-FULL": {"spm": True, "p0": True},
+        "N-NO-SPM": {"spm": False, "p0": True},
+        "N-NO-P0": {"spm": True, "p0": False},
+        "N-BASE": {"spm": False, "p0": False},
+    }
+    runs = {
+        name: simulate_cpu(workloads, profile_dict, max(8, profile_dict.get("core_count", 8)), flags)
+        for name, flags in variants.items()
+    }
+    comparison = {}
+    for kernel in workloads:
+        full = runs["N-FULL"]["kernels"][kernel]
+        no_spm = runs["N-NO-SPM"]["kernels"][kernel]
+        no_p0 = runs["N-NO-P0"]["kernels"][kernel]
+        base = runs["N-BASE"]["kernels"][kernel]
+        spm_gain = no_spm["cycles"] - full["cycles"]
+        p0_gain = no_p0["cycles"] - full["cycles"]
+        combined_gain = base["cycles"] - full["cycles"]
+        comparison[kernel] = {
+            "ops_preserved": all(runs[n]["kernels"][kernel]["ops"] == full["ops"] for n in variants),
+            "ops": full["ops"],
+            "cycles": {n: runs[n]["kernels"][kernel]["cycles"] for n in variants},
+            "spm_cycles_saved_with_p0_on": spm_gain,
+            "p0_cycles_saved_with_spm_on": p0_gain,
+            "combined_cycles_saved": combined_gain,
+            "interaction_cycles": combined_gain - (spm_gain + p0_gain),
+            "spm_percent_vs_no_spm": round(100 * spm_gain / max(1, no_spm["cycles"]), 3),
+            "p0_percent_vs_no_p0": round(100 * p0_gain / max(1, no_p0["cycles"]), 3),
+            "combined_percent_vs_base": round(100 * combined_gain / max(1, base["cycles"]), 3),
+        }
+    return {
+        "experiment": "NEXSUS SPM/P0 four-way ablation",
+        "clock_ghz": runs["N-FULL"]["clock_ghz"],
+        "cores": runs["N-FULL"]["cores_configured"],
+        "variants": {name: {"features": flags, "total_cycles": runs[name]["total_cycles"],
+                            "total_ops": runs[name]["total_ops"]}
+                     for name, flags in variants.items()},
+        "kernels": comparison,
+        "full_runs": runs,
+        "assumptions": {
+            "p0_enabled": "8 KiB command store; 64-byte refill line; 8-cycle provisional refill; one outstanding refill per core",
+            "p0_disabled": "32 KiB conventional instruction cache; 64-byte line; 32-cycle provisional refill",
+            "spm2_enabled": "8 KiB task workspace; 2-cycle provisional access; one modeled port per core",
+            "spm2_disabled": "Tagged SPM2 accesses use normal cache/Data RAM path",
+            "scope": "SPM2 and P0 first stage only; SPM0, SPM1, SPM3-SPM7 remain unmodeled",
+        },
+    }
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--scale", type=int, default=1)
     ap.add_argument("--nexus-cores", type=int, default=8)
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--ablation", action="store_true", help="run four-way NEXSUS SPM/P0 ablation")
     args = ap.parse_args()
     workloads = build_composite_workload(args.scale)
+    if args.ablation:
+        result = run_nexus_ablation(workloads, PROFILES["nexus_balanced_128"])
+        if args.json:
+            print(json.dumps(result, indent=2))
+        else:
+            print("NEXSUS SPM/P0 FOUR-WAY ABLATION — PROVISIONAL MODEL")
+            for name, row in result["variants"].items():
+                print("{} cycles={} ops={}".format(name, row["total_cycles"], row["total_ops"]))
+            print("PER-KERNEL EFFECTS")
+            for kernel, row in result["kernels"].items():
+                print("{} full={} no-SPM={} no-P0={} base={} interaction={}".format(
+                    kernel, row["cycles"]["N-FULL"], row["cycles"]["N-NO-SPM"],
+                    row["cycles"]["N-NO-P0"], row["cycles"]["N-BASE"], row["interaction_cycles"]))
+        return
     profiles = {}
     for key in ("amd_9950x","intel_285k_p","intel_285k_e"):
         profiles[key] = simulate_cpu(workloads, PROFILES[key])
