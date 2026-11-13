@@ -425,25 +425,70 @@ W alanının yorumu opcode ailesine bağlıdır. Örneğin FADD için W=010 FP32
 - Bu grup hizalama kuralları yalnızca XFER ile tam MA register/pair aktarımı içindir. MEM LOAD/STORE için DA selector hizalaması gerektirilmez; orada yalnızca DA31 sınırı kontrol edilir.
 - 128-bit ve daha küçük scalar/register transferleri bu MA grup kuralına tabi değildir.
 
-## 7. Immediate ve 64-bit literal genişletme
+## 7. EXT prefix ve literal genişletme
 
-36-bit immediate, birçok sabit ve displacement ihtiyacı için temel formattır. 64-bit adres ve sabitler için 64-bit register genişliğini koruyan bir literal extension mekanizması gerekir.
+EXT, bağımsız bir işlem veya hedef opcode'u taşıyan alternatif komut formatı değildir. Normal bir komutun önüne gelen **genişletme prefix'idir**. Bu yaklaşım, aynı literal taşıma mekanizmasının farklı opcode ailelerinde kullanılmasını sağlar.
 
-İlk öneri:
-1. EXT formatlı ilk word, hedef opcode/format ve hedef register bilgisini taşır.
-2. Hemen ardından gelen ikinci 64-bit word, literal payload olarak yorumlanır.
-3. Decoder ikinci word'ü opcode olarak decode etmez; ilk word'ün payload'ı olarak tüketir.
-4. Bu iki word'lü komut P0'da iki adet 64-bit kayıt kullanır.
-5. Branch hedefleri ve bellek adresleri yine 64-bit RA registerları üzerinden çalışır.
+### 7.1 Komut akışı ve yerleşim
 
-Örnek assembly gösterimi (sembolik):
+Genişletilmiş komut akışı şu sıradadır:
+
+1. EXT prefix word
+2. Normal instruction word (R3, R2, RI, MEM, XFER, BR, SYS veya R4)
+3. EXT başlığında belirtilen sayıda 64-bit literal word
+
+Decoder önce EXT başlığını tanır, ardından normal komut word'ünü ve literal word dizisini birlikte toplar. Normal komutun operand alanları hedef register, base register, width ve diğer işlem parametrelerini taşımaya devam eder; literal yalnızca opcode'un tanımladığı immediate/displacement/adres alanını genişletir.
+
+### 7.2 EXT prefix bit yerleşimi
+
+EXT prefix için taslak bit yerleşimi:
+
+```text
+63       56 55    52 51    48 47    44 43    40 39                 0
++----------+--------+--------+--------+--------+--------------------+
+| OP (8)   | FMT(4) | KIND(4)| COUNT(4)| FLAGS(4)| RESERVED (40)     |
++----------+--------+--------+--------+--------+--------------------+
+```
+
+- OP: ayrılmış EXT escape opcode değeri; numeric opcode henüz atanmadı.
+- FMT: `0111` (EXT).
+- KIND: literal genişletme türü. İlk uygulamada `0000 = RAW_LITERAL`; diğer değerler ayrılmıştır.
+- COUNT: takip eden literal word sayısı. `0001` bir adet 64-bit literal word anlamına gelir; `0000` ve henüz tanımlanmamış değerler geçersizdir.
+- FLAGS: ilk sürümde sıfır olmalıdır; diğer bit desenleri ayrılmıştır.
+- RESERVED: tamamı sıfır olmalıdır.
+
+İlk uygulama tek literal word (`COUNT=1`) ile başlar. Alanın 4 bit olması gelecekte birden fazla literal word desteği için kod alanı bırakır; ancak çoklu literal semantiği henüz tanımlı değildir ve ilk sürümde COUNT=1 dışındaki değerler geçersizdir.
+
+### 7.3 Literal'in yorumlanması
+
+- Literal word, EXT prefix'ini izleyen normal instruction word'ünün ardından gelir.
+- Literal word little-endian 64-bit payload'dır; opcode olarak decode edilmez.
+- Normal instruction hangi operand alanının literal ile genişletileceğini kendi opcode tanımıyla belirler.
+- Literal'in signed/unsigned yorumu, kaydırılması, birleştirilmesi ve hedef genişliği opcode semantiğinde açıkça belirtilmelidir. EXT tek başına bu yorumları belirlemez.
+- EXT kullanılmayan normal komutlar mevcut tek-word davranışını korur.
+- İlk sürümde her EXT prefix tam olarak bir normal instruction word'üne bağlanır; araya başka prefix veya komut giremez.
+
+### 7.4 Örnek
 
 ```asm
+; Akışta: EXT prefix, MOVI komutu, 64-bit literal
 MOVI64 RA4, 0x123456789ABCDEF0
+
+; Normal tek-word komut
 LOAD.L1 DA2, [RA4 + 0]
 ```
 
-İlk word'ün EXT alt format kodu ve ikinci word'ün byte sıralaması, opcode tablosu dondurulurken kesinleştirilecektir. Literal word, branch hedefi veya komut akışına atlanan normal bir instruction gibi yürütülmemelidir.
+MOVI64 sembolik assembly gösterimidir; temel MOVI opcode'unun literal destekleyen biçimde EXT ile eşleştiğini ifade eder. Bu örnek henüz numeric opcode ataması yapmaz.
+
+### 7.5 Decoder ve kontrol akışı kuralları
+
+- EXT prefix görüldüğünde decoder, takip eden normal instruction word'ünü ve COUNT kadar literal word'ü tek bir komut paketi olarak toplar.
+- Komut paketi tamamlanmadan issue aşamasına gönderilmez.
+- Literal word'ler instruction olarak decode edilmez ve branch hedefi olarak değerlendirilmez.
+- Branch/call/exception dönüş adresi, genişletilmiş paketin son word'ünden sonraki 64-bit komut adresidir.
+- EXT prefix, normal instruction veya gerekli literal word'ler kod akışında eksikse komut tamamlanamaz ve instruction-fetch/decode fault oluşur.
+- EXT prefix'ten sonra başka bir EXT prefix gelmesi, normal instruction gelmemesi veya ayrılmış alanların sıfır olmaması illegal encoding fault üretir.
+- İlk sürümde COUNT yalnızca 1 olabilir.
 
 ## 8. Opcode alanı ve ilk opcode haritası
 
@@ -470,7 +515,7 @@ Bu aralıklar final opcode numaraları değildir. Primary opcode, FMT ile birlik
 - P0 her zaman 64-bit instruction word kayıtları tutar.
 - Decoder ilk 64-bit word üzerinden OP ve FMT alanlarını çözer.
 - Tek word komutlarda bir P0 kaydı tüketilir.
-- EXT literal kullanan iki word komutlarda ilk word + literal word birlikte tüketilir.
+- EXT kullanan komutlarda prefix, normal instruction ve belirtilen literal word'ler birlikte tüketilir.
 - Literal word normal opcode olarak decode edilmez.
 - Decode/dispatch sonrası komut uygun issue kuyruğuna gönderilir.
 - P0 kapasitesi, fetch genişliği ve issue sayısı birbirinden farklı kavramlardır; 512-bit fetch bir çevrimde sekiz 64-bit word getirebilir ancak sekiz komutun aynı çevrimde yürütüleceği anlamına gelmez.
@@ -486,7 +531,7 @@ Aşağıdaki durumlar illegal instruction veya ilgili erişim exception'ı üret
 - 512-bit ME512 için tek numaralı MA pair başlangıcı.
 - DA 4-register group erişiminin DA31 sınırını aşması veya hizalama şartını ihlal etmesi.
 - Komutun istediği register bankı ile kodlanan bankın uyuşmaması.
-- EXT komutunun gerekli literal word'ünün kod belleği/P0 akışında bulunmaması.
+- EXT paketinin normal instruction word'ünün veya gerekli literal word'lerinin kod belleği/P0 akışında bulunmaması.
 
 Exception türleri, trap vector ve hata raporlama ayrıntıları ayrı system-control bölümünde tanımlanacaktır.
 
@@ -508,7 +553,7 @@ Aşağıdaki örnekler gerçek hexadecimal makine kodu değildir; opcode değerl
 ## 12. Henüz dondurulmamış kararlar
 
 1. OP ve FMT sayısal kodlarının nihai tablosu.
-3. EXT word'ün kesin bit alanları ve birden çok literal word gerekip gerekmediği.
+3. EXT opcode'unun numeric değeri ve gelecekte COUNT>1 çoklu literal semantiği.
 4. DA↔MA 256/512-bit grup hizalaması ISA/encoding düzeyinde tanımlandı; mikro-mimari transfer portları ve timing'i açık.
 6. MA/FA pair komutlarının opcode ve exception ayrıntıları.
 7. Branch koşul kodları ve displacement'in PC'ye göre referans noktası (komut başlangıcı veya sonraki komut).
@@ -531,7 +576,7 @@ Aşağıdaki örnekler gerçek hexadecimal makine kodu değildir; opcode değerl
 - MEM domain seçimi: AM[2:1] ile L1/L2/L3/L4; AM[0]=0 base + displacement.
 - LOAD/STORE erişim genişliği ve DA grup dağılımı: 8–512 bit; 1/2/4/8 ardışık DA kaydı.
 - Branch displacement: **signed 32 bit**.
-- Geniş literal: takip eden ek **64-bit word**.
+- Geniş literal: EXT prefix + normal komut + COUNT adet **64-bit literal word**; ilk sürüm COUNT=1.
 - P0: 64-bit word kayıtları; iki word'lü komutlar iki P0 kaydı tüketir.
 
 Bu belge, NEXSUS CPU instruction encoding için ilk ortak referanstır. Sayısal opcode değerleri ve açık kararlar kapatıldığında revizyon 1.0 olarak dondurulabilir.
