@@ -6,16 +6,16 @@ import cpu_comparison_sim as sim
 
 
 class BandwidthPolicyTests(unittest.TestCase):
-    def test_chip_wide_bandwidth_is_divided_across_configured_cores(self):
+    def test_bandwidth_is_shared_without_static_per_core_quota(self):
         profile = sim.PROFILES["nexus_balanced_128"]
-        for cores, expected in ((8, 4.0), (16, 2.0), (32, 1.0), (64, 0.5)):
+        for cores in (8, 16, 32, 64):
             with self.subTest(cores=cores):
                 result = sim.simulate_cpu({"tiny": [sim.Op(0, "INT")]}, profile, cores)
                 self.assertEqual(result["aggregate_dram_bytes_per_cycle"], 32)
-                self.assertAlmostEqual(result["per_core_dram_bytes_per_cycle"], expected)
+                self.assertIsNone(result["per_core_dram_bytes_per_cycle"])
                 self.assertEqual(
                     result["dram_bandwidth_policy"],
-                    "static equal share across configured cores; not work-conserving",
+                    "shared lockstep controller; work-conserving aggregate bus; no static per-core quota",
                 )
 
     def test_vendor_profiles_use_same_chip_wide_bandwidth_ceiling(self):
@@ -70,6 +70,30 @@ class SharedMemoryControllerTests(unittest.TestCase):
         ])
         self.assertEqual(first["c0"]["bus_wait"], 0)
         self.assertEqual(second["c1"]["bus_wait"], 0)
+
+    def test_lockstep_cores_contend_for_one_global_bank(self):
+        profile_data = dict(sim.PROFILES["nexus_candidate"])
+        profile_data["bank_hash"] = "low"
+        profile = sim.profile_from_dict(profile_data)
+        shards = [
+            [sim.Op(0, "LOAD", address=0, width=8)],
+            [sim.Op(0, "LOAD", address=64, width=8)],
+        ]
+        result = sim.simulate_multicore_streams(shards, profile, 32)
+        self.assertEqual(result["cores"][0]["ready_at"][0], 120)
+        self.assertEqual(result["cores"][1]["ready_at"][0], 121)
+
+    def test_lockstep_cores_use_independent_banks_in_parallel(self):
+        profile_data = dict(sim.PROFILES["nexus_candidate"])
+        profile_data["bank_hash"] = "low"
+        profile = sim.profile_from_dict(profile_data)
+        shards = [
+            [sim.Op(0, "LOAD", address=0, width=8)],
+            [sim.Op(0, "LOAD", address=8, width=8)],
+        ]
+        result = sim.simulate_multicore_streams(shards, profile, 32)
+        self.assertEqual(result["cores"][0]["ready_at"][0], 120)
+        self.assertEqual(result["cores"][1]["ready_at"][0], 120)
 
 
 class CandidateProfileTests(unittest.TestCase):
