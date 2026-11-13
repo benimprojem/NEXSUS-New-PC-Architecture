@@ -201,7 +201,7 @@ NEXUS CPU/
   simulator/
     README.md
     configs/
-      nex sus_baseline.json
+      nexsus_baseline.json
       reference_baseline.json
     core/
       event.py
@@ -212,7 +212,7 @@ NEXUS CPU/
       scheduler.py
     models/
       reference/
-      nex sus/
+      nexsus/
     workloads/
     tests/
     reports/
