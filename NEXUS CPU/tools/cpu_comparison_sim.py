@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""NEXSUS CPU comparison simulator — controlled 8-core model v0.2.4-dev
+"""NEXSUS CPU comparison simulator — controlled 8-core model v0.2.5-dev (64-register + P0/P1)
 
 This is an event/cycle-level teaching and design-space model, not RTL, gem5,
 or a vendor-certified replica. Unknown NEXSUS parameters are explicit inputs.
