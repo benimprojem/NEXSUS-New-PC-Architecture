@@ -1343,18 +1343,19 @@ XFER.WAIT RA6
 
 
 
-### 22.12 P0 program komut ön belleği ve sabit komut genişliği
+### 22.12 P0/P1 program komut ön belleği ve sabit komut genişliği
 
-P0, App RAM'deki program kodundan komutları instruction-fetch birimine hazır tutan, L1–L4 veri belleklerinden ayrı bir **komut ön belleği (instruction cache)** domain'idir. Programın ana kodu App RAM'de bulunur; P0 yürütülmekte olan bölümü yakın ve hızlı erişim için tutar. Uygulama verileri ayrı Data RAM alanındadır.
+P0 ve P1, App RAM'deki program kodundan komutları instruction-fetch birimine hazır tutan, L1–L4 veri belleklerinden ayrı **ping-pong command-buffer** çiftidir. Programın ana kodu App RAM'de bulunur; aktif buffer yürütmeye komut sağlarken inactive buffer bir sonraki komut bloğunu hazırlar. Uygulama verileri ayrı Data RAM alanındadır.
 
-- P0 kayıt genişliği **her zaman 64 bit**tir. Her kayıt tek bir 64-bit komut sözcüğüdür; komut adresleri 8-byte hizalıdır.
-- Standart kapasite **8 KiB / çekirdek**tir: 1.024 komut kaydı.
-- Donanım yapılandırmasıyla **16 KiB / çekirdeğe genişletilebilir**: 2.048 komut kaydı. 8 KiB temel, 16 KiB genişletilmiş konfigürasyondur.
-- App RAM'den P0'a komut getirme/refill işlemini instruction-fetch donanımı yapar. Programın tamamının P0'a sığması gerekmez; komut akışı ihtiyaç oldukça beslenir.
-- P0 miss olduğunda gerekli komut sözcüğü veya komut bloğu App RAM'den getirilir. Fetch line/block boyutu mikro-mimari aşamasında belirlenir.
-- Dallanma, çağrı/dönüş veya exception sonrasında fetch yeni adrese yöneltilir. Yanlış yoldan getirilmiş, henüz yürütülmemiş komutlar iptal edilir; P0'daki tüm geçerli içeriğin silinmesi zorunlu değildir.
-- P0, L1–L4 veri belleğinin parçası değildir ve normal veri LOAD/STORE alanı olarak kullanılamaz.
-- App RAM kod alanı ile Data RAM ayrıdır. Çalışma sırasında kod değişikliği için P0 tutarlılığı, yürütme izni ve fetch senkronizasyonu ayrıca korunmalıdır.
+- P0/P1 kayıt genişliği **her zaman 64 bit**tir. Her kayıt tek bir 64-bit komut sözcüğüdür; komut adresleri 8-byte hizalıdır.
+- Seçilen kapasite **P0=8 KiB + P1=8 KiB = 16 KiB/core**. Her buffer 1.024 komut kaydı tutar.
+- İlk komut bloğu P0'a alınır. P0 yürütülürken sonraki 8-KiB blok P1'e refill/prefetch edilir. Blok sınırında aktif/inaktif roller değişir; artık boş olan buffer sonraki blok için doldurulur. Akış boyunca bu ping-pong tekrarlanır.
+- Programın tamamının P0/P1'e sığması gerekmez; komut akışı bloklar halinde sürekli beslenir.
+- App RAM'den buffer'a komut transferini instruction-fetch donanımı yönetir. 512-bit/cycle refill yolu adayında 8-KiB blok transferi 128 cycle veri süresi gerektirir; bu süre aktif buffer yürütmesiyle örtüşebilir. Bu değer fiziksel doğrulama bekleyen model varsayımıdır.
+- Inactive buffer zamanında hazır değilse fetch bekler; mimari sıfır-stall garantisi vermez. Gerçek App RAM bankları, queue derinliği, arbitration ve refill setup süresi mikro-mimari doğrulama konusudur.
+- Dallanma, çağrı/dönüş veya exception sonrasında fetch yeni adrese yöneltilir. Yanlış yoldan getirilmiş, henüz yürütülmemiş komutlar iptal edilir; diğer buffer'ın geçerli içeriğinin silinmesi zorunlu değildir.
+- P0/P1, L1–L4 veri belleğinin parçası değildir ve normal veri LOAD/STORE alanı olarak kullanılamaz.
+- App RAM kod alanı ile Data RAM ayrıdır. Çalışma sırasında kod değişikliği için command-buffer invalidation/yenileme, yürütme izni ve fetch senkronizasyonu ayrıca korunmalıdır.
 
 ### 22.13 P0 ve SPM0 görev ayrımı
 
@@ -1362,7 +1363,7 @@ P0 ile SPM0 farklı aşamalara hizmet eder ve birbirinin yerine geçmez:
 
 | Bellek | İşlev | Kayıt genişliği | Kapasite |
 |---|---|---:|---:|
-| P0 | App RAM'den komut fetch eden ön bellek | 64 bit sabit | 8 KiB standart; 16 KiB genişletilebilir / çekirdek |
+| P0/P1 | App RAM'den komut fetch eden ping-pong buffer çifti | 64 bit sabit | 2 × 8 KiB = 16 KiB / çekirdek |
 | SPM0 | Yürütme sırasında oluşan geçici komutsal durum, ara değerler ve sonuçlar | 64-bit temel kayıt; 8–512-bit erişim | 2 KiB / çekirdek |
 
 - P0, sıradaki komutları fetch aşamasında hazır tutar.
