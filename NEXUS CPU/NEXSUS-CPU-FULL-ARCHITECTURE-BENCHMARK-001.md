@@ -76,6 +76,7 @@ The input generator must be deterministic. Each kernel has a small reference imp
 | K13 | Bulk transfer | Large memory copy / MEMXFER-like workload | Transfer throughput, arbitration, CPU offload |
 | K14 | Mixed system load | Concurrent compute, memory, tasks and events | Aggregate throughput, fairness, tail latency |
 | K15 | Instruction-fetch stress | Small loops, large code, page boundaries and partial final pages | Front-end starvation, PX refill, SPM0 bank switching |
+| K16 | ME512 matrix tile | 512-bit tile operations with explicit input/output movement | Dedicated ME512 throughput, operand supply, result drain and contention |
 
 ## 5. Branch prediction and control-flow experiment
 
@@ -144,7 +145,7 @@ NEXSUS-specific modeled resources include:
 - proposed L1/L2/L3/L4 organization;
 - task context residency and Data-RAM spill path.
 
-The NEXSUS App-RAM refill target currently considered is 64 B/cycle. Reference profiles must use their own configured memory interfaces. Do not force equal bandwidth if the purpose is to compare the proposed systems; instead publish both native-profile results and a normalized-bandwidth sensitivity run.
+The NEXSUS App-RAM refill target currently considered is 64 B/cycle. The current NEXSUS execution-resource model includes a dedicated ME512 path; reference CPUs map the same logical ME512 workload onto their native vector/FMA resources. This is an algorithmic mapping comparison, not an instruction-for-instruction equality. Reference profiles must use their own configured memory interfaces. Do not force equal bandwidth if the purpose is to compare the proposed systems; instead publish both native-profile results and a normalized-bandwidth sensitivity run.
 
 For PX refill, model payload transfer, source latency, queueing, arbitration, bank-switch overhead, and contention separately. The ideal payload-only time for 2 KiB at 64 B/cycle is 32 cycles; this is not a guaranteed end-to-end refill time.
 
@@ -276,3 +277,8 @@ The following are intentionally not frozen:
 - exact branch, exception, and context transfer cycle costs.
 
 These parameters must remain configurable and visible in every result.
+
+
+### 14.1 Accelerator boundary
+
+ME512 is part of the NEXSUS CPU execution-resource test and receives its own workload. FAPU and NPU are separate system accelerator blocks in the wider NEXSUS platform; their queueing, DMA, memory arbitration, and host synchronization need a later system-level offload suite. They must not be counted as ordinary CPU execution units or silently included in CPU IPC.
