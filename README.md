@@ -98,6 +98,31 @@ Temel belgeler:
 - [CPU memory bank topology — 8×64-bit bank group](NEXUS%20CPU/NEXSUS-CPU-MEMORY-BANK-TOPOLOGY-001.md)
 
 
+
+### 3.1. Application-code path — L0I / PX / SPM0
+
+The CPU application-code path is separate from the Data RAM path:
+
+```text
+App RAM -> L0I (64 KiB) -> PX P0–P7 (8 x 2 KiB) -> SPM0 (4 KiB; 2 x 2 KiB banks)
+```
+
+- L0I is progressively filled from App RAM in task-aware chunks; the entire 64 KiB does not need to be filled before use.
+- The baseline App-code connection is one 64-bit (8-byte) read lane, carrying one 64-bit instruction word per transfer beat. Four parallel 64-bit lanes are a future expansion, not part of the current baseline.
+- OS selects task/logical-page requests and priorities. L0I/PX hardware validates requests and performs transfers.
+- L0I-to-PX staging is task/page based and may select non-contiguous App RAM source addresses; it is not a sequential physical-address walk.
+- PX P0–P7 remain an eight-slot shared 2 KiB code-page pool. SPM0 is a separate 4 KiB active code workspace with two 2 KiB ping-pong banks.
+- PX_NEXT and PX_END are PX Manager metadata only. They are never copied into SPM0 or decoded as CPU instructions.
+- L1 is reserved for Data RAM data in the current proposal; the application-code path does not consume L1 data-cache capacity.
+
+Detailed specifications:
+- [PX Manager and L0I task-based staging](NEXUS%20CPU/NEXSUS-CPU-PX-MANAGER-001.md)
+- [OS / L0I / PX / Context interface](NEXUS%20CPU/NEXSUS-CPU-OS-PX-CONTEXT-INTERFACE-001.md)
+- [Full architecture benchmark and L0I experiments](NEXUS%20CPU/NEXSUS-CPU-FULL-ARCHITECTURE-BENCHMARK-001.md)
+- [Simulator architecture](NEXUS%20CPU/NEXSUS-CPU-SIMULATOR-ARCHITECTURE-001.md)
+- [Simulation results and pending L0I validation](NEXUS%20CPU/NEXSUS-CPU-SIMULATION-RESULTS-001.md)
+
+
 # 4. FAPU
 
 FAPU, CPU'nun yapamadığı işleri yapmak için eklenmiş klasik bir yardımcı işlemci değildir.
