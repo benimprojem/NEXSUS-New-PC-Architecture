@@ -681,3 +681,12 @@ NEXSUS'un özgün yaklaşımı, bunları **eski PC mimarisinin üzerine eklemek 
 
 Bu nedenle sonraki aşamada yapılması gereken en önemli çalışma, her bir yeni birimin teknik ayrıntılarını hemen belirlemek değil; **bu birimlerin çalışma prensiplerini tek tek tanımlamak ve aralarındaki görev sınırlarını kesinleştirmektir.**
 ---
+
+
+---
+
+## CPU Belgeleri
+
+- [Ayrıştırılmış Register Tabanlı CPU Mimarisi](Yeni%20Nesil%20Ayr%C4%B1%C5%9Ft%C4%B1r%C4%B1lm%C4%B1%C5%9F%20Register%20Tabanl%C4%B1%20CPU%20Mimarisi.md) — RA/DA/MA, bellek ayrımı ve execution unit yapısı.
+- [CPU Instruction Set — ISA-001](NEXSUS-CPU-ISA-001.md) — ALU, FPU, Matrix Engine, transfer, SPM ve control-flow komut tabloları.
+- [SPM ve Register Görünümleri](NEXSUS%20CPU%20%E2%80%94%20SPM,%20Register%20G%C3%B6r%C3%BCn%C3%BCmleri%20ve%20Do%C4%9Frudan%20Alan%20Eri%C5%9Fimi.md) — SPM0/SPM1, page-offset ve RA/RB/RC/RD view sistemi.
