@@ -143,7 +143,7 @@ Bu sıralama ISA düzeyinde sabittir; bellek denetleyicisi ve bus byte-lane eşl
 - LOAD ham bitleri DA'ya getirir. 8/16/32-bit yüklemelerde DA kaydının kullanılmayan üst bitleri sıfırlanır; 64-bit ve daha geniş erişimler DA kayıtlarını tam doldurur.
 - STORE yalnızca W kadar bit yazar. Son DA kaydında erişim genişliğinin dışında kalan bitler belleğe aktarılmaz.
 - LOAD sign-extension yapmaz ve signed/unsigned tür seçmez. DA bir staging bankıdır; scalar tamsayı yorumu gerektiğinde MOV.RA.DA.SX veya MOV.RA.DA.ZX ile açıkça yapılır. SX/ZX kaynak genişliği 8/16/32 bittir ve hedef RA'nın tam 64 bitini yazar; diğer dönüşümler için FCONV kullanılır.
-- Geniş erişimlerde ardışık bellek parçaları artan adres sırasıyla ardışık DA selector'larına yerleştirilir. Her 64-bit DA kaydının iç byte sırası endian kararıyla birlikte kesinleştirilecektir.
+- Geniş erişimlerde ardışık bellek parçaları artan adres sırasıyla ardışık DA selector'larına yerleştirilir. Her 64-bit DA kaydının iç byte sırası little-endian'dır: en düşük adres en düşük anlamlı byte'a karşılık gelir.
 - 64-bit effective address, RA[BASE] + signed 32-bit DISP ile hesaplanır. Domain erişim izni, sınır ve hata kontrolleri geçerlidir.
 - **Doğal hizalama zorunludur:** effective address, W/8 byte değerine tam bölünmelidir. W=8 her byte adresinde; W=16 2-byte, W=32 4-byte, W=64 8-byte, W=128 16-byte, W=256 32-byte ve W=512 64-byte hizalamada erişilebilir.
 - İlk ISA sürümünde misaligned LOAD/STORE desteklenmez ve otomatik split erişim yapılmaz; hizalama ihlali `ALIGNMENT_FAULT` üretir. Unaligned erişim ileride gerekiyorsa ayrı bir opcode/mod olarak tasarlanır.
