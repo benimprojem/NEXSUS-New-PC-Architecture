@@ -598,6 +598,67 @@ Normal MOV.* XFER komutlarında M/AUX alanları ilgili transfer opcode tanımın
 
 SYS formatı privilege, system state, interrupt, synchronization ve özel kontrol komutları için ayrılmıştır. Alt alan yerleşimi her komut sınıfı için ayrı tabloda tanımlanacaktır. Henüz system register bankı veya CSR sayısı kesinleştirilmemiştir.
 
+#### 4.14.1 FENCE — Bellek sıralama bariyeri
+
+FENCE, SYS formatını kullanır. İlk sürümde yalnızca veri bellek domain'lerindeki (L1–L4) normal LOAD/STORE ve ATOM erişimlerini sıralar; P0 komut fetch'i, SPM erişimleri, register işlemleri ve device/MMIO sıralaması bu komutun kapsamı dışındadır.
+
+```text
+63       56 55    52 51       44 43    41 40    38 37                 0
++----------+--------+-----------+--------+--------+-------------------+
+| OP (8)   |FMT (4) | SYSOP (8) |SCOPE(3)|ORDER(3)| RESERVED (38)     |
++----------+--------+-----------+--------+--------+-------------------+
+```
+
+Payload toplamı 52 bittir:
+- SYSOP: SYS alt komutunu seçer. FENCE için sembolik alt komut adı `FENCE`; numeric SYSOP değeri henüz atanmadı.
+- SCOPE: bariyerin sıraladığı veri bellek domain kapsamı.
+- ORDER: bariyer yönü ve ordering strength.
+- RESERVED: 38 bitin tamamı sıfır olmalıdır.
+
+**SCOPE kodları**
+
+| SCOPE | Kapsam |
+|---:|---|
+| 000 | L1 — yalnızca issuing core'un private L1 domain'i |
+| 001 | L2 — issuing core'un bağlı olduğu iki-core shared domain |
+| 010 | L3 — issuing core'un bağlı olduğu dört-core shared domain |
+| 011 | L4 — issuing core'un bağlı olduğu sekizli/geniş shared domain |
+| 100 | SYSTEM — issuing core'un erişebildiği tüm L1–L4 data domain'leri |
+| 101–111 | Reserved; illegal encoding |
+
+Bir L2/L3/L4 fence, yalnızca seçilen domain'deki erişimleri sıralar; farklı seviyedeki domain'ler arasında sıralama kurmaz. SYSTEM kapsamı birden fazla domain'i kapsayan publish/consume veya koordinasyon akışları içindir ve daha yüksek maliyetli olabilir. Scope, erişim yetkisi veya domain paylaşımını değiştirmez.
+
+**ORDER kodları**
+
+| ORDER | Semantik |
+|---:|---|
+| 000 | Reserved; RELAXED fence anlamsız olduğundan illegal |
+| 001 | ACQUIRE — bariyerden sonraki erişimler, bariyerden önceye taşınamaz |
+| 010 | RELEASE — bariyerden önceki erişimler, bariyerden sonraya taşınamaz |
+| 011 | ACQ_REL — hem acquire hem release yönü |
+| 100 | SEQ_CST — seçilen scope içinde sequentially consistent ordering |
+| 101–111 | Reserved; illegal encoding |
+
+- ACQUIRE, bariyerden önceki normal bellek işlemlerini geriye dönük sıralamaz; bariyerden sonraki işlemleri önceye taşımaz.
+- RELEASE, bariyerden önceki normal bellek işlemlerinin bariyerden sonraki işlemlerin arkasına taşınmasını engeller.
+- ACQ_REL iki yönü de uygular.
+- SEQ_CST, seçilen scope içindeki SEQ_CST fence ve SEQ_CST atomic işlemler için tek bir tutarlı sıralama noktası sağlar. Farklı scope'lar arasında ortak bir total order oluşturmaz.
+- FENCE atomic değildir; bir bellek konumunu okumaz/yazmaz ve kilit/ownership üretmez.
+- FENCE veri kopyalamaz, domain'ler arasında migration yapmaz ve tek başına cache coherence veya erişim izni oluşturmaz. Paylaşılan domain'in visibility/coherence mekanizması ayrıca mimari sözleşmeyi karşılamalıdır.
+- FENCE bir bellek erişimi fault'unu geriye dönük olarak değiştirmez; kendi başına adres operandı veya memory access üretmez.
+
+Assembly gösterimi:
+
+```asm
+FENCE.ACQUIRE.L2
+FENCE.RELEASE.L3
+FENCE.ACQ_REL.L4
+FENCE.SEQ_CST.SYSTEM
+```
+
+Mnemonic suffix'leri SYSOP=FENCE, SCOPE ve ORDER alanlarını belirler. Numeric opcode/SYSOP değerleri opcode tablosu dondurulurken atanacaktır.
+
+
 ## 5. Width alanı
 
 W alanı 3 bit olduğundan sekiz kod sunar:
