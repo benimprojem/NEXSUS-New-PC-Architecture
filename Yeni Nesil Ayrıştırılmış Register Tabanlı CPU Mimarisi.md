@@ -505,8 +505,6 @@ $\[
 
 dolayısıyla RA ve FA kayıt seçimi için ayrı ayrı **5 bit** yeterlidir.
 
-yeterlidir.
-
 DA için de 32 kayıt bulunduğundan **5 bit** gerekir. MA için 32 adet 256-bit kayıt bulunduğundan register seçimi yine **5 bit** gerektirir.
 
 MA için:
