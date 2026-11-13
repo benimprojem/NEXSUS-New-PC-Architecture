@@ -307,7 +307,7 @@ Atomic komutlar, aynı bellek konumuna birden fazla çekirdeğin eşzamanlı eri
 - ATOM.LOAD ve bütün RMW komutları eski bellek değerini DA hedef register'ına yazar. W=8/16/32 ise DA'nın kullanılmayan üst bitleri sıfırlanır.
 - ATOM.STORE kaynak değeri DA register'ının düşük W bitinden alır.
 - CAS, beklenen değeri (expected) ve yazılacak yeni değeri (desired) iki ayrı DA kaydından okur. Bellekteki eski değer expected ile eşitse desired yazılır; değilse bellek değişmez. Her iki durumda da eski bellek değeri sonuç DA kaydına döner.
-- CAS başarısı, dönen eski değer ile expected değer karşılaştırılarak belirlenir. İlk sürümde ayrı success flag veya status register üretilmez. Sonuç DA selector'ı ile expected DA selector'ı farklı olmalıdır; aksi halde illegal encoding oluşur.
+- CAS başarısı, dönen eski değer ile expected değer karşılaştırılarak belirlenir. İlk sürümde ayrı success flag veya status register üretilmez. Sonuç DA selector'ı ile expected DA selector'ı farklı olmalıdır; aksi halde illegal encoding oluşur. Yazılım, kontrol için eski değeri ve expected değerini ayrı RA register'larına `MOV.RA.DA` ile aktarır ve `CMP` ile karşılaştırır.
 - SWAP ve FETCH_* kaynak operandları komut başlangıcında snapshot edilir. Sonuç DA ile kaynak DA aynı selector olabilir; sonuç yazımı kaynak operandı okunduktan sonra gerçekleşir.
 - FETCH_ADD/FETCH_SUB W-bit unsigned bit-pattern üzerinde modulo 2^W çalışır; taşma wrap-around'dur. FETCH_AND/OR/XOR W-bit bitwise işlemlerdir. Signed/unsigned sıralama karşılaştırması bu ilk komut ailesinde bulunmaz.
 - Atomic bellek adresi W/8 byte'a doğal hizalı olmalıdır. Misalignment `ALIGNMENT_FAULT` üretir.
