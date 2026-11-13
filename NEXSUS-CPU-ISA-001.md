@@ -62,7 +62,7 @@ Bu bölümdeki scalar/integer komutlarının kaynak ve hedef operandları RA0–
 | NEG | dst, src | İki'nin tümleyeni işaret değiştirme | ALU |
 | INC | dst | +1 | ALU |
 | DEC | dst | -1 | ALU |
-| CMP | src1, src2 | Karşılaştırma durumu üretme | ALU |
+| CMP.EQ / CMP.NE / CMP.LT.S / CMP.LT.U / CMP.LE.S / CMP.LE.U / CMP.GT.S / CMP.GT.U / CMP.GE.S / CMP.GE.U | dst, src1, src2 | Karşılaştırma sonucunu RA hedefinde 0 veya 1 olarak üretir; signed/unsigned ilişkisi mnemonic ile açıkça seçilir | ALU |
 | MIN | dst, src1, src2 | Minimum | ALU |
 | MAX | dst, src1, src2 | Maksimum | ALU |
 | ABS | dst, src | Mutlak değer | ALU |
@@ -420,15 +420,15 @@ MA registerları 256-bit fiziksel genişliktedir. ME512 512-bit yürütme yoludu
 
 | Mnemonic | Operand | İşlev |
 |---|---|---|
-| JMP | target | Koşulsuz dallanma |
-| JZ | target | Zero koşulunda dallanma |
-| JNZ | target | Non-zero koşulunda dallanma |
-| JC | target | Carry koşulunda dallanma |
-| JN | target | Negative koşulunda dallanma |
+| JMP | target | Koşulsuz PC-relative dallanma |
+| BR.Z / BR.NZ | test, target | RA test register'ının sıfır / sıfır dışı olmasına göre dallanma |
+| BR.SLT / BR.SGE | test, target | RA test register'ını signed 64-bit olarak sıfırla karşılaştırma |
+| BR.ULT / BR.UGE | test, target | RA test register'ını unsigned 64-bit olarak sıfırla karşılaştırma |
 | CALL | target | Fonksiyon/alt rutin çağrısı |
 | RET | — | Çağrıdan dönüş |
-| LOOP | counter, target | Döngü kontrolü (taslak) |
 | TRAP | code | Trap/exception geçişi |
+
+Karşılaştırma komutları global condition flag üretmez. Sonucu hedef RA register'ına tam 64-bit 0 veya 1 olarak yazar. Branch komutları bu register'ı açıkça okur. Böylece farklı ALU komutlarının aynı çevrimde karşılaştırma yapması global flag yarışına neden olmaz; bağımlılık normal RA register hazard kurallarıyla izlenir. LOOP ilk ISA sürümünde ayrı bir komut olarak tutulmaz; sayaç azaltma ve koşullu branch ile oluşturulur.
 
 CALL/RET'nin return state ve parametre yönetimi RA/SPM/context mekanizmasıyla uyumlu kesin biçimi ayrıca tanımlanmalıdır; klasik RAM stack zorunlu kabul edilmez.
 
