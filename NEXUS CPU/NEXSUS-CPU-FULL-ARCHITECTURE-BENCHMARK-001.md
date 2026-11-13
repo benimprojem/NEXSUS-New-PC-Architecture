@@ -316,3 +316,65 @@ The current IRQ kernel is a deterministic service-latency proxy that schedules a
 The current conventional reference front-end uses a 32 KiB instruction cache, 64-byte lines, an 8-cycle modeled lower-level line fill, a 16-line sequential prefetch window and up to 32 outstanding line fills. These are common comparison assumptions, not claimed exact AMD/Intel/Apple predictor or I-cache implementations.
 
 PX capacity/refill sensitivity is isolated on one core using an 8,192-instruction (64 KiB) sequential code stream. Capacity points are 4, 8, 16, 32 and 64 KiB; 64 KiB is an experimental full-residency upper bound, not the current 16 KiB design. The first pages up to the configured PX pool capacity are staged before dispatch; a page outside the resident pool pays a provisional 120-cycle App-RAM source-miss penalty in addition to PX-to-SPM0 transfer time. The separate PX-to-SPM0 transfer-latency sweep sets the pool to 64 KiB so all pages are resident and source misses do not confound bank-transfer timing. The source-miss penalty is configurable and must be swept before conclusions about optimal PX capacity are frozen.
+
+
+## 15. App RAM -> L0I -> PX -> SPM0 benchmark extension
+
+The current NEXSUS application-code path to be evaluated is:
+
+```text
+App RAM -> L0I (64 KiB) -> PX P0–P7 (8 x 2 KiB) -> SPM0 (4 KiB; 2 x 2 KiB banks)
+```
+
+L0I is incrementally filled from App RAM in chunks. The baseline App-code connection is one 64-bit (8-byte) read lane, carrying one instruction word per transfer beat. Do not interpret the lane width as a guaranteed beat-per-cycle rate; beat timing, request depth, latency and arbitration are explicit parameters. Four parallel 64-bit lanes (256-bit aggregate) are a future ablation only.
+
+### 15.1 Task-aware non-contiguous code workload
+
+Create workloads where one task's logical 2 KiB pages reside at non-contiguous App RAM source addresses and multiple tasks interleave requests. The OS supplies task/page priority and dispatch intent; hardware performs validation, staging, slot allocation and transfer.
+
+Required cases:
+- sequential pages from one contiguous code region;
+- one task whose consecutive logical pages map to scattered App RAM addresses;
+- multiple tasks with interleaved scattered source pages;
+- partial first/final/intermediate pages using valid_bytes and PX_NEXT/PX_END metadata;
+- code reuse between tasks only when executable identity and permissions safely permit it;
+- task-generation changes while stale L0I/PX requests remain in flight;
+- eviction pressure while PX is reading an L0I page;
+- current-task urgent requests competing with speculative prefetch.
+
+### 15.2 Queue and overlap experiments
+
+Model three independent queues and service stages:
+- App RAM -> L0I chunk fill;
+- L0I -> PX task/page transfer;
+- PX -> inactive SPM0 bank refill.
+
+Sweep queue depths, chunk sizes, 64-bit beat service intervals, source latency, PX copy latency, arbitration policy and task priorities. Allow stage overlap only when the exact source bytes are valid and ownership/generation checks pass. Do not require a full L0I refill before PX staging starts.
+
+### 15.3 Required metrics
+
+Report per workload:
+- L0I hit/miss and partial-valid hit rates;
+- App RAM bytes/beats requested, useful bytes and overfetch;
+- L0I fill latency and queue wait;
+- L0I-to-PX queue wait, page transfer latency and PX READY time;
+- PX-to-SPM0 refill latency and hidden/visible wait;
+- SPM0 boundary readiness and bank-switch bubbles;
+- end-to-end code-ready time for task dispatch;
+- queue occupancy, backpressure and fairness/starvation;
+- stale/invalid request rejection counts;
+- bytes transferred but never executed;
+- total front-end stall cycles.
+
+### 15.4 Required ablations
+
+Compare at minimum:
+1. direct App RAM -> PX -> SPM0 (historical baseline);
+2. L0I enabled but sequential-only staging;
+3. task-aware L0I chunk fill and non-contiguous L0I -> PX page selection;
+4. task-aware staging with independent queues and overlapped three-stage pipeline;
+5. case 4 with 2/4/8/16-entry queue sweeps;
+6. case 4 with one versus four 64-bit App-code lanes (four-lane is future hardware sensitivity only);
+7. case 4 under competing tasks and dispatch deadlines.
+
+Report cold-start and warm/reuse runs separately. The current 64 KiB L0I capacity is the baseline proposal; 16/32/128 KiB capacity points may be swept as sensitivity variants, not silently substituted for the baseline.
