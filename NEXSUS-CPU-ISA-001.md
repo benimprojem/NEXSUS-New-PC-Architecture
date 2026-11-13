@@ -542,12 +542,16 @@ MA registerları 256-bit fiziksel genişliktedir. ME512 512-bit yürütme yoludu
 | VADD.W | dst, a, b | Element-wise toplama | ME512 / vector path |
 | VSUB.W | dst, a, b | Element-wise çıkarma | ME512 / vector path |
 | VMUL.W | dst, a, b | Element-wise çarpma | ME512 / vector path |
-| VDIV.W | dst, a, b | Element-wise bölme | ME512 / vector path |
-| VMIN.W | dst, a, b | Element-wise min | ME512 / vector path |
-| VMAX.W | dst, a, b | Element-wise max | ME512 / vector path |
+| VDIV.S.W / VDIV.U.W | dst, a, b | Signed / unsigned lane bölme | ME512 / vector path |
+| VMIN.S.W / VMIN.U.W | dst, a, b | Signed / unsigned lane minimum | ME512 / vector path |
+| VMAX.S.W / VMAX.U.W | dst, a, b | Signed / unsigned lane maximum | ME512 / vector path |
 | VAND.W | dst, a, b | Vector bitwise AND | ME512 / vector path |
 | VOR.W | dst, a, b | Vector bitwise OR | ME512 / vector path |
 | VXOR.W | dst, a, b | Vector bitwise XOR | ME512 / vector path |
+| VMOD.S.W / VMOD.U.W | dst, a, b | Signed / unsigned lane remainder | ME512 / vector path |
+| VCMPEQ.W / VCMPNE.W | dst, a, b | Lane equality / inequality mask | ME512 / vector path |
+| VCMPLT.S.W / VCMPLT.U.W | dst, a, b | Signed / unsigned less-than mask | ME512 / vector path |
+| VCMPLE.S.W / VCMPLE.U.W | dst, a, b | Signed / unsigned less-or-equal mask | ME512 / vector path |
 | VSHL.W | dst, a, count | Element shift | ME512 / vector path |
 | VSHR.W | dst, a, count | Element shift | ME512 / vector path |
 | VMACC.W | dst, a, b, acc | Vector multiply-accumulate | ME512 |
@@ -573,10 +577,10 @@ MA registerları 256-bit fiziksel genişliktedir. ME512 512-bit yürütme yoludu
 - VADD.W ve VSUB.W her lane üzerinde W-bit modulo 2^W toplama/çıkarma yapar. Lane taşması komutu fault'a düşürmez; sonuç ilgili lane genişliğinde wrap-around olur.
 - VMUL.W her lane'de çarpımın düşük W bitini yazar. Genişletilmiş lane sonucu veya high-half çarpım ilk sürümde bu komutun parçası değildir.
 - VMACC.W, her lane için dst_lane = (a_lane × b_lane + acc_lane) mod 2^W hesaplar. İlk sürümde ara çarpımın yüksek bitleri atılır; saturating davranış yoktur.
-- VMIN.SW / VMAX.SW signed two's-complement; VMIN.UW / VMAX.UW unsigned lane sıralaması kullanır. Genel VMIN.W/VMAX.W mnemonic'leri signedness açıkça belirtilmeden kullanılmamalıdır.
+- VMIN.S.W / VMAX.S.W signed two's-complement; VMIN.U.W / VMAX.U.W unsigned lane sıralaması kullanır. Signedness mnemonic'te açıkça belirtilir.
 - VAND.W, VOR.W ve VXOR.W her lane üzerinde değil, 256-bit register bit deseninin tamamında bitwise işlem yapar. Lane sınırları sonucu değiştirmez.
-- VSHL.W ve VSHR.W her lane'i bağımsız kaydırır. Her lane'in shift count'u ilgili count operandının aynı lane'indeki düşük bitlerden alınır; count >= W ise sonuç sıfırdır. VSHR mantıksal sağa kaydırmadır. Signed aritmetik sağa kaydırma için VSHR.SW varyantı sign-fill kullanır.
-- VDIV.SW / VDIV.UW ve VMOD.SW / VMOD.UW signed/unsigned lane bölme ve kalan işlemleridir. Herhangi bir lane'de bölen sıfırsa tüm komut DIVIDE_BY_ZERO_FAULT üretir ve hedef MA değişmez. Signed lane minimum değeri / -1 durumu INTEGER_OVERFLOW_FAULT üretir; hedefin hiçbir lane'i commit edilmez.
+- VSHL.W ve VSHR.W her lane'i bağımsız kaydırır. Her lane'in shift count'u ilgili count operandının aynı lane'indeki düşük bitlerden alınır; count >= W ise sonuç sıfırdır. VSHR mantıksal sağa kaydırmadır. Signed aritmetik sağa kaydırma için VSHR.S.W varyantı sign-fill kullanır.
+- VDIV.S.W / VDIV.U.W ve VMOD.S.W / VMOD.U.W signed/unsigned lane bölme ve kalan işlemleridir. Herhangi bir lane'de bölen sıfırsa tüm komut DIVIDE_BY_ZERO_FAULT üretir ve hedef MA değişmez. Signed lane minimum değeri / -1 durumu INTEGER_OVERFLOW_FAULT üretir; hedefin hiçbir lane'i commit edilmez.
 - Vector integer komutlarında kaynak operandlar komut başlangıcında snapshot edilir. Hedefin kaynaklardan biriyle aynı MA selector'ı olması geçerlidir.
 
 ### 8.3 Vector compare ve predicate mask
