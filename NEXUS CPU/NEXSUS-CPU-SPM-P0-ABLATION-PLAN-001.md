@@ -146,13 +146,13 @@ Publish sensitivity ranges. Do not present a single best-case setting as a prove
 
 ## 9. Implementation sequence
 
-1. Add feature configuration and per-role counters without changing the current comparison results.
-2. Add P0 enabled/disabled command-fetch model and targeted P0 kernels.
-3. Add SPM2 access/fallback model and hot-working-set/capacity kernels.
-4. Add SPM3–SPM6 task-context residency and context-switch kernels.
-5. Add SPM1 OS exchange and SPM7 exception-entry models.
-6. Integrate all profiles with the lockstep multicore shared bank/DRAM controller.
-7. Add regression tests proving that feature toggles preserve operation counts and output signatures.
+1. Implement the lockstep multicore shared bank/DRAM controller first: global eight-bank state, work-conserving chip-wide bus, rotating core arbitration and bounded fairness.
+2. Add regression tests for cross-core bank conflicts, independent-bank parallelism, bus saturation and dynamic bandwidth borrowing.
+3. Add SPM/P0 feature configuration and per-role/per-refill counters without changing architectural operation counts.
+4. Add P0 enabled/disabled command-fetch model and targeted P0 kernels, using a conventional instruction-cache/front-end fallback when P0 is disabled.
+5. Add SPM2 access/fallback model and hot-working-set/capacity kernels.
+6. Add SPM3–SPM6 task-context residency, SPM1 OS exchange and SPM7 exception-entry models with their targeted kernels.
+7. Add four-profile ablation regression tests proving that feature toggles preserve operation counts and output signatures.
 8. Publish parameter sweeps and uncertainty ranges before drawing architecture conclusions.
 
 ## 10. Interpretation rules
