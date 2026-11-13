@@ -23,7 +23,7 @@ All four targets retired **44,654 operations** in the scale-1 suite.
 
 The first comparison run exposed a modeling asymmetry: NEXSUS paid explicit P0 refill stalls, while reference CPUs initially had no instruction-fetch miss delay. That comparison was not fair and is not used as the corrected baseline.
 
-The current run gives AMD and Intel a conventional instruction-cache model:
+**These numerical results are from the earlier 8-KiB P0 baseline and must be rerun; they are not the result of the newly selected P0/P1 design.** The current run gives AMD and Intel a conventional instruction-cache model:
 - 32 KiB capacity per core;
 - 64-byte line;
 - provisional 32-cycle refill;
