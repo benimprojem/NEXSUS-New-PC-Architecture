@@ -294,18 +294,32 @@ class CacheHierarchy:
 
 
 def build_cache_hierarchies(p: CoreProfile, core_count: int) -> List[CacheHierarchy]:
-    """Private L1 plus NEXSUS shared cache groups; reference CPUs stay per-core approximations."""
-    if not p.name.startswith("NEXSUS CPU"):
-        return [CacheHierarchy(p) for _ in range(core_count)]
+    """Build private and shared cache objects using each modeled architecture's topology.
+
+    Controlled 8-core topology assumptions:
+    - AMD Zen 5: private L1/L2; one shared 32 MiB L3.
+    - Intel Lion Cove P: private L1/L2; one shared 36 MiB L3.
+    - Intel Skymont E: private L1; 4 MiB L2 shared per 4-core cluster; shared L3.
+    - NEXSUS: private L1; L2/2-core, L3/4-core and L4/8-core groups.
+    """
     line = p.line_bytes
-    l2_groups = [LRU(p.l2_kb * 1024, line) for _ in range(math.ceil(core_count / 2))]
-    l3_groups = [LRU(p.l3_kb * 1024, line) for _ in range(math.ceil(core_count / 4))]
-    l4_groups = [LRU(p.l4_kb * 1024, line) for _ in range(math.ceil(core_count / 8))] if p.l4_kb else []
-    return [
-        CacheHierarchy(p, l2_groups[i // 2], l3_groups[i // 4],
-                       l4_groups[i // 8] if l4_groups else None)
-        for i in range(core_count)
-    ]
+    if p.name.startswith("NEXSUS CPU"):
+        l2_groups = [LRU(p.l2_kb * 1024, line) for _ in range(math.ceil(core_count / 2))]
+        l3_groups = [LRU(p.l3_kb * 1024, line) for _ in range(math.ceil(core_count / 4))]
+        l4_groups = [LRU(p.l4_kb * 1024, line) for _ in range(math.ceil(core_count / 8))] if p.l4_kb else []
+        return [
+            CacheHierarchy(p, l2_groups[i // 2], l3_groups[i // 4],
+                           l4_groups[i // 8] if l4_groups else None)
+            for i in range(core_count)
+        ]
+
+    # Reference CPUs have a socket/package-level shared LLC in this model.
+    shared_l3 = LRU(p.l3_kb * 1024, line) if p.l3_kb else None
+    if p.core_type == "E":
+        # Skymont E-core cluster: four cores share the modeled L2.
+        l2_groups = [LRU(p.l2_kb * 1024, line) for _ in range(math.ceil(core_count / 4))]
+        return [CacheHierarchy(p, l2_groups[i // 4], shared_l3) for i in range(core_count)]
+    return [CacheHierarchy(p, None, shared_l3) for _ in range(core_count)]
 
 
 class CommandFetchModel:
