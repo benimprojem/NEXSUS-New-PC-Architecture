@@ -55,6 +55,17 @@ jobs:
               starve = row["kernels"]["p0_starvation"]["cycles"]
               print(f'{row["capacity_kb"]} KiB: total_cycles={row["total_cycles"]} p0_starvation_cycles={starve} ops={row["total_ops"]}')
           PY
+      - name: Run instruction fetch latency sensitivity sweep
+        run: |
+          python "NEXUS CPU/tools/cpu_comparison_sim.py" --fetch-sweep --json > /tmp/nexus-fetch-sweep.json
+          python - <<'PY'
+          import json
+          data = json.load(open("/tmp/nexus-fetch-sweep.json", encoding="utf-8"))
+          print("INSTRUCTION FETCH REFILL SENSITIVITY")
+          for profile, rows in data["results"].items():
+              for row in rows.values():
+                  print(f'{profile}: refill={row["refill_latency_cycles"]} cycles={row["cycles"]} ops={row["ops"]}')
+          PY
       - name: Upload comparison and P0 sweep results
         if: always()
         uses: actions/upload-artifact@v4
@@ -63,4 +74,5 @@ jobs:
           path: |
             /tmp/nexus-cpu-results.json
             /tmp/nexus-p0-sweep.json
+            /tmp/nexus-fetch-sweep.json
           if-no-files-found: ignore
