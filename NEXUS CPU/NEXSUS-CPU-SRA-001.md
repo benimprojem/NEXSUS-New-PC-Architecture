@@ -138,3 +138,32 @@ Kesin ağırlıklar, servis quantum boyutu, URGENT bütçesi ve cycle cinsinden 
 ## 9. Memory access-control integration
 
 AGU address generation and the existing load/store transaction path participate in the validation contract defined by `NEXSUS-CPU-MEMORY-ACCESS-CONTROL-001.md`. Address generation, full-range validation, ownership/permission checks, and request issue must complete before architectural commit. This does not make AG0/AG1 or MAR/MDR new architectural requirements; their exact implementation remains subject to the SRA/microarchitecture decision.
+
+
+### 6.3 Fiziksel bank, port ve read/write yön değiştirme modeli
+
+Bu bölümdeki **L1–L4 domain** kavramı ile fiziksel RAM bankası aynı şey değildir. Domain; erişim kapsamı, paylaşım ve görünürlük kurallarını tanımlar. Bank ise belirli bir fiziksel bellek kaynağının bağımsız servis edilebilen bölümüdür. Controller, port, lane ve cache-line/transfer granülü de ayrı kaynak kavramlarıdır. Bir domain bir veya daha fazla fiziksel bankaya eşlenebilir; bu eşleme kapasiteye ve uygulamaya bağlıdır.
+
+**Bank dağıtımı ve paralellik**
+
+- Ardışık adreslerin tek bankada yığılmasını önlemek için adresler, uygulamanın seçtiği interleave granülü üzerinden birden fazla bankaya dağıtılabilir. Bank seçimi için kullanılacak kesin adres bitleri/hash fonksiyonu; fiziksel kapasite, bank sayısı ve erişim granülü kesinleşince belirlenir.
+- Farklı bankalara giden ve bağımlılığı bulunmayan istekler aynı anda servis edilebilir. Aynı bankanın aynı anda kullanılamayan portuna gelen istekler yalnızca o bankada sıraya girer.
+- Aynı bankada birden fazla bağımsız port veya gerçek multiport hücre yapısı varsa, portların çakışmayan erişimleri paralel yürüyebilir. Mimari, her bankanın zorunlu olarak dual-port olmasını şart koşmaz.
+- Bank içi paralellik, aynı byte aralığına ilişkin NDC sıralama, ATOM serialization ve MEMXFER reservation kurallarını gevşetmez.
+
+**Read/write port ve turnaround**
+
+- Bir bankanın read ve write işlemlerini aynı çevrimde kabul edip edememesi fiziksel bellek hücresi, sense/write devresi ve port organizasyonuna bağlı bir uygulama kararıdır. Mimari, desteklenmeyen eşzamanlı read/write işlemini varmış gibi kabul etmez.
+- Tek yönlü veya paylaşılan portta READ↔WRITE geçişi gerekiyorsa controller gerekli turnaround süresini uygular; bu sırada yalnızca ilgili port/bank etkilenir, bağımsız bankalar çalışmaya devam eder.
+- Controller, uygun olduğunda aynı yönlü istekleri sınırlı gruplar halinde birleştirerek yön değiştirme maliyetini azaltabilir. Ancak read-drain veya write-drain sınırsız olamaz: karşı yönde bekleyen isteklerin yaşı arttıkça servis önceliği yükselir ve bounded batch/aging kuralları uygulanır.
+- Yazma kuyruğu boşaltma eşiği, read latency hedefi ve turnaround çevrim sayısı mikro-mimari parametrelerdir. Hiçbir aktif yönde süresiz starvation oluşmaması mimari gerekliliktir.
+- Aynı domain coherence order içindeki read-after-write davranışı korunur. Henüz tamamlanmamış bir STORE'un ardından gelen ve aynı sıralamaya tabi LOAD, eski veriyi gözlemleyemez; controller gerekli forwarding veya sıralı servis mekanizmasını uygular.
+
+**Ayrı App RAM ve Data RAM yolları**
+
+- App RAM komut kaynağıdır ve P0 refill/fetch yoluna hizmet eder. Data RAM, LOAD/STORE, task payload ve korumalı context-frame erişimlerine hizmet eder.
+- App RAM ve Data RAM fiziksel olarak ayrı bellek kaynakları ve bağımsız controller/erişim yolları olarak tasarlanır. Bu nedenle App RAM instruction fetch ile Data RAM data access, kendi kaynakları elverdiği sürece birbirinden bağımsız ilerleyebilir.
+- Bu bağımsızlık, tek bir RAM bankasının sınırsız port sunduğu anlamına gelmez; her fiziksel kaynak kendi bank/port arbitration'ını uygular.
+- App RAM ve Data RAM arasındaki ayrım, L1–L4 domain isimlerini fiziksel RAM bank numarası olarak yorumlama gerekçesi değildir.
+
+Kesin bank sayısı, interleave granülü, port sayısı, read/write turnaround süresi, queue derinliği ve yön değiştirme eşiği fiziksel bellek teknolojisi ile controller tasarımı belirlendikten sonra seçilecektir. Mimari gereklilik; bağımsız bank paralelliği, yerel çatışma çözümü, iki yönde starvation koruması ve App/Data RAM yollarının bağımsızlığının korunmasıdır.
