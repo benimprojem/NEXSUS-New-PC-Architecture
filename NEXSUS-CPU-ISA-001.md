@@ -151,9 +151,9 @@ MOVI64 RA4, 0x123456789ABCDEF0
 | SAR | dst, src, count | Arithmetic right shift | ALU |
 | ROL | dst, src, count | Rotate left | ALU |
 | ROR | dst, src, count | Rotate right | ALU |
-| BSET | dst, bit | Bit set | ALU |
-| BCLR | dst, bit | Bit clear | ALU |
-| BTST | src, bit | Bit test | ALU |
+| BSET | dst, src, bit | Kaynak değerinin seçili bitini 1 yaparak hedefe yazar | ALU |
+| BCLR | dst, src, bit | Kaynak değerinin seçili bitini 0 yaparak hedefe yazar | ALU |
+| BTST | dst, src, bit | Seçili bitin durumunu hedefe 0/1 yazar | ALU |
 | BEXT | dst, src, start, width | Seçilen bit aralığını çıkarır; sonuç zero-extend edilir | ALU |
 | BINS | dst, src, start, width | Kaynağın düşük bitlerini hedefte seçilen aralığa yerleştirir; diğer bitleri korur | ALU |
 
@@ -491,8 +491,7 @@ MA registerları 256-bit fiziksel genişliktedir. ME512 512-bit yürütme yoludu
 |---|---|---|
 | JMP | target | Koşulsuz PC-relative dallanma |
 | BR.Z / BR.NZ | test, target | RA test register'ının sıfır / sıfır dışı olmasına göre dallanma |
-| BR.SLT / BR.SGE | test, target | RA test register'ını signed 64-bit olarak sıfırla karşılaştırma |
-| BR.ULT / BR.UGE | test, target | RA test register'ını unsigned 64-bit olarak sıfırla karşılaştırma |
+| BR.SLT / BR.SGE | test, target | RA test register'ının signed 64-bit işaretine göre dallanma |
 | CALL | target | Fonksiyon/alt rutin çağrısı |
 | RET | — | Çağrıdan dönüş |
 | TRAP | code | Trap/exception geçişi |
