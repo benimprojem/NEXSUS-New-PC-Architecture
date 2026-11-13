@@ -160,12 +160,13 @@ Bu sıralama ISA düzeyinde sabittir; bellek denetleyicisi ve bus byte-lane eşl
 
 - W, bellekten okunacak veya belleğe yazılacak tam bit sayısını belirler: 8, 16, 32, 64, 128, 256 veya 512.
 - Domain suffix'i hedefi belirler: .L1, .L2, .L3 veya .L4. Bu seçim encoding'de MEM.AM[2:1] alanına karşılık gelir.
-- MEM.AM[0]=0, ilk sürümdeki base + signed displacement adresleme biçimidir; diğer adresleme biçimleri ayrılmıştır.
+- MEM.AM[0]=0, base-register adreslemesidir. EXT olmadan signed DISP32; EXT (RAW_LITERAL, COUNT=1) ile signed 64-bit displacement kullanılır. EXT formunda MEM.DISP=0 zorunludur.
+- MEM.AM[0]=1, yalnızca EXT formunda absolute domain address biçimidir: BASE=0 ve DISP=0 zorunludur; literal unsigned 64-bit adres olarak doğrudan kullanılır. EXT olmadan AM[0]=1 illegal encoding'dir.
 - LOAD ham bitleri DA'ya getirir. 8/16/32-bit yüklemelerde DA kaydının kullanılmayan üst bitleri sıfırlanır; 64-bit ve daha geniş erişimler DA kayıtlarını tam doldurur.
 - STORE yalnızca W kadar bit yazar. Son DA kaydında erişim genişliğinin dışında kalan bitler belleğe aktarılmaz.
 - LOAD sign-extension yapmaz ve signed/unsigned tür seçmez. DA bir staging bankıdır; scalar tamsayı yorumu gerektiğinde MOV.RA.DA.SX veya MOV.RA.DA.ZX ile açıkça yapılır. SX/ZX kaynak genişliği 8/16/32 bittir ve hedef RA'nın tam 64 bitini yazar; diğer dönüşümler için FCONV kullanılır.
 - Geniş erişimlerde ardışık bellek parçaları artan adres sırasıyla ardışık DA selector'larına yerleştirilir. Her 64-bit DA kaydının iç byte sırası little-endian'dır: en düşük adres en düşük anlamlı byte'a karşılık gelir.
-- 64-bit effective address, RA[BASE] + signed 32-bit DISP ile hesaplanır. Domain erişim izni, sınır ve hata kontrolleri geçerlidir.
+- Normal base-register formunda 64-bit effective address, `RA[BASE] + sign_extend(DISP32)` ile hesaplanır. EXT base-register formunda literal signed 64-bit byte displacement'tir ve `RA[BASE] + sign_extend(LITERAL64)` hesaplanır; 64-bit taşma/alt-taşma `ADDRESS_OVERFLOW_FAULT` üretir. EXT absolute formunda literal unsigned 64-bit domain adresidir ve doğrudan EA olur. Absolute form fiziksel adres anlamına gelmez; adres seçilen L1/L2/L3/L4 domain'inde yorumlanır. Her iki EXT biçiminde de prefix `RAW_LITERAL/COUNT=1`, MEM.DISP=0 olmalıdır. Domain erişim izni, sınır ve fault kontrolleri bütün biçimlerde geçerlidir.
 - **Doğal hizalama zorunludur:** effective address, W/8 byte değerine tam bölünmelidir. W=8 her byte adresinde; W=16 2-byte, W=32 4-byte, W=64 8-byte, W=128 16-byte, W=256 32-byte ve W=512 64-byte hizalamada erişilebilir.
 - İlk ISA sürümünde misaligned LOAD/STORE desteklenmez ve otomatik split erişim yapılmaz; hizalama ihlali `ALIGNMENT_FAULT` üretir. Unaligned erişim ileride gerekiyorsa ayrı bir opcode/mod olarak tasarlanır.
 - `EA + W/8 - 1` 64-bit adres uzayını aşarsa `ADDRESS_OVERFLOW_FAULT`; erişim aralığı seçilen L1/L2/L3/L4 domain sınırını aşarsa `MEMORY_BOUNDS_FAULT` oluşur.
