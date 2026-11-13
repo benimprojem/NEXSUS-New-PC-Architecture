@@ -715,7 +715,7 @@ Bu eşleme, FENCE SCOPE alanındaki L1–L4 sıralamasının iki bitlik karşıl
 - **Asenkron hata:** Transferin runtime aşamasında hata ile tamamlanması halinde XFER.WAIT ilgili transfer fault'unu senkron olarak üretir. Hatalı transfer token'ı donanım tarafından terminal olarak tüketilir; faulting WAIT'ın RA yazımı precise-exception kuralı gereği commit edilmez, dolayısıyla TRA eski token değerini korur. Exception handler bu stale değeri normal RA işlemleriyle temizlemeli/üzerine yazmalıdır; aynı token artık geçerli değildir. Hatalı hedef aralık geçerli veri sayılmaz.
 - OP zaten synchronous/start/wait ayrımını yaptığı için payload içinde ikinci bir MODE alanı yoktur.
 - RESERVED alanı ileride genişletme için korunur; v1 decoder bu bitlerden herhangi biri 1 ise komutu reddeder.
-- Alan eşlemesi **adaydır ve henüz encoding freeze değildir**; alan bitleri ve opcode'lar belgelenmiştir, fakat maksimum transfer boyutu, aynı çekirdekte eşzamanlı token kapasitesi ve runtime fault alt türlerinin ayrıntıları mikro-mimari/exception sözleşmesinde tamamlanacaktır.
+- Alan eşlemesi **adaydır ve henüz encoding freeze değildir**; alan bitleri ve opcode'lar belgelenmiştir. MEMXFER uzunluğu unsigned 64-bit byte sayısıdır; ISA küçük ve sabit bir maksimum tanımlamaz, büyük istekler donanım içinde çoklu beat'lere bölünebilir. Token kapasitesi sonlu ve implementation-defined'dır; platform/OS capability bilgisiyle bildirilir. Token kaydı yoksa START, MEMORY_ACCESS_FAULT / TRANSFER_RESOURCE_UNAVAILABLE ile aktarımı kabul etmeden ve TRA'yı değiştirmeden fault verir. Runtime fault'ta fiziksel kısmi yazma geri alınmak zorunda değildir; hedef aralığın tamamı mantıksal olarak invalid/unpublished kalır ve tüm aralık başarıyla yeniden yazılmadan yayımlanamaz.
 
 **MEMXFER decoder/architectural conformance cases**
 
@@ -730,7 +730,10 @@ Bu eşleme, FENCE SCOPE alanındaki L1–L4 sıralamasının iki bitlik karşıl
 | WAIT success | Valid pending or already-completed token | Wait until completion, consume token, write zero to TRA |
 | WAIT reuse | Token already consumed or invalid | Illegal-token fault; no memory effect |
 | Async runtime failure | Accepted transfer fails before completion | WAIT raises transfer fault; token retired; faulting TRA write does not commit; target invalid |
-| Sync runtime failure | XFER.MEM fails during transfer | Fault reported at XFER.MEM; incomplete target is invalid |
+| Sync runtime failure | XFER.MEM fails during transfer | Fault reported at XFER.MEM; partial physical writes may remain, but the entire destination is invalid/unpublished |
+| Async runtime failure | Accepted START later fails | WAIT reports the underlying transfer fault; token is retired; TRA write does not commit; destination remains invalid/unpublished |
+| Token capacity exhausted | No free core-local token record at START | MEMORY_ACCESS_FAULT / TRANSFER_RESOURCE_UNAVAILABLE; no acceptance, no movement, TRA unchanged |
+| Range arithmetic overflow | Nonzero range's last byte exceeds UINT64_MAX | ADDRESS_OVERFLOW_FAULT before payload movement |
 
 These are specification-level conformance expectations, not a claim that a hardware simulator or RTL test suite has already executed them.
 
@@ -1266,7 +1269,7 @@ Aşağıdaki örnekler tam 64-bit hexadecimal makine kodu değildir; atanmış p
 
 - MEMUPD/MEMXUPD ve ATOM opcode numaraları §8.5 ile atandı; assembler mnemonic alias tablosunun ayrıntılı canonical spelling listesi ayrıca tamamlanacaktır.
 - ATOM ordering, scalar 8/16/32/64-bit işlemler ve CAS/SWAP/FETCH_* operand semantiği taslak olarak tanımlandı; fiziksel coherence, arbitration ve bank locking mikro-mimari aşamasında belirlenecek.
-- MEMXFER §4.15 zero-length no-op, kaynak snapshot'ı öncesi aliasing, başarılı WAIT'ta token tüketimi/RA temizleme ve async hata raporlama davranışlarını tanımlar. Encoding freeze öncesinde maksimum transfer boyutu, eşzamanlı token kapasitesi ve runtime fault alt türleri tamamlanacaktır.
+- MEMXFER §4.15 zero-length no-op, kaynak snapshot'ı öncesi aliasing, başarılı WAIT'ta token tüketimi/RA temizleme, 64-bit byte length, implementation-defined token kapasitesi ve partial-write invalidation davranışlarını tanımlar. Payload bit yerleşimi ve opcode tablosu yine nihai encoding review gerektirir.
 
 1. OP ve FMT sayısal kodlarının nihai tablosu.
 3. EXT opcode'unun numeric değeri ve gelecekte COUNT>1 çoklu literal semantiği.
