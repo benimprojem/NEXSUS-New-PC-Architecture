@@ -46,6 +46,16 @@ class SharedMemoryControllerTests(unittest.TestCase):
         self.assertEqual(separate_result["a"]["bank_wait"], 0)
         self.assertEqual(separate_result["b"]["bank_wait"], 0)
 
+    def test_unaligned_wide_access_reserves_extra_bank_beat(self):
+        controller = sim.SharedMemoryController(
+            bank_count=8, beat_bytes=8, aggregate_bytes_per_cycle=32
+        )
+        result = controller.reserve_batch(0, [
+            {"id": "unaligned-512", "core": 0, "address": 1, "width": 64},
+        ], bank_hash="low")
+        # Nine 64-bit slices are touched; bank zero is used twice.
+        self.assertEqual(result["unaligned-512"]["bank_wait"], 1)
+
     def test_bus_enforces_chip_wide_bandwidth_without_static_core_quotas(self):
         controller = sim.SharedMemoryController(
             bank_count=8, beat_bytes=8, aggregate_bytes_per_cycle=32
