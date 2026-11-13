@@ -252,6 +252,33 @@ DA kayıtları 64-bit olduğundan erişim genişliğine göre gereken kayıt say
 
 Register bankları arası aktarım bit kopyalama/paketleme işlemidir; integer↔float sayısal dönüşümü değildir. Sayısal dönüşüm FCONV gibi ayrı bir execution opcode'udur.
 
+**XFER M alanı — ilk transfer alt türleri**
+
+| M | İşlem | Geçerlilik |
+|---:|---|---|
+| 000 | BIT_COPY | Tanımlı bank çiftlerinde ham bit aktarımı |
+| 001 | SIGN_EXTEND | Yalnızca DA → RA; W=8/16/32 |
+| 010 | ZERO_EXTEND | Yalnızca DA → RA; W=8/16/32 |
+| 011–111 | Reserved | İlk sürümde illegal encoding |
+
+- SIGN_EXTEND ve ZERO_EXTEND için W kaynakta anlamlı bit genişliğidir. Kaynak, DA[SI] kaydının düşük W bitidir; hedef RA[DI] kaydının tamamı 64-bit olarak yazılır.
+- SIGN_EXTEND, kaynak W-bit değerini signed iki'nin tümleyeni kabul ederek 64-bit'e genişletir.
+- ZERO_EXTEND, kaynak W-bit değeri 64-bit'e sıfır genişletir.
+- Bu iki işlemde hedef RA'nın eski üst bitleri korunmaz; hedefin 64 biti yeni sonuçla değiştirilir.
+- W=64 için genişletme modu geçersizdir; W=64 ham aktarım için M=000 kullanılır.
+- SIGN_EXTEND/ZERO_EXTEND başka bank çiftlerinde veya W=128/256/512 için geçersizdir.
+- Bu kurallar LOAD'un kendisine signed/unsigned davranış eklemez. LOAD ham veriyi DA'ya getirir; tür yorumu bu açık XFER aşamasında yapılır.
+
+Assembly gösterimi:
+- `MOV.RA.DA.SX.W8 RA5, DA12`
+- `MOV.RA.DA.SX.W16 RA5, DA12`
+- `MOV.RA.DA.SX.W32 RA5, DA12`
+- `MOV.RA.DA.ZX.W8 RA5, DA12`
+- `MOV.RA.DA.ZX.W16 RA5, DA12`
+- `MOV.RA.DA.ZX.W32 RA5, DA12`
+
+Bu suffix'ler XFER opcode'unun M alanını ve W değerini seçen assembly gösterimleridir; ayrı opcode değerleri henüz atanmış değildir.
+
 ### 4.8 XFER tabanlı sayısal dönüşüm — FCONV
 
 FCONV bit kopyalama yapmaz; kaynak sayısal değeri hedef türüne dönüştürür. XFER alan yerleşimini kullanır, ancak ayrı opcode ve dönüşüm alt alanlarına sahiptir.
@@ -463,7 +490,7 @@ Aşağıdaki örnekler gerçek hexadecimal makine kodu değildir; opcode değerl
 1. OP ve FMT sayısal kodlarının nihai tablosu.
 2. Komut sözcüğünün byte endianness ve bellek içi sıralaması.
 3. EXT word'ün kesin bit alanları ve birden çok literal word gerekip gerekmediği.
-4. MEM formatında LOAD/STORE genişliği, signed/unsigned load ve multi-DA transfer kuralları.
+4. MEM erişimlerinde doğal hizalama ve misaligned erişimlerin desteklenme/exception davranışı.
 5. DA 256-bit grup hizalamasının kesinleştirilmesi.
 6. MA/FA pair komutlarının opcode ve exception ayrıntıları.
 7. Branch koşul kodları ve displacement'in PC'ye göre referans noktası (komut başlangıcı veya sonraki komut).
