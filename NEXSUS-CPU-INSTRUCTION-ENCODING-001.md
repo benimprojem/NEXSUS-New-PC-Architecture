@@ -185,18 +185,50 @@ BEXT ve BINS iki register ile iki küçük alan parametresi kullandığından R2
 +----------+--------+-------+-------+------+-------+---------------+-----+
 ```
 
-- D: LOAD için hedef DA selector; STORE için kaynak DA selector.
+- D: LOAD için hedef DA başlangıç selector'ı; STORE için kaynak DA başlangıç selector'ı.
 - BASE: RA bankından 64-bit adres tabanı selector'ı.
-- W: veri erişim genişliği.
-- AM: adresleme modu (ilk sürümde base + signed displacement; diğer kodlar ayrılmıştır).
+- W: erişim genişliği (8/16/32/64/128/256/512 bit).
+- AM[2:1]: veri bellek domain'i.
+- AM[0]: adresleme biçimi; ilk sürümde yalnızca **0 = base + signed displacement** geçerlidir.
 - DISP: signed 32-bit byte displacement.
 - R: reserved; sıfır olmalıdır.
+
+**AM alanı**
+
+| AM[2:1] | Domain | Hedef |
+|---:|---|---|
+| 00 | L1 | Yalnızca geçerli çekirdeğin özel L1 domain'i |
+| 01 | L2 | İlgili iki çekirdeklik grubun ortak domain'i |
+| 10 | L3 | İlgili dört çekirdeklik grubun ortak domain'i |
+| 11 | L4 | İlgili sekizli veya daha geniş grubun ortak domain'i |
+
+İlk adresleme biçimi için AM[0]=0 olmalıdır. Böylece geçerli AM değerleri L1=000, L2=010, L3=100, L4=110 olur. AM[0]=1 olan biçimler şimdilik reserved'dır. Domain, komutun gerçek veri erişim hedefidir; örtük cache fill veya başka Lx seviyesine kopyalama anlamına gelmez.
 
 Effective address:
 
 `EA = RA[BASE] + sign_extend(DISP)`
 
 64-bit adresin tamamı RA kaydında tutulur. Böylece 32-bit displacement, 64-bit adres alanını sınırlamaz.
+
+**DA kayıtlarına erişim dağılımı**
+
+DA kayıtları 64-bit olduğundan erişim genişliğine göre gereken kayıt sayısı şöyledir:
+
+| W | DA kayıt sayısı | Kullanılan kayıtlar |
+|---:|---:|---|
+| 8 / 16 / 32 / 64 | 1 | DA[D] |
+| 128 | 2 | DA[D]–DA[D+1] |
+| 256 | 4 | DA[D]–DA[D+3] |
+| 512 | 8 | DA[D]–DA[D+7] |
+
+- D her zaman kullanılan DA aralığının ilk kaydını gösterir.
+- D + kayıt sayısı 32'yi aşamaz. Örneğin 512-bit erişim için D en fazla 24 olabilir.
+- MEM erişimlerinde 128/256/512-bit DA grupları için ek bir selector hizalama şartı ilk taslakta konulmaz; yalnızca DA31 sınırı kontrol edilir. Gerçek bellek hizalaması ayrı bir konudur.
+- 8/16/32-bit LOAD, ilgili DA kaydının düşük bitlerine veriyi yazar ve aynı kaydın kullanılmayan üst bitlerini sıfırlar. 64-bit LOAD kaydın tamamını yazar.
+- 128/256/512-bit erişimlerde ardışık 64-bit parçalar artan bellek adresi sırasıyla artan DA selector'larına eşlenir. Her kaydın kendi içindeki byte sıralaması global endian kararıyla belirlenecektir.
+- STORE yalnızca istenen W bitini bellek alanına yazar; son DA kaydındaki erişim genişliği dışında kalan bitler yazılmaz.
+- LOAD/STORE ham bit aktarımı yapar. LOAD signed/unsigned yorumlama veya sign-extension yapmaz. Signed/unsigned yorum, DA'dan RA/FA'ya sonraki açık dönüşüm/transfer aşamasında yapılır.
+- Effective address, domain izni, alan sınırı ve bellek erişim hataları ilgili memory exception mekanizmasına tabidir; doğal hizalama ve misaligned erişim davranışı henüz dondurulmamıştır.
 
 ### 4.7 XFER — Register bankları arası açık aktarım
 
