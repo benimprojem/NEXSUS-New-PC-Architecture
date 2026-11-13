@@ -274,6 +274,10 @@ class CrossArchitectureComparisonTests(unittest.TestCase):
             results[key] = sim.simulate_cpu(workloads, sim.PROFILES[key])
             self.assertEqual(results[key]["cores_configured"], 8)
             self.assertEqual(results[key]["kernels"]["same_algorithm"]["ops"], 8)
+            if key != "nexus_balanced_128":
+                self.assertEqual(results[key]["kernels"]["same_algorithm"]["p0_counters"]["mode"],
+                                 "conventional I-cache")
+                self.assertGreater(results[key]["kernels"]["same_algorithm"]["p0_counters"]["refills"], 0)
         self.assertEqual({r["total_ops"] for r in results.values()}, {8})
 
     def test_p0_capacity_is_configurable_and_sweep_preserves_work(self):
