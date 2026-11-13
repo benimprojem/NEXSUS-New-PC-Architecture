@@ -116,7 +116,7 @@ class SelectedNexusProfileTests(unittest.TestCase):
                          (8, 8, 10, 8, 128))
         self.assertEqual(p["units"], {
             "INT": 2, "FP": 2, "VEC": 2, "LOAD": 8,
-            "STORE": 4, "BR": 2, "CTX": 1, "ATOM": 1, "ME512": 1,
+            "STORE": 4, "BR": 2, "CTX": 1, "ATOM": 1, "ME512": 1, "IRQ": 1,
         })
 
 
@@ -411,6 +411,22 @@ class AtomicWorkloadTests(unittest.TestCase):
                 row = result["kernels"]["atomic"]
                 self.assertEqual(row["ops"], 128)
                 self.assertEqual(sum(row["cache_accesses"].values()), 128)
+
+
+class IRQWorkloadTests(unittest.TestCase):
+    def test_irq_exception_service_proxy_retires_on_all_architectures(self):
+        ops = [
+            sim.Op(0, "INT"),
+            sim.Op(1, "IRQ", deps=(0,), label="IRQ/exception entry service"),
+            sim.Op(2, "CTX", deps=(1,), label="interrupt context frame"),
+            sim.Op(3, "INT", deps=(2,)),
+        ]
+        for key in ("amd_9950x3d2", "intel_xeon_698x", "apple_m6", "nexus_balanced_128"):
+            with self.subTest(profile=key):
+                result = sim.simulate_cpu({"irq": ops}, sim.PROFILES[key])
+                self.assertEqual(result["kernels"]["irq"]["ops"], 4)
+        self.assertIn("IRQ", sim.PROFILES["nexus_balanced_128"]["units"])
+
 
 class PXMetadataTests(unittest.TestCase):
     def test_full_pages_auto_continue_and_partial_final_uses_px_end(self):
