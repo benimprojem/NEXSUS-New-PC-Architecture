@@ -99,7 +99,7 @@ The full byte range and requested operation must be authorized before an operati
 - Bir memory grant veya allocation, yalnızca izin verilen byte aralığı ve işlem yönü için yetki verir; eşzamanlı erişim tutarlılığı NDC ve domain-controller arbitration kurallarına tabidir.
 - Kabul edilmiş MEMXFER işlemi boyunca kaynak aralığı read-reserved, hedef aralık write-reserved/unpublished kabul edilir. Kaynak üzerinde okuma izni devam eder; çakışan yazma/ATOM işlemleri reddedilir. Hedefe yönelik her türlü normal LOAD/STORE/ATOM erişimi transfer tamamlanana kadar reddedilir.
 - Bu rezervasyon, grant'in iptal edilmesi veya allocation'ın serbest bırakılmasıyla ortadan kaldırılamaz. Revocation/reclaim, ilgili transfer başarıyla veya hatayla terminal duruma ulaşana ve rezervasyon kaldırılana kadar ertelenir.
-- Başka bir transferin hedefi aktif transferin kaynak/hedef aralığıyla çakışamaz. Kaynak-kaynak örtüşmesi read-only olduğundan serbesttir. Çakışma yalnızca aynı domain içindeki kesişen byte aralıklarında değerlendirilir.
+- Tek bir transferin kaynak ve hedef aralıkları aynı domain'de örtüşemez. Farklı transferlerde bir transferin hedefi diğer aktif transferin kaynak/hedef aralığıyla çakışamaz. Kaynak-kaynak örtüşmesi read-only olduğundan serbesttir. Çakışma yalnızca aynı domain içindeki kesişen byte aralıklarında değerlendirilir.
 - Rezervasyon, tüm domain'i veya çekirdeği kilitlemez; ilgisiz aralıklar, farklı domain'ler ve izinli kaynak okumaları paralel kalır.
 ## 8. Task switch and migration
 
