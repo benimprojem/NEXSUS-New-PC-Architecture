@@ -757,7 +757,7 @@ Matrix tile şekli, formatın M alanında; eleman genişliği W alanında kodlan
 - Signed/unsigned yorumu ayrı opcode varyantıyla seçilir; ek signedness biti kullanılmaz.
 - AUX alanı ilk sürümde sıfır olmalıdır. Ayrılmış M/W kodları, sıfır olmayan AUX veya ISA'daki MA grup sınır/alignment kurallarının ihlali illegal operand/encoding fault üretir.
 - Register grup uzunluğu `ceil(N × N × W / 256)` MA register'dır. Her başlangıç selector'ı bu grup uzunluğunun katı olmalı ve grup MA31'i aşmamalıdır.
-- Hedefin kaynak tile ile tam alias olması ISA'daki snapshot/commit kurallarıyla geçerlidir. Kısmi/örtüşen tile grupları geçersizdir.
+- Operandların aynı tile'ı kullanması tam alias olarak geçerlidir (ör. A=B veya D=A). Kısmi/örtüşen ama eşit olmayan tile grupları geçersizdir.
 - Numeric opcode değerleri henüz atanmadı; bu eşleme yalnızca format/operand kodlamasını tanımlar.
 
 Örnek sembolik gösterimler:
