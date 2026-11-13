@@ -1,5 +1,9 @@
 name: NEXSUS CPU simulator checks
 
+concurrency:
+  group: nexus-cpu-simulator-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     paths:
