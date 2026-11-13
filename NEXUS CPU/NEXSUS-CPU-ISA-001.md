@@ -252,7 +252,7 @@ Memory komutlarının numeric OP atamaları Encoding belgesi §8.5–§8.6 ile e
 | 0x87 | XFER.START | MEMXFER |
 | 0x88 | XFER.WAIT | MEMXFER |
 
-MEMXFER, register bank XFER (0x85) ile aynı komut değildir. Kaynak/hedef L1–L4 domain'leri, RA içindeki byte adresleri ve RA içindeki byte uzunluğu ile CPU kontrollü kopyalama yapar. Synchronous XFER.MEM tamamlanana kadar bekler; XFER.START token üretir; XFER.WAIT token'ın tamamlanmasını bekler. Her iki uç için erişim izni, aralık ve sahiplik kontrolleri `NEXSUS-CPU-MEMORY-ACCESS-CONTROL-001.md` belgesindeki kurallara tabidir. MEMXFER için aday 52-bit payload alan eşlemesi Instruction Encoding §4.15'te tanımlıdır. Bu eşleme henüz freeze edilmemiştir; §4.14 ise yalnızca SYS/FENCE formatıdır.
+MEMXFER, register bank XFER (0x85) ile aynı komut değildir. Kaynak/hedef L1–L4 domain'leri, RA içindeki byte adresleri ve RA içindeki byte uzunluğu ile CPU kontrollü kopyalama yapar. Synchronous XFER.MEM tamamlanana kadar bekler; XFER.START token üretir; XFER.WAIT token'ın tamamlanmasını bekler. Her iki uç için erişim izni, aralık ve sahiplik kontrolleri `NEXSUS-CPU-MEMORY-ACCESS-CONTROL-001.md` belgesindeki kurallara tabidir. MEMXFER için aday 52-bit payload alan eşlemesi Instruction Encoding §4.15'te tanımlıdır. Alan eşlemesi ve token edge-case davranışları §4.15'te tanımlanmıştır; maksimum transfer boyutu ve eşzamanlı token kapasitesi mikro-mimari aşamasında tamamlanacaktır. §4.14 yalnızca SYS/FENCE formatıdır.
 
 ## 5.3 Little-endian bellek ve register-grup sıralaması
 
@@ -1269,7 +1269,15 @@ XFER.START token=RA6, L3:[RA20], L1:[RA10], length=RA5
 XFER.WAIT RA6
 ```
 
-Bu assembly gösterimi semboliktir. Alan selector'larının bit yerleşimi ve opcode'a göre geçerliliği Instruction Encoding §4.15'teki aday eşlemeye tabidir; token yaşam döngüsü ve bazı alias/edge-case kuralları henüz açık karardır.
+Bu assembly gösterimi semboliktir. Alan selector'larının bit yerleşimi ve opcode'a göre geçerliliği Instruction Encoding §4.15'e tabidir. Sıfır uzunluk, RA aliasing ve token yaşam döngüsü kuralları da aynı bölümde tanımlanmıştır.
+
+### 22.16.1 MEMXFER zero-length, aliasing ve token yaşam döngüsü
+
+- Uzunluk RA değeri 0 ise XFER.MEM başarılı no-op'tur; bellek erişimi ve aralık izin kontrolleri yapılmaz. XFER.START tamamlanmış bir token üretir; XFER.WAIT beklemeden başarılı olur. Komut biçimi ve selector geçerlilik kontrolleri yine uygulanır.
+- XFER.START kaynak adresi, hedef adresi ve uzunluk değerlerini komut başlangıcında snapshot eder. TRA'nın DRA, SRA veya LRA ile aynı RA selector'ı olması geçerlidir; token yazımı bütün kaynak snapshot'ları alındıktan sonra yapılır.
+- Başarılı XFER.WAIT, token'ı tüketir ve TRA'nın gösterdiği RA'yı 0 yapar. Aynı token ikinci kez beklenemez; geçersiz veya daha önce tüketilmiş token illegal-token fault üretir.
+- Runtime transfer hatasında XFER.WAIT senkron transfer fault'u üretir. Hatalı token donanım tarafından terminal olarak tüketilir; faulting WAIT komutunun TRA yazımı precise-exception ilkesi gereği commit edilmez ve eski token bitleri RA'da kalır. Exception handler bu artık-geçersiz değeri yazılımla temizler/üzerine yazar. Hatalı hedef aralık geçerli veri değildir.
+- Token çekirdeğe özeldir ve başka çekirdekte kullanılamaz. Token sayısı ve maksimum transfer boyutu mikro-mimari kapasite sınırlarıdır; bu sınırlar ISA'nın tamamlanma ve görünürlük garantilerini değiştiremez.
 
 ### 22.16 Lx domain'leri için XFER tamamlanma sözleşmesi
 
