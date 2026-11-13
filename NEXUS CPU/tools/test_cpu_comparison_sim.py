@@ -400,6 +400,18 @@ class BranchSweepIntegrationTests(unittest.TestCase):
         )
 
 
+
+class AtomicWorkloadTests(unittest.TestCase):
+    def test_atomic_operations_use_memory_path_and_preserve_work(self):
+        ops = [sim.Op(i, "ATOM", address=0x9000000 + (i % 4)*8, width=8,
+                      label="atomic contention") for i in range(128)]
+        for key in ("amd_9950x3d2", "intel_xeon_698x", "apple_m6", "nexus_balanced_128"):
+            with self.subTest(profile=key):
+                result = sim.simulate_cpu({"atomic": ops}, sim.PROFILES[key])
+                row = result["kernels"]["atomic"]
+                self.assertEqual(row["ops"], 128)
+                self.assertEqual(sum(row["cache_accesses"].values()), 128)
+
 class PXMetadataTests(unittest.TestCase):
     def test_full_pages_auto_continue_and_partial_final_uses_px_end(self):
         pages = [
