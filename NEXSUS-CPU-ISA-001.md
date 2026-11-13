@@ -1378,3 +1378,8 @@ The interrupt/context save protocol is specified in **NEXSUS-CPU-CONTEXT-SAVE-RE
 - Save masks are compiler/ABI metadata, not architectural registers or new opcodes.
 
 The exact ordering, variable-size frame format, nesting and overflow behavior are normative in the context save/restore document.
+
+
+## 11. Memory access-control flow reference
+
+The validation flow for App RAM instruction fetch, LOAD/STORE, ATOM, and L1–L4 memory-domain XFER is specified in `NEXSUS-CPU-MEMORY-ACCESS-CONTROL-001.md`. The ISA-level effective-address, alignment, bounds, permission-fault, and all-checks-before-commit rules remain authoritative; the new document defines how those existing rules are applied along the access paths without adding an opcode or standalone protection unit.
