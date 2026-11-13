@@ -93,7 +93,8 @@ PROFILES = {
         "latency": {"INT": 1, "FP": 3, "VEC": 2, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 4},
         "l1_kb": 128, "l2_kb": 1024, "l3_kb": 8192, "l4_kb": 65536,
         "l1_lat": 2, "l2_lat": 8, "l3_lat": 24, "l4_lat": 64, "dram_lat": 120,
-        "branch_penalty": 10, "frequency_ghz": 3.0, "bank_hash": "folded", "dram_bytes_per_cycle": 64
+        "branch_penalty": 10, "frequency_ghz": 3.0, "bank_hash": "folded", "dram_bytes_per_cycle": 64,
+        "branch_predictor": "small_2bit"
     }
 }
 
@@ -938,7 +939,7 @@ def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=N
     total_cycles = sum(v["cycles"] for v in results.values())
     total_ops = sum(v["ops"] for v in results.values())
     return {"cpu": p.name, "cores_configured": cores, "clock_ghz": p.frequency_ghz,
-            "nexus_features": ({"spm": True, "p0": True, "p0_capacity_kb": 16, "spm0_kb": 4, "spm0_bank_kb": 2, "p0_refill_latency": 48} if nexus_features is None else nexus_features) if p.name.startswith("NEXSUS CPU") else None,
+            "nexus_features": ({"spm": True, "p0": True, "p0_capacity_kb": 16, "spm0_kb": 4, "spm0_bank_kb": 2, "p0_refill_latency": 48, "branch_predictor": p.branch_predictor} if nexus_features is None else nexus_features) if p.name.startswith("NEXSUS CPU") else None,
             "register_architecture": ({"RA": {"count": 32, "width_bits": 64}, "FA": {"count": 32, "width_bits": 64}, "DA": {"count": 32, "width_bits": 64}, "MA": {"count": 32, "width_bits": 256}, "selector_bits": 5, "total_physical_bytes": 1792} if p.name.startswith("NEXSUS CPU") else None),
             "cpu_ram_reference_clock_ghz": p.frequency_ghz,
             "aggregate_dram_bytes_per_cycle": aggregate_dram_bandwidth,
