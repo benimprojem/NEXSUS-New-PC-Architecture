@@ -270,3 +270,12 @@ Regression tests cover full-page automatic continuation, partial intermediate pa
 
 
 An exactly full 2 KiB final page ends through the code-region descriptor (`stream_end=true`); it does not use PX_END. PX_END remains the metadata marker for a partial final page. The fetch model stops prefetching when `stream_end` is set.
+
+
+## 14. Instruction-fetch model calibration update
+
+The reference I-cache model now uses a bounded 16-line sequential prefetch window, up to 32 outstanding line fills and an 8-cycle default lower-level fill assumption. PX capacity sweeps now run a single 64-KiB code stream on one core rather than splitting the instruction stream across eight cores.
+
+The PX pool model stages the first pages up to the configured pool capacity at task dispatch. A page that is not resident incurs a configurable 120-cycle provisional App-RAM source-miss penalty plus the PX-to-SPM0 transfer. This makes 4/8/16/32-KiB pool capacity affect actual miss counts and modeled cycles. The 120-cycle source delay is an assumption for sensitivity, not a measured NEXSUS hardware latency.
+
+The next CI run checks that pool capacity changes both miss counts and cycles while preserving the same operation count, and that refill sweeps include 32, 34 and 48-cycle cases around the 2-KiB payload-only baseline and current 48-cycle proposal.
