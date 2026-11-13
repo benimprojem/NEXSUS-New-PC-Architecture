@@ -725,7 +725,10 @@ W alanının yorumu opcode ailesine bağlıdır. Örneğin FADD için W=010 FP32
 - Vector compare komutlarında D hedef MA, A/B kaynak MA'dır. Sonuç her lane için all-ones/zero mask olarak yazılır.
 - Vector bitwise VAND/VOR/VXOR, W alanından bağımsız olarak 256-bit MA register'ının tüm bitlerine uygulanır; assembler W alanını 256-bit (101) kodlar.
 - Vector shift komutlarında A kaynak, B lane başına shift-count kaynağıdır; count her lane'in düşük log2(W) bitlerinden değil, lane değerinin düşük bitlerinden alınır ve count >= W ise sonuç sıfırdır.
-- Numeric opcode değerleri henüz atanmadı; opcode-family haritası yalnızca önerilen aralıkları gösterir.
+- VMIN.S/U, VMAX.S/U, VDIV.S/U, VMOD.S/U ve VCMPLT/VCMPLE.S/U da R3 kullanır; D/A/B alanları MA selector'larıdır. Signedness opcode varyantından gelir.
+- VSUM.S/U ve VDOT.S/U R3 kullanır; D/A/B MA selector'larıdır. VSUM için W=8/16/32/64/128/256, VDOT için W=8/16/32/64 geçerlidir. M=000 ve AUX=0 olmalıdır.
+- VAND/VOR/VXOR için W=101 (256-bit) zorunludur. Diğer lane tabanlı komutlarda W ilgili lane genişliğini seçer.
+- VSUM/VDOT dahil Vector opcode değerleri 8.1 bölümünde atanmıştır. Bu bölüm operand alanlarının yorumunu tanımlar.
 
 
 ### 6.5 Matrix komutlarının encoding eşlemesi
