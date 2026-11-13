@@ -4,7 +4,7 @@
 **Durum:** ISA taslak / komut aileleri ve kaynak eşlemesi  
 **Bağlı mimari:** Yeni Nesil Ayrıştırılmış Register Tabanlı CPU Mimarisi
 
-> Bu belge opcode bit kodlamasını henüz sabitlemez. Mnemonic'ler, operand rolleri ve execution-unit eşlemesi için başlangıç tablosudur. Opcode, instruction format, latency, exception ve kesin encoding sonraki ISA revizyonunda netleştirilecektir.
+> Bu belge mnemonic'leri, operand rollerini ve execution-unit eşlemesini tanımlar. 64-bit komut sözcüğü ve operand alanlarının ilk encoding taslağı ayrı [Instruction Encoding Specification](NEXSUS-CPU-INSTRUCTION-ENCODING-001.md) belgesindedir. Sayısal opcode atamaları ve açık kararlar henüz dondurulmamıştır.
 
 ## 1. Çekirdek Execution Unit konfigürasyonu
 
@@ -246,6 +246,7 @@ Thread komutları (SPAWN, SEND, RECEIVE/LISTEN, DONE vb.) CPU çekirdek ISA'sın
 
 ## 13. İlişkili belgeler
 
+- [Instruction Encoding Specification — 64-bit komut kodlaması](NEXSUS-CPU-INSTRUCTION-ENCODING-001.md)
 - [CPU ana mimarisi](Yeni%20Nesil%20Ayr%C4%B1%C5%9Ft%C4%B1r%C4%B1lm%C4%B1%C5%9F%20Register%20Tabanl%C4%B1%20CPU%20Mimarisi.md)
 - [SPM ve register views](NEXSUS%20CPU%20%E2%80%94%20SPM,%20Register%20G%C3%B6r%C3%BCn%C3%BCmleri%20ve%20Do%C4%9Frudan%20Alan%20Eri%C5%9Fimi.md)
 - [NEXSUS PC Architecture README](README.md)
