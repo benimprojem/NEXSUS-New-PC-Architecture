@@ -649,6 +649,14 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 conventional_capacity_bytes=int(features.get("conventional_icache_kb", 32)) * 1024,
                 conventional_refill_latency=int(features.get("conventional_refill_latency", 32)),
             )
+        else:
+            # Give reference CPUs an explicit conventional instruction-fetch
+            # path instead of silently granting zero-latency command delivery.
+            st["fetch"] = CommandFetchModel(
+                False,
+                conventional_capacity_bytes=int(features.get("conventional_icache_kb", 32)) * 1024,
+                conventional_refill_latency=int(features.get("conventional_refill_latency", 32)),
+            )
     pending_fills = []
     controller = SharedMemoryController(
         bank_count=p.bank_count, beat_bytes=p.bank_beat_bytes,
