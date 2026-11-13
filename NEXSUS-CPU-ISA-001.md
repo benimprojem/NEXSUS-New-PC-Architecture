@@ -90,12 +90,12 @@ Memory adres genişliği 64-bit olabilir; register selector genişlikleri bundan
 
 ## 6. SPM komutları
 
-SPM0 ve SPM1 adresleme birimleri farklıdır. Bu komut isimleri taslak mnemonic'lerdir.
+SPM0 kayıt-ofsetiyle, SPM1–SPM7 byte-ofsetiyle adreslenir. Bu komut isimleri taslak mnemonic'lerdir.
 
 | Mnemonic | Operand | İşlev | Etki |
 |---|---|---|---|
-| SPM.RD | dst, page, offset | SPM0 64-bit kayıt okuma | SPM → RA/DA |
-| SPM.WR | page, offset, src | SPM0 64-bit kayıt yazma | RA/DA → SPM |
+| SPM.RD | dst, addr | SPM alanından genişliği belirtilen veri okuma | SPM → RA/DA |
+| SPM.WR | addr, src, width | SPM alanına 8–512-bit veri yazma | RA/DA → SPM |
 | SPM.GET | dst, addr, width, bit | Alan okuma | SPM → register |
 | SPM.PUT | addr, src, width, bit | Alan güncelleme | Kısmi write |
 | SPM.MASK | addr, mask, value | Maskeli güncelleme | Alan koruma |
@@ -284,7 +284,7 @@ MA'nın 4 read portu, 512-bit pair okumasında iki 256-bit register dilimini bir
 - RA register bankının multiport maliyeti; banked/replicated/renamed alternatifleri.
 - FPU ve ALU operandlarının ortak RA portlarını nasıl kullanacağı; dedicated operand queue/bypass seçenekleri.
 - MA pair komutlarının register allocation ve ABI'de nasıl temsil edileceği.
-- SPM0/SPM1 fiziksel bank/port düzeni ve aynı cycle erişim.
+- SPM0/SPM1–SPM7 fiziksel bank/port düzeni ve aynı cycle erişim.
 - ME512 accumulator/tiling ve matrix shape formatı.
 - Integer MUL/DIV ve FP DIV/SQRT latency/throughput.
 - Precise exception, branch recovery, interrupt/context-save semantiği.
@@ -365,7 +365,7 @@ SPM0 ve SPM1–SPM7, RA/DA/MA register banklarından ayrı erişim kaynaklarıd�
 1. SPM read/write port sayısı ve bank conflict, SPM komutlarını sınırlayabilir; ALU/FPU issue'dan bağımsız değildir.
 2. SPM read sonucunun aynı cycle'da kullanılması, doğrudan combinational path garantisi değildir; latency/load-use kuralı mikro-mimariyle belirlenecektir.
 3. SPM COPY/field işlemleri çok cycle veya transfer engine üzerinden yürüyebilir; tek cycle varsayılmaz.
-4. SPM0/SPM1 bank sayısı ve interleave/hash adresleme henüz kesin değildir. Page sayısı ile fiziksel bank sayısı aynı kavram kabul edilmez.
+4. SPM0/SPM1–SPM7 bank sayısı ve interleave/hash adresleme henüz kesin değildir. Mantıksal kayıt/byte adresleri fiziksel bank sayısıyla aynı kavram kabul edilmez.
 
 Bu bölüm port hedeflerini tanımlar; kesin timing ve bank mapping sonraki mikro-mimari revizyonda sabitlenecektir.
 
