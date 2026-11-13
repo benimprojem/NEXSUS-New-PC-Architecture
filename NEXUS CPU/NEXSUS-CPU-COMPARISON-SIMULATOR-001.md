@@ -2,7 +2,7 @@
 
 **Document ID:** NEXSUS-CPU-COMPARISON-SIMULATOR-001  
 **Status:** Simulator v0.2.4-dev; lockstep multicore execution submits same-cycle DRAM misses to one shared bank/bus controller; validation in progress  
-**Purpose:** Compare one deterministic mixed workload across AMD Zen 5, Intel Arrow Lake P/E cores, and configurable NEXSUS CPU candidates.
+**Purpose:** Compare one deterministic mixed workload across AMD Zen 5, Intel Arrow Lake P/E cores, and the selected NEXSUS 128-window architecture.
 
 ## 1. Comparison targets
 
@@ -11,7 +11,7 @@
 | AMD | Ryzen 9 9950X | Zen 5 | Controlled comparison uses 8 Zen 5 cores; SMT disabled in this phase |
 | Intel P | Core Ultra 9 285K | Lion Cove | 8 P-cores |
 | Intel E | Core Ultra 9 285K | Skymont | Separate 8 E-core reference profile; not mixed with P-core profile |
-| NEXSUS | NEXSUS candidate profile | Current proposed CPU blocks | Minimum comparison configuration: 8 cores |
+| NEXSUS | Selected 128-window profile | Current proposed CPU blocks | 8 cores |
 
 AMD and Intel are represented by separate core profiles. The Intel P and E cores must never be averaged into one generic core. Controlled phase uses exactly 8 active cores for every target, one hardware thread per core, with SMT disabled. AMD and Intel SKU maximum core counts are intentionally not used in this experiment; this isolates per-core architecture and avoids winning by core-count advantage. A later full-SKU phase can compare 16C/32T AMD and 8P+16E Intel.
 
@@ -75,7 +75,7 @@ AMD's product specification lists 16 cores / 32 threads, up to 5.7 GHz boost, 48
 
 Intel's product specification lists 8 P-cores + 16 E-cores, 24 total cores/threads, up to 5.7 GHz max turbo, 36 MB L3 and 40 MB total L2. The P-core profile represents Lion Cove; the E-core profile represents Skymont. Public architectural analyses provide additional estimates for the front-end, execution window and cache latencies. Those estimates are marked as model inputs, not guaranteed behavior for every workload or firmware configuration.
 
-### NEXSUS candidate
+### Selected NEXSUS 128-window architecture
 
 Already specified architectural anchors:
 - 2 integer ALUs, 2 FPUs and 1 ME512 per core.
@@ -88,7 +88,7 @@ Already specified architectural anchors:
 - P0 command cache; 64-bit command records and 512-bit peak refill interface.
 - RA/FA/DA/MA register banks and SPM0–SPM7.
 
-NEXSUS dispatch/retire width, scheduling model, branch predictor, ROB-equivalent capacity, cache/bank latency, clock and core count are not frozen. The script's current NEXSUS profile values are deliberately provisional knobs used to make the comparison model runnable. They must not be quoted as architecture decisions or predicted silicon performance.
+NEXSUS dispatch/retire width, scheduling model, branch predictor, ROB-equivalent capacity, cache/bank latency, clock and core count are not frozen. The simulator uses one selected NEXSUS profile: front-end 8, dispatch 8, issue 10, retire 8, and a 128-entry modeled window. The execution-resource profile is INT 4, FP 4, VEC 2, LOAD 8, STORE 4, BR 2, CTX 1 and ATOM 1. These are the chosen comparison configuration, but remain model parameters rather than a claim of validated silicon performance.
 
 ## 5. Controlled clock and core-count experiment
 
@@ -114,27 +114,26 @@ The Intel E-core profile is reported separately as an 8-core E-core reference, n
 - Keep known, estimated and unknown parameters separately labelled.
 
 
-## 6.1 Experimental NEXSUS width candidates
+## 6.1 Selected NEXSUS profile
 
-The original NEXSUS profile is retained unchanged as the baseline. Three additional design-space candidates are reported separately; none is an architectural freeze.
+The comparison now exposes **one NEXSUS configuration only**: the 128-window balanced architecture. The earlier baseline, 8L4S, wide-balanced-192 and other exploratory variants have been removed from the selectable profile list so the comparison cannot silently switch between competing NEXSUS designs.
 
-| Parameter | Existing baseline | 8L4S memory-focused | Wide balanced | Balanced-128 |
-|---|---:|---:|---:|
-| Front-end | 4 | 6 | 8 | 8 |
-| Dispatch | 4 | 6 | 8 | 8 |
-| Issue | 5 | 8 | 10 | 10 |
-| Retire | 4 | 6 | 8 | 8 |
-| ROB-like window | 64 | 128 | 192 | 128 |
-| INT units | 2 | 3 | 4 | 4 |
-| FP units | 2 | 3 | 4 | 4 |
-| VEC units | 1 | 1 | 2 | 2 |
-| LOAD units | 2 | **8** | **8** | **8** |
-| STORE units | 1 | **4** | **4** | **4** |
-| BR units | 1 | 1 | 2 | 2 |
+| Parameter | Selected NEXSUS |
+|---|---:|
+| Front-end | 8 |
+| Dispatch | 8 |
+| Issue | 10 |
+| Retire | 8 |
+| Modeled in-flight window | 128 |
+| INT units | 4 |
+| FP units | 4 |
+| VEC units | 2 |
+| LOAD units | 8 |
+| STORE units | 4 |
+| BR units | 2 |
+| CTX / ATOM units | 1 / 1 |
 
-All four NEXSUS profiles retain the same provisional cache capacities/latencies, 8-bank folded mapping, 32-byte/reference-cycle chip-wide aggregate DRAM bandwidth through the shared work-conserving controller, operation latencies and 3.0 GHz reference clock. This isolates the effect of execution and pipeline width in the current simplified model. The candidates are not yet constrained by physical area, power, wiring, queue implementation, bank-port availability or clock closure.
-
-The 8L4S profile tests whether a wider memory issue subsystem improves streaming and mixed workloads while keeping compute resources moderately sized. The wide-balanced profile additionally expands integer, FP, vector, branch and pipeline capacity. Balanced-128 keeps the wide-balanced execution/front-end widths but reduces the ROB-like window from 192 to 128 to test whether the larger window is necessary. The 8 LOAD + 4 STORE figures represent modeled concurrent issue slots, not a guarantee that every access completes in the same cycle: dependencies, memory latency, bank conflicts and later shared-controller arbitration still constrain throughput.
+The 8 LOAD + 4 STORE values are modeled concurrent issue slots, not guaranteed completed accesses per cycle. Dependencies, cache hits/misses, bank conflicts and shared-controller arbitration continue to constrain actual throughput. The selected profile retains the current provisional cache and memory parameters. The 128-window value is the selected simulator configuration; physical area, power, wiring, queue implementation and clock closure still require validation.
 
 ### Stall counters
 
@@ -155,8 +154,8 @@ These are diagnostic counters, not mutually exclusive wall-clock durations. Some
 |---|---|---|
 | v0.1 | Deterministic kernels, dependency scheduling, basic cache and bank approximation | Initial scaffold |
 | v0.2 | Controlled 8-core scheduling with equal reference clocks; dependency-component parallelism | Per-core partition and clock-normalization checks pass |
-| v0.2.1 | Experimental 8L4S and wide-balanced NEXSUS profiles; initial stall diagnostics | Compare candidate outputs and inspect dominant resource stalls |
-| v0.2.2 | Balanced-128 candidate; distinguish blocked-operation-cycle events from cycle counters and latency exposure | Run the 128-vs-192 window comparison and verify counter semantics |
+| v0.2.1 | Initial NEXSUS width experiments and stall diagnostics (historical) | Exploratory variants evaluated; no longer selectable |
+| v0.2.2 | Select the 128-window NEXSUS profile; distinguish blocked-operation-cycle events from cycle counters and latency exposure | 128-window profile retained as the sole NEXSUS target |
 | v0.2.3 | Enforce 32 B/cycle chip-wide DRAM cap through a static equal share; add regression tests | Verify bandwidth is not multiplied by core count |\n| v0.2.4-dev | Integrate lockstep core scheduling with one shared bank/bus controller; remove static per-core bandwidth split | Same-bank contention and independent-bank overlap covered; shared cache groups and coherence remain pending |
 | v0.3 | Shared LLC/memory-controller contention, coherence, true P/E placement, SMT and NEXSUS P0/SPM/App RAM/L1–L4/8-bank/MEMXFER | Existing NEXSUS contracts represented without invented ISA |
 | v0.4 | Interrupts, exceptions, context save/restore, atomic operations and memory ordering | Architectural conformance scenarios pass |
