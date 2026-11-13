@@ -647,6 +647,7 @@ Bir L2/L3/L4 fence, yalnızca seçilen domain'deki erişimleri sıralar; farklı
 - SEQ_CST, seçilen scope içindeki SEQ_CST fence ve SEQ_CST atomic işlemler için tek bir tutarlı sıralama noktası sağlar. Farklı scope'lar arasında ortak bir total order oluşturmaz.
 - FENCE atomic değildir; bir bellek konumunu okumaz/yazmaz ve kilit/ownership üretmez.
 - FENCE veri kopyalamaz, domain'ler arasında migration yapmaz ve tek başına cache coherence veya erişim izni oluşturmaz. Paylaşılan domain'in visibility/coherence mekanizması ayrıca mimari sözleşmeyi karşılamalıdır.
+- FENCE, XFER.MEM/XFER.START/XFER.WAIT transferinin tamamlanmasını beklemez ve transfer hedefini yayımlamaz. MEMXFER completion ordering, §4.15'teki başarılı completion/WAIT sözleşmesiyle sağlanır.
 - FENCE bir bellek erişimi fault'unu geriye dönük olarak değiştirmez; kendi başına adres operandı veya memory access üretmez.
 
 Assembly gösterimi:
@@ -716,6 +717,13 @@ Bu eşleme, FENCE SCOPE alanındaki L1–L4 sıralamasının iki bitlik karşıl
 - OP zaten synchronous/start/wait ayrımını yaptığı için payload içinde ikinci bir MODE alanı yoktur.
 - RESERVED alanı ileride genişletme için korunur; v1 decoder bu bitlerden herhangi biri 1 ise komutu reddeder.
 - MEMXFER'ın **mimari davranış sözleşmesi bu sürüm için tanımlanmıştır**. Alan bitleri ve opcode atamaları, bütün ISA opcode/format tablosunun son çakışma ve reserved-alan denetimi tamamlanana kadar aday statüsündedir; bu durum aşağıdaki davranış kararlarının açık kaldığı anlamına gelmez. MEMXFER uzunluğu unsigned 64-bit byte sayısıdır; ISA küçük ve sabit bir maksimum tanımlamaz, büyük istekler donanım içinde çoklu beat'lere bölünebilir. Token kapasitesi sonlu ve implementation-defined'dır; platform/OS capability bilgisiyle bildirilir. Token kaydı yoksa START, MEMORY_ACCESS_FAULT / TRANSFER_RESOURCE_UNAVAILABLE ile aktarımı kabul etmeden ve TRA'yı değiştirmeden fault verir; bu kaynak hatasında START bekletilmez. Transfer tamamlandığında aktif transaction/beat kaynakları serbest bırakılabilir, fakat token kaydı WAIT token'ı tüketene kadar tutulur. Runtime fault'ta fiziksel kısmi yazma geri alınmak zorunda değildir; hedef aralığın tamamı mantıksal olarak invalid/unpublished kalır ve tüm aralık başarıyla yeniden yazılmadan yayımlanamaz.
+
+**Completion, visibility ve ordering**
+- XFER.MEM başarıyla döndüğünde hedef aralığın tamamı hedef domain'in NDC kuralları içinde kullanılabilir olur; komut issuing core için hedef domain'e acquire-completion etkisi sağlar.
+- XFER.START kabulü hedefi yayımlamaz. Başarılı XFER.WAIT, issuing core için acquire-completion sınırıdır; WAIT sonrasındaki hedef-domain LOAD işlemleri tamamlanmış transfer verisini görmelidir. Başarısız WAIT bu etkiyi sağlamaz.
+- Hedefi başka çekirdeklere açmak için başarılı completion sonrasında hedef domain'de ayrı release/acquire publication gerekir. Transfer completion tek başına diğer çekirdeklere synchronization göndermez.
+- Transferi başlatmadan önce kaynak verinin producer tarafından yayımlanmış olması gerekir. Producer başka çekirdekteyse issuing core, kaynak domain'de uygun acquire synchronization kurmalıdır; XFER bu ilişkiyi kendiliğinden oluşturmaz.
+- FENCE, MEMXFER'ı tamamlatmaz veya WAIT yerine geçmez. FENCE kapsamı normal LOAD/STORE ve ATOM sıralamasıdır; transfer kendi completion sözleşmesine tabidir.
 
 **MEMXFER decoder/architectural conformance cases**
 
