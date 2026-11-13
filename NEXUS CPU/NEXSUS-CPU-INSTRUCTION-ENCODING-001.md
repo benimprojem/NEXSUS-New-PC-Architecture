@@ -661,6 +661,58 @@ FENCE.SEQ_CST.SYSTEM
 Mnemonic suffix'leri SYSOP=FENCE, SCOPE ve ORDER alanlarını belirler. Numeric opcode/SYSOP değerleri opcode tablosu dondurulurken atanacaktır.
 
 
+### 4.15 MEMXFER — L1–L4 bellek domain'leri arası aktarım
+
+MEMXFER, register-bank `XFER` (OP=0x85) komutundan ayrıdır. Kaynak ve hedef bellek domain'leri arasında CPU kontrollü byte aktarımı yapar. Komutun işlem türü OP alanıyla seçilir; ayrıca bir MODE alanı kullanılmaz.
+
+**64-bit word yerleşimi — v1 aday alan eşlemesi**
+
+```text
+63       56 55    52 51  50 49    45 44  43 42    38 37    33 32    28 27             0
++----------+--------+------+--------+------+--------+--------+--------+----------------+
+| OP (8)   |FMT (4) | DD(2)| DRA (5)| SD(2)| SRA (5)| LRA (5)| TRA (5)| RESERVED (28) |
++----------+--------+------+--------+------+--------+--------+--------+----------------+
+```
+
+Payload toplamı 52 bittir: DD(2) + DRA(5) + SD(2) + SRA(5) + LRA(5) + TRA(5) + RESERVED(28) = 52.
+
+| Alan | Bitler | Anlamı |
+|---|---:|---|
+| DD | [51:50] | Hedef domain selector'ı |
+| DRA | [49:45] | Hedef byte adresini tutan RA selector'ı |
+| SD | [44:43] | Kaynak domain selector'ı |
+| SRA | [42:38] | Kaynak byte adresini tutan RA selector'ı |
+| LRA | [37:33] | Byte uzunluğunu tutan RA selector'ı |
+| TRA | [32:28] | START için token hedef RA'sı; WAIT için token kaynağı RA'sı |
+| RESERVED | [27:0] | v1'de tamamı sıfır olmalıdır |
+
+**Domain selector kodları**
+
+| Kod | Domain |
+|---:|---|
+| 00 | L1 |
+| 01 | L2 |
+| 10 | L3 |
+| 11 | L4 |
+
+Bu eşleme, FENCE SCOPE alanındaki L1–L4 sıralamasının iki bitlik karşılığıdır. MEMXFER endpoint alanlarında SYSTEM veya başka bir toplu kapsam kodu bulunmaz; her uç tek bir domain belirtir.
+
+**Opcode ve operand geçerliliği**
+
+| OP | Mnemonic | İşlem | Kullanılan alanlar | Sıfır olması gereken alanlar |
+|---:|---|---|---|---|
+| 0x86 | XFER.MEM | Synchronous transfer | DD, DRA, SD, SRA, LRA | TRA, RESERVED |
+| 0x87 | XFER.START | Asynchronous transfer başlatır; token üretir | DD, DRA, SD, SRA, LRA, TRA | RESERVED |
+| 0x88 | XFER.WAIT | Daha önce üretilmiş token'ın tamamlanmasını bekler | TRA | DD, DRA, SD, SRA, LRA, RESERVED |
+
+- Üç opcode da FMT=1101 (MEMXFER) kullanır. FMT uyumsuzluğu veya zorunlu sıfır alanlarının sıfır olmaması illegal encoding'dir.
+- DRA ve SRA, byte adresi tutan 64-bit RA kayıtlarını seçer. LRA, unsigned byte uzunluğunu tutan 64-bit RA kaydını seçer.
+- XFER.START, başlatılan aktarımın çekirdek-yerel token değerini TRA'nın seçtiği RA'ya yazar. XFER.WAIT aynı selector alanıyla token değerini okur. Token başka çekirdekte kullanılamaz.
+- XFER.MEM tamamlanana kadar komut akışını bekletir. XFER.START kabul edildiğinde komut akışına devam eder; hedef veri ancak ilgili XFER.WAIT tamamlandıktan sonra tüketilebilir.
+- OP zaten synchronous/start/wait ayrımını yaptığı için payload içinde ikinci bir MODE alanı yoktur.
+- RESERVED alanı ileride genişletme için korunur; v1 decoder bu bitlerden herhangi biri 1 ise komutu reddeder.
+- Bu alan eşlemesi **adaydır ve henüz encoding freeze değildir**. Özellikle sıfır uzunluk, RA aliasing (token hedefinin kaynak/uzunluk RA'sıyla aynı olması) ve token yaşam döngüsü kuralları ISA kararı olarak ayrıca netleştirilmelidir.
+
 ## 5. Width alanı
 
 W alanı 3 bit olduğundan sekiz kod sunar:
@@ -900,7 +952,7 @@ OP alanı 8-bit olduğundan 256 primary opcode değeri sunar. İlk aşamada opco
 | 0x40–0x4F | Load/store / atomic memory | 0x40–0x4F atandı; 0x84 atomic XOR tamamlayıcısı |
 | 0x50–0x5F | Floating point / conversion | 0x50–0x5B atandı; 0x5C–0x5F ayrıldı |
 | 0x60–0x83 | Vector / Matrix / ME512 | Alt aile aralığı ayrıldı; aşağıda 0x60–0x82 atandı |
-| 0x84–0x93 | Atomic extension / register transfer | 0x84 ATOM.FETCH_XOR; 0x85 XFER; 0x86–0x93 reserved |
+| 0x84–0x93 | Atomic extension / register and memory transfer | 0x84 ATOM.FETCH_XOR; 0x85 XFER; 0x86–0x88 MEMXFER; 0x89–0x93 reserved |
 | 0x94–0xA3 | System / IRQ / synchronization | 0x94–0x9B atandı; 0x9C–0xA3 reserved |
 | 0xA4–0xC3 | System / synchronization | Aile aralığı ayrıldı; bireysel atamalar açık |
 | 0xC4–0xEF | Reserved / future extensions | Ayrılmış |
@@ -1120,7 +1172,7 @@ Bellek komutları tek bir opcode'a sıkıştırılmayacaktır: normal LOAD/STORE
 
 - XFER M alanı BIT_COPY, SIGN_EXTEND ve ZERO_EXTEND alt türlerini seçer; ayrıntılar §4.11'de tanımlıdır.
 - FCONV, sayısal dönüşüm için 0x5B primary opcode'sunu ve XFER alan yerleşimini kullanır; XFER ile aynı opcode değildir.
-- 0x86–0x93 register transfer genişletmeleri için reserved'dır.
+- 0x86–0x88, register-bank XFER uzantısı değildir; MEMXFER formatındaki L1–L4 bellek-domain transfer komutlarıdır. 0x89–0x93 register-transfer genişletmeleri için reserved'dır.
 
 ### 8.4 Floating-point primary opcode atamaları
 
