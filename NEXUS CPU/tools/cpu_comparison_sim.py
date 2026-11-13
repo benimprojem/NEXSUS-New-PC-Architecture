@@ -60,7 +60,7 @@ PROFILES = {
         "units": {"INT": 6, "FP": 4, "VEC": 2, "LOAD": 4, "STORE": 2, "BR": 1, "CTX": 1, "ATOM": 1},
         "latency": {"INT": 1, "FP": 3, "VEC": 3, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 8},
         "l1_kb": 48, "l2_kb": 1024, "l3_kb": 32768, "l4_kb": 0,
-        "l1_lat": 4, "l2_lat": 14, "l3_lat": 48, "l4_lat": 0, "dram_lat": 220,
+        "l1_lat": 4, "l2_lat": 14, "l3_lat": 48, "l4_lat": 0, "dram_lat": 120,
         "branch_penalty": 15, "frequency_ghz": 3.0,
         "dram_lat": 120, "dram_bytes_per_cycle": 32
     },
@@ -71,7 +71,7 @@ PROFILES = {
         "units": {"INT": 6, "FP": 4, "VEC": 2, "LOAD": 3, "STORE": 2, "BR": 1, "CTX": 1, "ATOM": 1},
         "latency": {"INT": 1, "FP": 3, "VEC": 3, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 8},
         "l1_kb": 48, "l2_kb": 3072, "l3_kb": 36864, "l4_kb": 0,
-        "l1_lat": 4, "l2_lat": 17, "l3_lat": 84, "l4_lat": 0, "dram_lat": 230,
+        "l1_lat": 4, "l2_lat": 17, "l3_lat": 84, "l4_lat": 0, "dram_lat": 120,
         "branch_penalty": 16, "frequency_ghz": 3.0,
         "dram_lat": 120, "dram_bytes_per_cycle": 32
     },
@@ -82,7 +82,7 @@ PROFILES = {
         "units": {"INT": 4, "FP": 2, "VEC": 2, "LOAD": 3, "STORE": 2, "BR": 1, "CTX": 1, "ATOM": 1},
         "latency": {"INT": 1, "FP": 4, "VEC": 4, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 10, "CTX": 8},
         "l1_kb": 32, "l2_kb": 4096, "l3_kb": 36864, "l4_kb": 0,
-        "l1_lat": 4, "l2_lat": 16, "l3_lat": 90, "l4_lat": 0, "dram_lat": 240,
+        "l1_lat": 4, "l2_lat": 16, "l3_lat": 90, "l4_lat": 0, "dram_lat": 120,
         "branch_penalty": 17, "frequency_ghz": 3.0,
         "dram_lat": 120, "dram_bytes_per_cycle": 32
     },
