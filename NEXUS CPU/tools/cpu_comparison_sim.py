@@ -1171,7 +1171,7 @@ def run_nexus_ablation(workloads: Dict[str, List[Op]], profile_dict: dict) -> di
     }
 
 
-def run_p0_capacity_sweep(workloads, profile_dict, capacities_kb=(4, 8, 16, 32),
+def run_p0_capacity_sweep(workloads, profile_dict, capacities_kb=(4, 8, 16, 32, 64),
                             refill_latency=48, pool_miss_latency=120):
     """Single-core 64-KiB sequential code stream; vary only PX pool capacity."""
     target = {"p0_starvation": workloads["p0_starvation"]}
@@ -1205,7 +1205,7 @@ def run_p0_capacity_sweep(workloads, profile_dict, capacities_kb=(4, 8, 16, 32),
 
 
 def run_fetch_latency_sweep(workloads, conventional_latencies=(8, 16, 24, 32),
-                            p0_latencies=(32, 34, 48, 64, 96), p0_capacity_kb=16):
+                            p0_latencies=(32, 34, 48, 64, 96), p0_capacity_kb=64):
     """Compare reference I-cache refill assumptions with NEXSUS P0 refill assumptions."""
     target = {"p0_starvation": workloads["p0_starvation"]}
     last_page = (len(target["p0_starvation"]) * 8 - 1) // 2048
@@ -1254,7 +1254,7 @@ def run_fetch_latency_sweep(workloads, conventional_latencies=(8, 16, 24, 32),
         "operations_per_run": next(iter(counts)),
         "conventional_capacity_kb": 32,
         "p0_capacity_kb": p0_capacity_kb,
-        "assumptions": "Single-core 64-KiB sequential code stream; conventional I-cache uses bounded multi-line prefetch; PX uses a 16-KiB pool with 120-cycle source miss penalty; only transfer latency varies within each path.",
+        "assumptions": "Single-core 64-KiB sequential code stream; conventional I-cache uses bounded multi-line prefetch; PX pool is set to 64 KiB so the whole stream is resident and source misses do not confound PX-to-SPM0 transfer latency; only transfer latency varies within each path.",
         "results": rows,
     }
 
