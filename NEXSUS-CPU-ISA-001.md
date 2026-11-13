@@ -123,7 +123,12 @@ DAx:DAx+3 gösterimi dört ardışık 64-bit DA kaydını, toplam 256-bit veri g
 - LOAD sign-extension yapmaz ve signed/unsigned tür seçmez. DA bir staging bankıdır; scalar tamsayı yorumu gerektiğinde MOV.RA.DA.SX veya MOV.RA.DA.ZX ile açıkça yapılır. SX/ZX kaynak genişliği 8/16/32 bittir ve hedef RA'nın tam 64 bitini yazar; diğer dönüşümler için FCONV kullanılır.
 - Geniş erişimlerde ardışık bellek parçaları artan adres sırasıyla ardışık DA selector'larına yerleştirilir. Her 64-bit DA kaydının iç byte sırası endian kararıyla birlikte kesinleştirilecektir.
 - 64-bit effective address, RA[BASE] + signed 32-bit DISP ile hesaplanır. Domain erişim izni, sınır ve hata kontrolleri geçerlidir.
-- Doğal hizalama ve misaligned erişimlerin desteklenip desteklenmeyeceği henüz açık karardır.
+- **Doğal hizalama zorunludur:** effective address, W/8 byte değerine tam bölünmelidir. W=8 her byte adresinde; W=16 2-byte, W=32 4-byte, W=64 8-byte, W=128 16-byte, W=256 32-byte ve W=512 64-byte hizalamada erişilebilir.
+- İlk ISA sürümünde misaligned LOAD/STORE desteklenmez ve otomatik split erişim yapılmaz; hizalama ihlali `ALIGNMENT_FAULT` üretir. Unaligned erişim ileride gerekiyorsa ayrı bir opcode/mod olarak tasarlanır.
+- `EA + W/8 - 1` 64-bit adres uzayını aşarsa `ADDRESS_OVERFLOW_FAULT`; erişim aralığı seçilen L1/L2/L3/L4 domain sınırını aşarsa `MEMORY_BOUNDS_FAULT` oluşur.
+- Erişim izni yoksa `MEMORY_PERMISSION_FAULT`, geçerli bir erişim hedefi/eşlemesi bulunmuyorsa `MEMORY_ACCESS_FAULT` oluşur. Fault komutu başlatan çekirdeğe senkron olarak raporlanır.
+- LOAD fault olduğunda hedef DA kayıtları değişmeden kalır. STORE, tüm aralığın sınır ve izin kontrolleri tamamlanmadan commit edilmez; bu kontrollerden biri başarısızsa hiçbir byte yazılmaz.
+- 128/256/512-bit erişim tek mimari komuttur; mikro-mimari bunu çoklu beat ile gerçekleştirebilir. Bu durum başka çekirdeklerin eşzamanlı erişimlerine karşı atomicity sağlamaz; gerekli senkronizasyon ayrıca yapılır.
 
 Örnekler (W ve AM alanları semboliktir; gerçek opcode değerleri henüz atanmadı):
 
