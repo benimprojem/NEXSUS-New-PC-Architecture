@@ -707,7 +707,7 @@ Bu eşleme, FENCE SCOPE alanındaki L1–L4 sıralamasının iki bitlik karşıl
 
 - Üç opcode da FMT=1101 (MEMXFER) kullanır. FMT uyumsuzluğu veya zorunlu sıfır alanlarının sıfır olmaması illegal encoding'dir.
 - DRA ve SRA, byte adresi tutan 64-bit RA kayıtlarını seçer. LRA, unsigned byte uzunluğunu tutan 64-bit RA kaydını seçer.
-- XFER.START, başlatılan aktarımın çekirdek-yerel token değerini TRA'nın seçtiği RA'ya yazar. XFER.WAIT aynı selector alanıyla token değerini okur. Token başka çekirdekte kullanılamaz.
+- XFER.START, başlatılan aktarımın çekirdek-yerel, opak 64-bit token değerini TRA'nın seçtiği RA'ya yazar. XFER.WAIT aynı selector alanıyla token değerini okur. Token başka çekirdekte kullanılamaz. Token'ın iç gösterimi implementation-defined'dır; slot yeniden kullanıldığında generation/sequence koruması eski token kopyalarının yeni bir aktarımı yanlışlıkla tanımasını engellemelidir.
 - **Sıfır uzunluk:** LRA'nın gösterdiği uzunluk 0 ise XFER.MEM bellek erişimi yapmadan başarılı no-op olarak tamamlanır. XFER.START da bellek erişimi başlatmadan tamamlanmış bir token üretir; takip eden XFER.WAIT hemen tamamlanır. Bu durumda adres aralıklarına yönelik bellek erişim/permission kontrolleri yapılmaz; komut biçimi, domain selector ve RA selector geçerliliği yine denetlenir.
 - **RA aliasing:** Komutun ihtiyaç duyduğu bütün kaynak RA değerleri, herhangi bir hedef RA yazılmadan önce snapshot edilir. Bu nedenle START'ta TRA'nın DRA, SRA veya LRA ile aynı RA selector'ını kullanması geçerlidir; token yazımı yalnızca snapshot tamamlandıktan sonra yapılır. WAIT'ta TRA hem token kaynağı hem de başarılı tamamlanma sonrası sıfırlanan hedeftir.
 - **Token yaşam döngüsü:** Token başlatan çekirdeğe ve tek bir kabul edilmiş transfere bağlıdır. Başarılı WAIT token'ı tüketir ve TRA'nın gösterdiği RA'yı 0 yapar. Aynı token ile ikinci WAIT illegal-token fault üretir. Token, başka çekirdekte kullanılamaz.
@@ -729,6 +729,8 @@ Bu eşleme, FENCE SCOPE alanındaki L1–L4 sıralamasının iki bitlik karşıl
 | START validation failure | Nonzero transfer, either endpoint denied/invalid | Synchronous fault at START; no transfer accepted; TRA unchanged |
 | WAIT success | Valid pending or already-completed token | Wait until completion, consume token, write zero to TRA |
 | WAIT reuse | Token already consumed or invalid | Illegal-token fault; no memory effect |
+| Stale token after slot reuse | An old token value is presented after its former slot has been reused | Illegal-token fault; generation/sequence protection prevents ABA aliasing |
+| Cross-core token | Token is presented on a core other than its creator | Illegal-token fault; no transfer authority |
 | Async runtime failure | Accepted transfer fails before completion | WAIT raises transfer fault; token retired; faulting TRA write does not commit; target invalid |
 | Sync runtime failure | XFER.MEM fails during transfer | Fault reported at XFER.MEM; partial physical writes may remain, but the entire destination is invalid/unpublished |
 | Async runtime failure | Accepted START later fails | WAIT reports the underlying transfer fault; token is retired; TRA write does not commit; destination remains invalid/unpublished |
