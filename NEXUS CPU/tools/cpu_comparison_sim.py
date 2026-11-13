@@ -401,9 +401,9 @@ def main():
     for result in profiles.values():
         print(f"{result['cpu'][:48]:48} {result['total_cycles']:12d} {result['total_ops']:10d} "
               f"{result['aggregate_ipc']:8.3f} {result['time_ms_at_configured_clock']:12.6f}")
-    print("\\nPER-KERNEL BREAKDOWN")
+    print("\nPER-KERNEL BREAKDOWN")
     for key, result in profiles.items():
-        print(f"\\n[{result['cpu']}]")
+        print(f"\n[{result['cpu']}]")
         print(f"{'kernel':22} {'cycles':>10} {'ops':>9} {'IPC':>8} {'cores':>7} {'DRAM':>8}")
         for name, kernel in result["kernels"].items():
             print(f"{name:22} {kernel['cycles']:10d} {kernel['ops']:9d} "
