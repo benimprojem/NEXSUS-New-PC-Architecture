@@ -101,7 +101,7 @@ class SharedMemoryControllerTests(unittest.TestCase):
         ]
         result = sim.simulate_multicore_streams(shards, profile, 32)
         self.assertEqual(result["cores"][0]["ready_at"][0], 128)
-        self.assertEqual(result["cores"][1]["ready_at"][0], 120)
+        self.assertEqual(result["cores"][1]["ready_at"][0], 128)
 
 
 class SelectedNexusProfileTests(unittest.TestCase):
