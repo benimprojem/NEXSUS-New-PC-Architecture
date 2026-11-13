@@ -947,6 +947,57 @@ def run_p0_capacity_sweep(workloads, profile_dict, capacities_kb=(4, 8, 16, 32),
     }
 
 
+def run_fetch_latency_sweep(workloads, conventional_latencies=(8, 16, 24, 32),
+                            p0_latencies=(4, 8, 12, 16), p0_capacity_kb=16):
+    """Compare reference I-cache refill assumptions with NEXSUS P0 refill assumptions."""
+    target = {"p0_starvation": workloads["p0_starvation"]}
+    rows = {"amd_9950x": {}, "intel_285k_p": {}, "intel_285k_e": {},
+            "nexus_conventional": {}, "nexus_p0": {}}
+    for key in ("amd_9950x", "intel_285k_p", "intel_285k_e"):
+        for latency in conventional_latencies:
+            run = simulate_cpu(target, PROFILES[key], 8,
+                               {"conventional_refill_latency": latency})
+            kernel = run["kernels"]["p0_starvation"]
+            rows[key][str(latency)] = {
+                "refill_latency_cycles": latency, "cycles": kernel["cycles"],
+                "ops": kernel["ops"], "fetch": kernel["p0_counters"],
+            }
+    for latency in conventional_latencies:
+        run = simulate_cpu(
+            target, PROFILES["nexus_balanced_128"], 8,
+            {"spm": True, "p0": False, "conventional_refill_latency": latency},
+        )
+        kernel = run["kernels"]["p0_starvation"]
+        rows["nexus_conventional"][str(latency)] = {
+            "refill_latency_cycles": latency, "cycles": kernel["cycles"],
+            "ops": kernel["ops"], "fetch": kernel["p0_counters"],
+        }
+    for latency in p0_latencies:
+        run = simulate_cpu(
+            target, PROFILES["nexus_balanced_128"], 8,
+            {"spm": True, "p0": True, "p0_capacity_kb": p0_capacity_kb,
+             "p0_refill_latency": latency},
+        )
+        kernel = run["kernels"]["p0_starvation"]
+        rows["nexus_p0"][str(latency)] = {
+            "refill_latency_cycles": latency, "capacity_kb": p0_capacity_kb,
+            "cycles": kernel["cycles"], "ops": kernel["ops"],
+            "fetch": kernel["p0_counters"],
+        }
+    counts = {row["ops"] for group in rows.values() for row in group.values()}
+    if len(counts) != 1:
+        raise AssertionError(f"fetch sweep changed operation count: {counts}")
+    return {
+        "experiment": "Conventional instruction-cache vs NEXSUS P0 refill sensitivity",
+        "cores": 8, "kernel": "p0_starvation",
+        "operations_per_run": next(iter(counts)),
+        "conventional_capacity_kb": 32,
+        "p0_capacity_kb": p0_capacity_kb,
+        "assumptions": "Only refill latency varies within each path; same 16 KiB command working-set trace and operation count.",
+        "results": rows,
+    }
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--scale", type=int, default=1)
@@ -956,8 +1007,19 @@ def main():
     ap.add_argument("--p0-capacity-kb", type=int, default=8, help="NEXSUS P0 capacity in KiB")
     ap.add_argument("--p0-refill-cycles", type=int, default=8, help="provisional P0 refill latency")
     ap.add_argument("--p0-sweep", action="store_true", help="run 4/8/16/32 KiB P0 capacity sweep")
+    ap.add_argument("--fetch-sweep", action="store_true", help="compare conventional I-cache and P0 refill latency sensitivity")
     args = ap.parse_args()
     workloads = build_composite_workload(args.scale)
+    if args.fetch_sweep:
+        result = run_fetch_latency_sweep(workloads)
+        if args.json:
+            print(json.dumps(result, indent=2))
+        else:
+            print("INSTRUCTION FETCH REFILL SENSITIVITY — PROVISIONAL MODEL")
+            for profile, rows in result["results"].items():
+                for row in rows.values():
+                    print(f'{profile:20} refill={row["refill_latency_cycles"]:>2} cycles={row["cycles"]} ops={row["ops"]}')
+        return
     if args.p0_sweep:
         result = run_p0_capacity_sweep(workloads, PROFILES["nexus_balanced_128"],
                                         refill_latency=args.p0_refill_cycles)
