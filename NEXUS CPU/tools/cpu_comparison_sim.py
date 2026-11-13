@@ -425,8 +425,16 @@ def partition_dependency_components(ops: List[Op], core_count: int) -> List[List
     return shards
 
 def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=None) -> dict:
-    p = profile_from_dict(profile_dict)
-    cores = core_count or p.core_count
+    cores = core_count or profile_dict.get("core_count", 1)
+    # Profile bandwidth is a chip-wide aggregate ceiling. Until the simulator
+    # has a lockstep global controller, divide it into a conservative fixed
+    # per-core share so N independent core simulations cannot each consume
+    # the full chip-wide bandwidth.
+    core_profile_dict = dict(profile_dict)
+    aggregate_dram_bandwidth = int(profile_dict.get("dram_bytes_per_cycle", 32))
+    per_core_dram_bandwidth = max(1, aggregate_dram_bandwidth // max(1, cores))
+    core_profile_dict["dram_bytes_per_cycle"] = per_core_dram_bandwidth
+    p = profile_from_dict(core_profile_dict)
     results = {}
     for name, ops in workloads.items():
         shards = partition_dependency_components(ops, cores)
@@ -447,12 +455,12 @@ def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=N
             "cache_accesses": cache_totals,
             "stall_counters": {k: sum(x["stall_counters"][k] for x in per_core)
                                for k in per_core[0]["stall_counters"]} if per_core else {},
-            "parallel_model": "dependency-component multicore; private caches; shared-memory contention not yet modeled"
+            "parallel_model": "dependency-component multicore; private caches/banks; static equal-share DRAM bandwidth cap; global bank arbitration not yet modeled"
         }
     total_cycles = sum(v["cycles"] for v in results.values())
     total_ops = sum(v["ops"] for v in results.values())
     return {"cpu": p.name, "cores_configured": cores, "clock_ghz": p.frequency_ghz,
-            "cpu_ram_reference_clock_ghz": p.frequency_ghz,
+            "cpu_ram_reference_clock_ghz": p.frequency_ghz,\n            "aggregate_dram_bytes_per_cycle": aggregate_dram_bandwidth,\n            "per_core_dram_bytes_per_cycle": per_core_dram_bandwidth,\n            "dram_bandwidth_policy": "static equal share across configured cores; not work-conserving",
             "kernels": results, "total_cycles": total_cycles, "total_ops": total_ops,
             "aggregate_ipc": round(total_ops/max(1,total_cycles),3),
             "time_ms_at_configured_clock": round(total_cycles/(p.frequency_ghz*1e6),6)}
@@ -472,9 +480,9 @@ def main():
     if args.json:
         print(json.dumps(profiles, indent=2))
         return
-    print("NEXSUS CPU COMPOSITE WORKLOAD — CONTROLLED 8-CORE MODEL v0.2.2")
-    print("All targets: 8 cores, 3.0 GHz CPU/reference-memory clock, same DRAM latency/bandwidth assumptions.")
-    print("Parallelism: dependency components distributed across cores; shared inter-core memory contention remains a known limitation.")
+    print("NEXSUS CPU COMPOSITE WORKLOAD — CONTROLLED 8-CORE MODEL v0.2.3")
+    print("All targets: 8 cores, 3.0 GHz reference clock, 120-cycle DRAM latency, 32 B/cycle chip-wide DRAM ceiling (4 B/cycle/core static share).")
+    print("Parallelism: dependency components distributed across cores; fixed aggregate bandwidth cap applied, but global bank arbitration/shared queues remain unmodeled.")
     print(f"{'CPU profile':48} {'cycles':>12} {'ops':>10} {'IPC':>8} {'time ms*':>12}")
     for result in profiles.values():
         print(f"{result['cpu'][:48]:48} {result['total_cycles']:12d} {result['total_ops']:10d} "
