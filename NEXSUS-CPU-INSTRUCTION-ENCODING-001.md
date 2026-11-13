@@ -577,6 +577,6 @@ Aşağıdaki örnekler gerçek hexadecimal makine kodu değildir; opcode değerl
 - LOAD/STORE erişim genişliği ve DA grup dağılımı: 8–512 bit; 1/2/4/8 ardışık DA kaydı.
 - Branch displacement: **signed 32 bit**.
 - Geniş literal: EXT prefix + normal komut + COUNT adet **64-bit literal word**; ilk sürüm COUNT=1.
-- P0: 64-bit word kayıtları; iki word'lü komutlar iki P0 kaydı tüketir.
+- P0: 64-bit word kayıtları; EXT paketleri prefix, normal instruction ve COUNT kadar literal word tüketir.
 
 Bu belge, NEXSUS CPU instruction encoding için ilk ortak referanstır. Sayısal opcode değerleri ve açık kararlar kapatıldığında revizyon 1.0 olarak dondurulabilir.
