@@ -633,7 +633,7 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
                 stalls["execution_unit_blocked_op_cycles"] += 1
                 continue
             vector_factor = (max(1, math.ceil(op.width * 8 / p.vector_bits))
-                             if kind == "VEC" else 1)
+                             if kind == "VEC" or (kind == "ME512" and exec_kind == "VEC") else 1)
             latency = p.latency.get(exec_kind, 1) * vector_factor
             if kind in ("LOAD", "STORE"):
                 mem_lat, level = cache.access(op.address)
@@ -880,7 +880,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                         st["hits"][level] += 1
                 item = {"core": core_id, "seq": seq, "slot": slot,
                         "latency": max(p.latency.get(exec_kind, 1) *
-                                       (max(1, math.ceil(op.width * 8 / p.vector_bits)) if op.kind == "VEC" else 1),
+                                       (max(1, math.ceil(op.width * 8 / p.vector_bits)) if op.kind == "VEC" or (op.kind == "ME512" and exec_kind == "VEC") else 1),
                                        mem_lat),
                         "level": level}
                 if level == "DRAM":
