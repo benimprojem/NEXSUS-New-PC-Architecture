@@ -355,3 +355,10 @@ class WorkloadPartitionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class TestNexusMemoryBandwidthRevision(unittest.TestCase):
+    def test_nexus_has_double_reference_dram_bandwidth(self):
+        self.assertEqual(sim.PROFILES["nexus_balanced_128"]["dram_bytes_per_cycle"], 64)
+        for key in ("amd_9950x", "intel_285k_p", "intel_285k_e"):
+            self.assertEqual(sim.PROFILES[key]["dram_bytes_per_cycle"], 32)
