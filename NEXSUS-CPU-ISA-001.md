@@ -122,6 +122,7 @@ LOAD ve STORE veri belleği ile DA bankı arasında çalışır. Bellek domain'i
 |---|---|---|---|
 | LOAD.L1 / LOAD.L2 / LOAD.L3 / LOAD.L4 | DA, [addr] | Seçilen veri domain'inden DA register grubuna ham bit okuma | Load/store |
 | STORE.L1 / STORE.L2 / STORE.L3 / STORE.L4 | [addr], DA | DA register grubundan seçilen veri domain'ine ham bit yazma | Load/store |
+| LOAD/STORE.POSTINC / PREINC / POSTDEC / PREDEC | DA, [base+offset] | Bellek erişimiyle birlikte RA taban register'ını W/8 kadar otomatik güncelleme | Load/store |
 | LEA | RA, [base+offset] | Adres hesaplama | ALU |
 | MOV.RA.DA | RA, DA | DA'dan integer/scalar registera açık 64-bit bit aktarımı | Register path |
 | MOV.RA.DA.SX / MOV.RA.DA.ZX | RA, DA, W=8/16/32 | DA düşük W bitini RA'nın tam 64-bit değerine signed / zero-extend ederek aktarır | Register path |
@@ -233,6 +234,52 @@ STORE.L1 [RA21 + 0], DA04
 Bu örnek operand banklarını ve açık transferleri gösterir; kesin opcode encoding'i, erişim genişlikleri ve alignment kuralları ayrı ISA aşamasında sabitlenecektir.
 
 Memory adres genişliği 64-bit olabilir; register selector genişlikleri bundan bağımsızdır.
+
+### 5.4 Otomatik adres güncelleme — PRE/POST increment ve decrement
+
+Ardışık bellek elemanlarını işlerken taban adresini ayrıca ADD/ADDI ile güncelleme zorunluluğunu azaltmak için LOAD/STORE ailesinin otomatik adres güncelleyen biçimleri tanımlanır. Bunlar mevcut MEM/MEMX kodlamalarını değiştirmez; ayrı MEMUPD ve MEMXUPD formatlarını kullanır.
+
+| Assembly biçimi | Format | Davranış |
+|---|---|---|
+| LOAD/STORE.POSTINC | MEMUPD veya MEMXUPD | Eski taban adresini kullanır; başarılı erişimden sonra BASE += W/8 |
+| LOAD/STORE.PREINC | MEMUPD veya MEMXUPD | BASE += W/8 değerini erişim adresinde kullanır |
+| LOAD/STORE.POSTDEC | MEMUPD veya MEMXUPD | Eski taban adresini kullanır; başarılı erişimden sonra BASE -= W/8 |
+| LOAD/STORE.PREDEC | MEMUPD veya MEMXUPD | BASE -= W/8 değerini erişim adresinde kullanır |
+
+**Güncelleme miktarı**
+- Güncelleme miktarı erişim genişliğinin byte karşılığıdır: W8=1, W16=2, W32=4, W64=8, W128=16, W256=32, W512=64 byte.
+- Bu kural ardışık eleman dizilerinde doğal stride sağlar. Farklı stride (ör. 12-byte struct) gerektiğinde RA taban register'ı ayrı ADD/ADDI komutuyla güncellenir.
+- MEMUPD, MEM'in base + displacement adreslemesini kullanır. MEMXUPD, MEMX'in base + index × scale + displacement adreslemesini kullanır. INDEX signed 64-bit RA değeridir; SCALE yalnızca INDEX terimine uygulanır.
+- PRE/POST, displacement veya indeksin anlamını değiştirmez. POST modunda effective address eski BASE üzerinden; PRE modunda effective address güncellenmiş BASE üzerinden hesaplanır.
+- MEMUPD/MEMXUPD'de AM[0]=0 zorunludur; absolute addressing desteklenmez. Büyük displacement gerektiğinde EXT RAW_LITERAL/COUNT=1 kullanılır ve formatın DISP alanı sıfır kodlanır.
+
+**Fault ve commit garantisi**
+- LOAD/STORE ve BASE güncellemesi tek bir mimari işlem olarak commit edilir.
+- Alignment, bounds, permission, mapping/access veya adres taşması fault'unda BASE register'ı değişmeden kalır.
+- Faulting LOAD hedef DA kayıtlarını değiştirmez. Faulting STORE hiçbir byte yazmaz.
+- POST modunda bellek erişimi başarılı olsa bile yeni BASE değeri 64-bit adres aralığının dışına çıkacaksa komut fault verir ve erişim ile update commit edilmez.
+- PRE modunda BASE'in güncellenmiş değeri veya effective address hesaplaması taşarsa aynı şekilde fault oluşur.
+- MEM/MEMX ile aynı doğal hizalama, DA aralığı, domain ve bellek erişim kuralları geçerlidir.
+- MEMXUPD'de BASE ve INDEX aynı RA selector'ı olabilir. Bütün adres operandları komut başlangıcındaki eski register değerlerinden okunur; PRE update yalnızca BASE terimini değiştirir.
+
+**Örnekler**
+
+```asm
+; ardışık 64-bit dizi okuma: her adımda RA10 sekiz byte ilerler
+LOAD.POSTINC.L1.W64 DA0, [RA10]
+LOAD.POSTINC.L1.W64 DA1, [RA10]
+
+; önce 16 byte geri git, sonra 128-bit oku
+LOAD.PREDEC.L2.W128 DA4:DA5, [RA12]
+
+; indexed erişim + otomatik base update
+LOAD.POSTINC.L1.W64 DA2, [RA4 + RA5*2 + 8]
+
+; STORE da aynı update semantiğini kullanır
+STORE.POSTINC.L3.W256 [RA20], DA8:DA11
+```
+
+POSTINC/PREINC/POSTDEC/PREDEC, assembler mnemonic suffix'leridir. Sayısal opcode ataması yapılmamıştır; encoding alan yerleşimi `NEXSUS-CPU-INSTRUCTION-ENCODING-001.md` içinde MEMUPD/MEMXUPD olarak tanımlanır.
 
 ## 6. SPM komutları
 
