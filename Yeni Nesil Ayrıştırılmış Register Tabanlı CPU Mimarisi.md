@@ -30,18 +30,18 @@ Temel yapı:
               │       Decode          │
               └───────┬───────┬───────┘
                       │       │
-                Scalar Path   Vector/Matrix Path
+                 Integer Path  FP Path  Vector/Matrix Path
                       │       │
               ┌───────▼───┐ ┌─▼────────────┐
-              │ RA00-RA31 │ │ MA00-MA31    │
-              │ 64 × 64b  │ │ 32 × 256b   │
-              └───────┬───┘ └──────┬───────┘
-                      │            │
-                   Scalar ALU   Matrix/Vector ALU
-                      │            │
-              ┌───────▼───┐        │
-              │ DA00-DA31 │◄───────┘
-              │ 64 × 64b  │
+               │ RA00-RA31 │ │ FA00-FA31 │ │ MA00-MA31 │
+               │ 32 × 64b  │ │ 32 × 64b  │ │ 32 × 256b│
+               └───────┬───┘ └────┬─────┘ └──────┬───────┘
+                       │          │              │
+                    Integer ALU  FPU        Matrix/Vector ALU
+                       │          │              │
+               ┌───────▼──────────▼──────────────▼──┐
+               │             DA00-DA31              │
+               │               32 × 64b            │
               └───────┬───┘
                       │
                  Load / Store
@@ -253,7 +253,7 @@ DA31
 Toplam:
 
 $$\[
-64 \times 64 = 4096\text{ bit}
+32 \times 64 = 2048\text{ bit}
 \]$$
 
 kapasiteye sahiptir.
@@ -528,8 +528,9 @@ Buna karşılık external memory adresleme 64-bit olabilir.
 ```text
 CPU INTERNAL
 ─────────────
-RA selector → 6 bit
-DA selector → 6 bit
+RA selector → 5 bit
+FA selector → 5 bit
+DA selector → 5 bit
 MA selector → 5 bit
 
 EXTERNAL MEMORY
@@ -711,23 +712,17 @@ CPU'nun temel register alanı:
 
 ```text
 ┌──────────────────────────────────────────┐
+┌──────────────────────────────────────────┐
 │              REGISTER FILE               │
 ├──────────────────────────────────────────┤
-│                                          │
-│  RA BANK                                 │
-│  64 × 64 bit                             │
-│                                          │
+│ RA BANK       32 × 64 bit                │
 ├──────────────────────────────────────────┤
-│                                          │
-│  DA BANK                                 │
-│  64 × 64 bit                             │
-│                                          │
+│ FA BANK       32 × 64 bit                │
 ├──────────────────────────────────────────┤
-│                                          │
-│  MA BANK                                 │
-│  32 × 256 bit                            │
-│  Variable element width                  │
-│                                          │
+│ DA BANK       32 × 64 bit                │
+├──────────────────────────────────────────┤
+│ MA BANK       32 × 256 bit               │
+│               Variable element width     │
 └──────────────────────────────────────────┘
 ```
 
@@ -735,35 +730,25 @@ Toplam fiziksel register kapasitesi:
 
 RA:
 
-$$\[
-64\times64=4096\text{ bit}
-\]$$
+32 × 64 = 2048 bit = 256 byte
+
+FA:
+
+32 × 64 = 2048 bit = 256 byte
 
 DA:
 
-\[
-64\times64=4096\text{ bit}
-\]
+32 × 64 = 2048 bit = 256 byte
 
 MA:
 
-$$\[
-32\times256=8192\text{ bit}
-\]$$
+32 × 256 = 8192 bit = 1024 byte
 
 Toplam:
 
-$$\[
-4096+4096+8192=16384\text{ bit}
-\]$$
+2048 + 2048 + 2048 + 8192 = 14336 bit
 
-yani:
-
-$$\[
-\boxed{2048\text{ byte}=2\text{ KiB}}
-\]$$
-
-register storage bulunur.
+1792 byte = 1.75 KiB register storage bulunur.
 
 Bu değer yalnızca register file kapasitesidir; cache, local buffer, pipeline registerları ve diğer mikro-mimari depolama alanları buna dahil değildir.
 
@@ -940,7 +925,7 @@ Genel sistem şu şekilde özetlenebilir:
                             │        │        │
                             ▼        ▼        ▼
                        ┌────────┐ ┌────────┐ ┌────────────┐
-                       │RA00-63 │ │DA00-63 │ │ MA00-31    │
+                       │RA00-31 │ │DA00-31 │ │ MA00-31    │
                        │64×64b  │ │64×64b  │ │32×256b     │
                        └────┬───┘ └────┬───┘ └─────┬──────┘
                             │           │            │
