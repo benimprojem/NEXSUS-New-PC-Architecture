@@ -19,7 +19,7 @@ class BandwidthPolicyTests(unittest.TestCase):
                 )
 
     def test_vendor_profiles_use_same_chip_wide_bandwidth_ceiling(self):
-        expected = {"amd_9950x3d2": 32, "intel_xeon_698x": 160,
+        expected = {"amd_9950x3d2": 21, "intel_xeon_698x": 160,
                     "apple_m6": 48, "nexus_balanced_128": 64}
         for key, bandwidth in expected.items():
             with self.subTest(profile=key):
@@ -345,6 +345,39 @@ class FourWayAblationTests(unittest.TestCase):
         self.assertEqual({v["total_ops"] for v in result["variants"].values()}, {64})
 
 
+
+class BranchPredictionTests(unittest.TestCase):
+    def test_compact_predictor_reduces_predictable_control_branch_misses(self):
+        ops = [sim.Op(i, "BR", label="control branch") for i in range(1000)]
+        no_predictor = sum(sim.branch_mispredict(op, i + 1, "none") for i, op in enumerate(ops))
+        compact = sum(sim.branch_mispredict(op, i + 1, "small_2bit") for i, op in enumerate(ops))
+        self.assertLess(compact, no_predictor)
+
+    def test_unpredictable_branch_stream_does_not_get_artificial_predictor_gain(self):
+        ops = [sim.Op(i, "BR", label="independent branch stress") for i in range(1000)]
+        no_predictor = sum(sim.branch_mispredict(op, i + 1, "none") for i, op in enumerate(ops))
+        compact = sum(sim.branch_mispredict(op, i + 1, "small_2bit") for i, op in enumerate(ops))
+        self.assertEqual(compact, no_predictor)
+
+    def test_nexus_profile_selects_compact_predictor_candidate(self):
+        self.assertEqual(sim.PROFILES["nexus_balanced_128"]["branch_predictor"], "small_2bit")
+
+
+class ME512WorkloadTests(unittest.TestCase):
+    def test_me512_workload_retires_on_all_architectures(self):
+        workload = {"me512": [
+            sim.Op(0, "LOAD", address=0x1000, width=64),
+            sim.Op(1, "LOAD", address=0x2000, width=64),
+            sim.Op(2, "ME512", deps=(0, 1), label="ME512 512-bit tile operation"),
+            sim.Op(3, "STORE", deps=(2,), address=0x3000, width=64),
+        ]}
+        for key in ("amd_9950x3d2", "intel_xeon_698x", "apple_m6", "nexus_balanced_128"):
+            with self.subTest(profile=key):
+                result = sim.simulate_cpu(workload, sim.PROFILES[key])
+                self.assertEqual(result["kernels"]["me512"]["ops"], 4)
+                self.assertEqual(result["kernels"]["me512"]["cycles"] > 0, True)
+        self.assertIn("ME512", sim.PROFILES["nexus_balanced_128"]["units"])
+
 class WorkloadPartitionTests(unittest.TestCase):
     def test_partition_preserves_operation_count_and_dependencies(self):
         workloads = sim.build_composite_workload(scale=1)
@@ -364,5 +397,5 @@ if __name__ == "__main__":
 class TestNexusMemoryBandwidthRevision(unittest.TestCase):
     def test_nexus_has_double_reference_dram_bandwidth(self):
         self.assertEqual(sim.PROFILES["nexus_balanced_128"]["dram_bytes_per_cycle"], 64)
-        for key, expected in (("amd_9950x3d2", 32), ("intel_xeon_698x", 160), ("apple_m6", 48)):
+        for key, expected in (("amd_9950x3d2", 21), ("intel_xeon_698x", 160), ("apple_m6", 48)):
             self.assertEqual(sim.PROFILES[key]["dram_bytes_per_cycle"], expected)
