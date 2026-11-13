@@ -140,3 +140,16 @@ Exact CSR IDs will be allocated in the CSR map after field semantics are frozen.
 **Baseline selected:** minimal hardware frame + 8-entry core-local ECS + software bank-selective spill + privileged per-core exception stack + dedicated double-fault record.
 
 **Still to specify:** exact stack CSR encoding/bounds model; frame integrity mechanism; nested same-privilege stack frame ABI; whether ECS depth may be 16+ in high-end cores; FP/vector lazy-state ownership; exact IRET validation/error behavior; reset/debug interactions.
+
+
+## 13. Exception-entry scratch window
+
+A handler must be able to preserve a live RA register before using it to calculate the spill-frame address. To avoid the classic scratch-register bootstrap problem, each ECS slot has four 64-bit **exception scratch registers** (ESCR0–ESCR3), physically stored in the slot's reserved area.
+
+- ESCR0–ESCR3 are visible only to privileged handler code through CSRR/CSRW.
+- On entry, the active scratch window is selected by the current ECS top; nested entry selects a different slot/window and does not overwrite the outer handler's scratch values.
+- They are not part of the normal RA bank and are not visible to PL0.
+- They are temporary bootstrap storage only; handlers must not use them as persistent local variables across nested calls unless saved in their software frame.
+- IRET discards the current slot's scratch contents when popping that frame.
+
+This small per-depth scratch window lets the first handler instructions preserve any normal register they need before touching the privileged stack. It avoids reserving ordinary RA registers globally and avoids automatically spilling all four register banks.
