@@ -715,6 +715,19 @@ W alanının yorumu opcode ailesine bağlıdır. Örneğin FADD için W=010 FP32
 - Bu grup hizalama kuralları yalnızca XFER ile tam MA register/pair aktarımı içindir. MEM LOAD/STORE için DA selector hizalaması gerektirilmez; orada yalnızca DA31 sınırı kontrol edilir.
 - 128-bit ve daha küçük scalar/register transferleri bu MA grup kuralına tabi değildir.
 
+### 6.4 Vector lane encoding
+
+- VADD/VSUB/VMUL/VAND/VOR/VXOR/VSHL/VSHR ve vector compare komutları R3 kullanır; D/A/B alanları MA selector'larıdır.
+- VMACC R4 kullanır; D/A/B/C alanları MA selector'larıdır. D accumulator/result register'ıdır; A/B çarpılan lane kaynakları, C accumulator kaynağıdır.
+- Vector lane genişliği W alanında kodlanır: W=000/001/010/011/100/101 sırasıyla 8/16/32/64/128/256-bit lane demektir. Bir MA register'ındaki lane sayısı 256/W'dir.
+- W=110, normal 256-bit MA vector komutlarında lane genişliği olarak kullanılmaz; 512-bit aggregate/pair komutlarına ayrılmıştır.
+- Signed/unsigned karşılaştırma ve bölme varyantları opcode/mnemonic varyantıyla seçilir; register alanlarının yorumu değişmez.
+- Vector compare komutlarında D hedef MA, A/B kaynak MA'dır. Sonuç her lane için all-ones/zero mask olarak yazılır.
+- Vector bitwise VAND/VOR/VXOR, W alanından bağımsız olarak 256-bit MA register'ının tüm bitlerine uygulanır; assembler W alanını 256-bit (101) kodlar.
+- Vector shift komutlarında A kaynak, B lane başına shift-count kaynağıdır; count her lane'in düşük log2(W) bitlerinden değil, lane değerinin düşük bitlerinden alınır ve count >= W ise sonuç sıfırdır.
+- Numeric opcode değerleri henüz atanmadı; opcode-family haritası yalnızca önerilen aralıkları gösterir.
+
+
 ## 7. EXT prefix ve literal genişletme
 
 EXT, bağımsız bir işlem veya hedef opcode'u taşıyan alternatif komut formatı değildir. Normal bir komutun önüne gelen **genişletme prefix'idir**. Bu yaklaşım, aynı literal taşıma mekanizmasının farklı opcode ailelerinde kullanılmasını sağlar.
