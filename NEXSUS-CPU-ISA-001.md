@@ -184,7 +184,18 @@ LOAD.L4.W512 DA16:DA23, [RA18 + 64]
 
 STORE.L1.W32 [RA20 + 4], DA2
 STORE.L3.W256 [RA22 + 0], DA12:DA15
+
+; EXT + MEM: signed 64-bit displacement
+LOAD.L1.W64 DA4, [RA10 + disp64(-0x123456789)]
+STORE.L2.W128 [RA12 + disp64(0x100000000)], DA8:DA9
+
+; EXT + MEM: absolute unsigned 64-bit domain address
+LOAD.L3.W256 DA12:DA15, [abs64(0x123456789ABCDEF0)]
+STORE.L4.W512 [abs64(0x0000001200004000)], DA16:DA23
 ~~~
+
+- `disp64(value)` ve `abs64(value)` assembler gösterimleridir; ISA mnemonic'ine ek yeni operand türü veya opcode eklemez. Assembler bunları sırasıyla AM[0]=0 ve AM[0]=1 EXT paketlerine dönüştürür.
+- EXT displacement signed 64-bit byte offset'tir; absolute literal unsigned 64-bit domain adresidir. Her iki durumda da EXT prefix + MEM word + literal word olmak üzere üç 64-bit word üretilir.
 
 Örnek bank akışı:
 
