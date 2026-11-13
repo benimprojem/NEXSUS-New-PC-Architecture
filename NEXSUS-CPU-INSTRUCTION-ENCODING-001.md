@@ -843,7 +843,7 @@ MOVI64 RA4, 0x123456789ABCDEF0
 LOAD.L1 DA2, [RA4 + 0]
 ```
 
-MOVI64 sembolik assembly gösterimidir; temel MOVI opcode'unun literal destekleyen biçimde EXT ile eşleştiğini ifade eder. Bu örnek henüz numeric opcode ataması yapmaz.
+MOVI64 sembolik assembly gösterimidir; temel MOVI opcode'u 0x10'dur ve literal destekleyen biçimi EXT prefix'iyle eşleşir.
 
 ### 7.5 Decoder ve kontrol akışı kuralları
 
