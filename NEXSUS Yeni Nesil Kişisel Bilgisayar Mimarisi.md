@@ -81,8 +81,8 @@ NEXSUS CPU sistemin genel amaçlı işlem merkezidir.
 Daha önce tanımlanan temel register organizasyonu:
 
 ```text
-RA00–RA63
-DA00–DA63
+RA00–RA31
+DA00–DA31
 MA00–MA31
 ```
 
