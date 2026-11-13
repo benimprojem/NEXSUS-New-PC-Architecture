@@ -559,6 +559,41 @@ MA registerları 256-bit fiziksel genişliktedir. ME512 512-bit yürütme yoludu
 
 `W` element width suffix'i 8/16/32/64/128/256-bit format seçimini ifade eder. Matrix operand shape, tile/packing ve accumulation precision ayrı instruction-format alanları olarak tanımlanacaktır.
 
+### 8.1 Vector register ve lane modeli
+
+- Bir MA register'ı 256 bitlik bir vector operand taşır. Vector komutlarında kaynak ve hedef MA selector'ları bu register'ları gösterir.
+- `W` suffix'i vector lane genişliğidir; 8/16/32/64/128/256 bit değerlerinden birini seçer. Bir MA register'ındaki lane sayısı 256/W'dir.
+- Lane 0, MA register'ının en düşük anlamlı bitlerinden başlar. Artan lane numaraları artan bit aralıklarına karşılık gelir. Bellek ile MA arasında veri hazırlama/çıkarma sırası little-endian DA↔MA aktarım kuralıyla aynıdır.
+- İlk vector aritmetik komut ailesi integer lane işlemleridir. FP vector komutları (VFADD vb.) ayrı opcode ailesi olarak tanımlanmadıkça VADD/VMUL komutları floating-point yorum yapmaz.
+- Vector komutları bütün lane'leri paralel ve bağımsız işler. Bir komutun mimari commit'i tüm hedef MA register'ı içindir; herhangi bir lane fault üretirse hedef register'ın hiçbir lane'i değiştirilmez.
+- 512-bit ME512 yolu, tek MA register'ının 256-bit genişliğini değiştirmez. 512-bit aggregate operand gerektiren komutlar MA pair kullanır; pair başlangıcı çift selector olmalıdır. Bu komutların lane sayısı ve encoding ayrıntısı komut bazında ayrıca belirtilir.
+
+### 8.2 Integer vector arithmetic
+
+- VADD.W ve VSUB.W her lane üzerinde W-bit modulo 2^W toplama/çıkarma yapar. Lane taşması komutu fault'a düşürmez; sonuç ilgili lane genişliğinde wrap-around olur.
+- VMUL.W her lane'de çarpımın düşük W bitini yazar. Genişletilmiş lane sonucu veya high-half çarpım ilk sürümde bu komutun parçası değildir.
+- VMACC.W, her lane için dst_lane = (a_lane × b_lane + acc_lane) mod 2^W hesaplar. İlk sürümde ara çarpımın yüksek bitleri atılır; saturating davranış yoktur.
+- VMIN.SW / VMAX.SW signed two's-complement; VMIN.UW / VMAX.UW unsigned lane sıralaması kullanır. Genel VMIN.W/VMAX.W mnemonic'leri signedness açıkça belirtilmeden kullanılmamalıdır.
+- VAND.W, VOR.W ve VXOR.W her lane üzerinde değil, 256-bit register bit deseninin tamamında bitwise işlem yapar. Lane sınırları sonucu değiştirmez.
+- VSHL.W ve VSHR.W her lane'i bağımsız kaydırır. Her lane'in shift count'u ilgili count operandının aynı lane'indeki düşük bitlerden alınır; count >= W ise sonuç sıfırdır. VSHR mantıksal sağa kaydırmadır. Signed aritmetik sağa kaydırma için VSHR.SW varyantı sign-fill kullanır.
+- VDIV.SW / VDIV.UW ve VMOD.SW / VMOD.UW signed/unsigned lane bölme ve kalan işlemleridir. Herhangi bir lane'de bölen sıfırsa tüm komut DIVIDE_BY_ZERO_FAULT üretir ve hedef MA değişmez. Signed lane minimum değeri / -1 durumu INTEGER_OVERFLOW_FAULT üretir; hedefin hiçbir lane'i commit edilmez.
+- Vector integer komutlarında kaynak operandlar komut başlangıcında snapshot edilir. Hedefin kaynaklardan biriyle aynı MA selector'ı olması geçerlidir.
+
+### 8.3 Vector compare ve predicate mask
+
+- VCMPEQ.W, VCMPNE.W, VCMPLT.SW/UW ve VCMPLE.SW/UW lane başına karşılaştırma yapar.
+- Karşılaştırma sonucu her lane için tüm bitleri 1 (true) veya tüm bitleri 0 (false) olan bir mask lane'idir. Örneğin W32 için true sonucu 0xFFFFFFFF, false sonucu 0x00000000'dır.
+- Karşılaştırma hedefi bir MA register'ıdır; scalar FCMP gibi RA'ya tek bir 0/1 sonucu yazmaz.
+- Mask register'ı sonraki komutlarda bitwise VAND/VOR/VXOR ile seçim ve maskeleme amacıyla kullanılabilir. İlk sürümde ayrı predicate register bankı yoktur.
+- Signed/unsigned karşılaştırma mnemonic'inde açıkça belirtilir; NaN kavramı integer vector komutları için geçerli değildir.
+
+### 8.4 Vector işlem kapsamı ve henüz açık noktalar
+
+- Bu ilk semantik tanım MA başına 256-bit integer vector lane işlemlerini kapsar. 512-bit pair işlem desteği ME512 komutlarının ayrı operand/pair tanımıyla uygulanır.
+- Saturating add/subtract, widening/narrowing, permute/shuffle, gather/scatter, maskeli lane yazımı ve FP vector arithmetic ayrı komutlar olarak tasarlanacaktır; mevcut VADD/VSUB/VMUL davranışına örtük olarak dahil değildir.
+- MMUL/MADD/MTRANS/MREDUCE/MDOT matrix komutlarının tile boyutu, signedness, accumulation hassasiyeti ve sonuç yerleşimi henüz tanımlanmamıştır; bunlar vector lane semantiğinden bağımsız matrix alt bölümünde kapatılacaktır.
+
+
 ## 9. Control-flow komutları
 
 | Mnemonic | Operand | İşlev |
