@@ -110,8 +110,8 @@ SPM0 kayıt-ofsetiyle, SPM1–SPM7 byte-ofsetiyle adreslenir. Bu komut isimleri 
 
 | Mnemonic | Operand | İşlev | Etki |
 |---|---|---|---|
-| SPM.RD | dst, addr | SPM alanından genişliği belirtilen veri okuma | SPM → RA/DA |
-| SPM.WR | addr, src, width | SPM alanına 8–512-bit veri yazma | RA/DA → SPM |
+| SPM.RD | dst, addr | SPM alanından genişliği belirtilen veri okuma | SPM → RA/FA/DA/MA (uygun genişlikte) |
+| SPM.WR | addr, src, width | SPM alanına 8–512-bit veri yazma | RA/FA/DA/MA → SPM (uygun genişlikte) |
 | SPM.GET | dst, addr, width, bit | Alan okuma | SPM → register |
 | SPM.PUT | addr, src, width, bit | Alan güncelleme | Kısmi write |
 | SPM.MASK | addr, mask, value | Maskeli güncelleme | Alan koruma |
@@ -138,7 +138,7 @@ Bu bölümdeki tüm FP kaynak ve hedef operandları FA0–FA31 bankındadır. FP
 | FCMP | a, b | FP karşılaştırma | FPU |
 | FCONV | dst, src, type | FP/integer dönüşüm | FPU / conversion path |
 
-Başlangıç formatları FP32 ve FP64'tür. FP128, FA pair biçimiyle ISA'da desteklenir; gerçek FPU throughput ve latency mikro-mimari doğrulamasına tabidir.
+FCONV, RA'daki integer değeri FA formatına veya FA'daki floating-point değeri RA integer formatına dönüştürür; kaynak/hedef bankı operandlarda açıkça belirtilir. Başlangıç formatları FP32 ve FP64'tür. FP128, FA pair biçimiyle ISA'da desteklenir; gerçek FPU throughput ve latency mikro-mimari doğrulamasına tabidir.
 
 ## 8. Vector ve Matrix komutları
 
