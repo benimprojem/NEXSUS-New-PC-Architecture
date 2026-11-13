@@ -251,14 +251,13 @@ class SpmP0ModelTests(unittest.TestCase):
         self.assertEqual(fetch.p0_pending, (2, 384, 0))
         self.assertEqual(fetch.prefetches, 3)
 
-    def test_p0_capacity_is_smaller_than_conventional_fetch_cache(self):
+    def test_p0_p1_each_hold_8k_while_conventional_cache_is_32k(self):
         p0 = sim.CommandFetchModel(True)
         conventional = sim.CommandFetchModel(False)
-        for line in range(256):
-            p0.lines.insert(line)
-            conventional.lines.insert(line)
-        self.assertFalse(p0.lines.lookup(0))
-        self.assertTrue(conventional.lines.lookup(0))
+        self.assertEqual(p0.capacity_bytes, 16 * 1024)
+        self.assertEqual(p0.p0_buffer_bytes, 8 * 1024)
+        self.assertEqual(conventional.capacity_bytes, 32 * 1024)
+        self.assertEqual(conventional.lines.capacity, 512)
 
     def test_partition_builds_local_sequential_command_streams(self):
         workload = []
@@ -315,7 +314,7 @@ class CrossArchitectureComparisonTests(unittest.TestCase):
             "nexus_conventional", "nexus_p0",
         })
         self.assertEqual(set(sweep["results"]["nexus_conventional"]), {"8", "16", "24", "32"})
-        self.assertEqual(set(sweep["results"]["nexus_p0"]), {"4", "8", "12", "16"})
+        self.assertEqual(set(sweep["results"]["nexus_p0"]), {"64", "96", "128", "160"})
         self.assertTrue(all(row["ops"] == 128
                             for group in sweep["results"].values()
                             for row in group.values()))
