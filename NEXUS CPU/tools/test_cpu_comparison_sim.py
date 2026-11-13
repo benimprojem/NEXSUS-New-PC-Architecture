@@ -262,6 +262,21 @@ class SpmP0ModelTests(unittest.TestCase):
         self.assertEqual(fetch.p0_pending, (2, 144, 0))
         self.assertEqual(fetch.prefetches, 3)
 
+    def test_nonsequential_branch_redirect_can_reuse_active_bank_safely(self):
+        fetch = sim.CommandFetchModel(True)
+        self.assertFalse(fetch.can_fetch(0, 0))
+        fetch.complete(48)
+        self.assertTrue(fetch.can_fetch(0, 48))
+        self.assertFalse(fetch.can_fetch(2048, 49))
+        fetch.complete(96)
+        self.assertTrue(fetch.can_fetch(2048, 96))
+        # Logical page 2 maps to the same ping-pong bank as page 0.
+        self.assertFalse(fetch.can_fetch(4096, 97, sequential=False))
+        self.assertEqual(fetch.p0_pending, (2, 145, 0))
+        fetch.complete(145)
+        self.assertTrue(fetch.can_fetch(4096, 145))
+        self.assertEqual(fetch.active_block, 2)
+
     def test_px_pool_has_eight_2k_slots_and_spm0_has_two_2k_banks(self):
         p0 = sim.CommandFetchModel(True)
         conventional = sim.CommandFetchModel(False)
