@@ -189,7 +189,70 @@ Effective address:
 
 Register bankları arası aktarım bit kopyalama/paketleme işlemidir; integer↔float sayısal dönüşümü değildir. Sayısal dönüşüm FCONV gibi ayrı bir execution opcode'udur.
 
-### 4.6 BR — PC-relative branch
+### 4.6 XFER tabanlı sayısal dönüşüm — FCONV
+
+FCONV bit kopyalama yapmaz; kaynak sayısal değeri hedef türüne dönüştürür. XFER alan yerleşimini kullanır, ancak ayrı opcode ve dönüşüm alt alanlarına sahiptir.
+
+**Bank kuralları**
+- Kaynak ve hedef bank yalnızca RA veya FA olabilir.
+- RA → FA: signed/unsigned integer'dan floating-point'e dönüşüm.
+- FA → RA: floating-point'ten signed/unsigned integer'a dönüşüm.
+- RA → RA ve FA → FA bu ilk FCONV tanımında geçersizdir.
+- DB/DI hedef bank/selector'ını, SB/SI kaynak bank/selector'ını gösterir.
+
+**XFER payload alanlarının FCONV yorumu**
+
+| Alan | FCONV anlamı |
+|---|---|
+| DB / DI | Hedef bank ve register |
+| SB / SI | Kaynak bank ve register |
+| W | Hedef türün bit genişliği |
+| M | Dönüşüm alt işlemi; yalnızca `000 = NUMERIC_CONVERT` |
+| AUX[31:27] | SRC_TYPE (5 bit) |
+| AUX[26:22] | DST_TYPE (5 bit) |
+| AUX[21:19] | ROUND (3 bit) |
+| AUX[18:16] | CONV_FLAGS (3 bit) |
+| AUX[15:0] | RESERVED; sıfır |
+
+Tür kodları:
+
+| Kod | Tür | Genişlik |
+|---:|---|---:|
+| 00000 | I8 | 8 |
+| 00001 | I16 | 16 |
+| 00010 | I32 | 32 |
+| 00011 | I64 | 64 |
+| 00100 | U8 | 8 |
+| 00101 | U16 | 16 |
+| 00110 | U32 | 32 |
+| 00111 | U64 | 64 |
+| 01000 | F32 | 32 |
+| 01001 | F64 | 64 |
+| 01010 | F128 | 128 |
+| 01011–11111 | Reserved | — |
+
+ROUND kodları:
+- `000`: round-to-nearest, ties-to-even (varsayılan)
+- `001`: toward-zero
+- `010`: toward-negative-infinity
+- `011`: toward-positive-infinity
+- `100–111`: reserved
+
+CONV_FLAGS:
+- bit 0: saturating integer conversion (yalnızca integer hedefte anlamlı)
+- bit 1: invalid/overflow durumunda trap isteği
+- bit 2: reserved, sıfır olmalıdır
+
+W, DST_TYPE genişliğiyle aynı olmalıdır. F128 kaynak veya hedef, FA bankında çift indisli pair kullanır; selector pair'in ilk FA kaydını gösterir. Integer türleri RA'nın ilgili genişlik görünümünü kullanır. Küçük integer hedeflerinde DST_TYPE, yazılan bit sayısını ve signed/unsigned yorumunu belirler; RA görünümünün üst bitlerinin korunması/uzatılması register-view kuralıyla uyumlu uygulanır. NaN, sonsuzluk, taşma ve saturating/trap sonuçlarının kesin exception davranışı ayrıca sabitlenecektir. ROUND yalnızca floating-point sonuç üreten dönüşümlerde uygulanır.
+
+Örnekler:
+- `FCONV FA3, RA7, i64, f64`: DB=FA, DI=3, SB=RA, SI=7, SRC=I64, DST=F64, W=64.
+- `FCONV RA7, FA3, f64, i32`: DB=RA, DI=7, SB=FA, SI=3, SRC=F64, DST=I32, W=32.
+- `FCONV FA4:FA5, RA8, i64, f128`: hedef FA pair başlangıcı 4; DST=F128, W=128.
+
+Normal MOV.* XFER komutlarında M/AUX alanları ilgili transfer opcode tanımına göre yorumlanır; FCONV alt alanları onlara uygulanmaz.
+
+### 4.7 BR — PC-relative branch
 
 ```text
 63       56 55    52 51   48 47                         16 15          0
@@ -203,7 +266,7 @@ Register bankları arası aktarım bit kopyalama/paketleme işlemidir; integer�
 - COND, branch koşulunu belirler; koşul kodları ayrı tabloda tanımlanacaktır.
 - Reserved alan sıfır olmalıdır.
 
-### 4.7 SYS — System ve kontrol komutları
+### 4.8 SYS — System ve kontrol komutları
 
 SYS formatı privilege, system state, interrupt, synchronization ve özel kontrol komutları için ayrılmıştır. Alt alan yerleşimi her komut sınıfı için ayrı tabloda tanımlanacaktır. Henüz system register bankı veya CSR sayısı kesinleştirilmemiştir.
 
@@ -344,6 +407,7 @@ Aşağıdaki örnekler gerçek hexadecimal makine kodu değildir; opcode değerl
 8. SYS formatının system register/privilege alanları.
 9. Komutlarda predicate/condition alanı gerekip gerekmediği.
 10. Reserved bitlerin gelecekteki uyumluluk politikası.
+11. FCONV için NaN, infinity, integer overflow ve saturating/trap durumlarının kesin exception sonuçları.
 
 ---
 
