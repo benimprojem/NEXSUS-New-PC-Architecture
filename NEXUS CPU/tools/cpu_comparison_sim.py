@@ -1175,12 +1175,15 @@ def run_p0_capacity_sweep(workloads, profile_dict, capacities_kb=(4, 8, 16, 32),
                             refill_latency=48, pool_miss_latency=120):
     """Single-core 64-KiB sequential code stream; vary only PX pool capacity."""
     target = {"p0_starvation": workloads["p0_starvation"]}
+    last_page = (len(target["p0_starvation"]) * 8 - 1) // 2048
+    page_descriptors = {last_page: {"valid_bytes": 2048, "stream_end": True}}
     rows = {}
     for capacity_kb in capacities_kb:
         run = simulate_cpu(
             target, profile_dict, 1,
             {"spm": True, "p0": True, "p0_capacity_kb": capacity_kb,
-             "p0_refill_latency": refill_latency, "px_pool_miss_latency": pool_miss_latency},
+             "p0_refill_latency": refill_latency, "px_pool_miss_latency": pool_miss_latency,
+             "px_page_descriptors": page_descriptors},
         )
         rows[str(capacity_kb)] = {
             "capacity_kb": capacity_kb,
@@ -1219,7 +1222,8 @@ def run_fetch_latency_sweep(workloads, conventional_latencies=(8, 16, 24, 32),
     for latency in conventional_latencies:
         run = simulate_cpu(
             target, PROFILES["nexus_balanced_128"], 1,
-            {"spm": True, "p0": False, "conventional_refill_latency": latency},
+            {"spm": True, "p0": False, "conventional_refill_latency": latency,
+             "px_page_descriptors": page_descriptors},
         )
         kernel = run["kernels"]["p0_starvation"]
         rows["nexus_conventional"][str(latency)] = {
@@ -1230,7 +1234,8 @@ def run_fetch_latency_sweep(workloads, conventional_latencies=(8, 16, 24, 32),
         run = simulate_cpu(
             target, PROFILES["nexus_balanced_128"], 1,
             {"spm": True, "p0": True, "p0_capacity_kb": p0_capacity_kb,
-             "p0_refill_latency": latency, "px_pool_miss_latency": 120},
+             "p0_refill_latency": latency, "px_pool_miss_latency": 120,
+             "px_page_descriptors": page_descriptors},
         )
         kernel = run["kernels"]["p0_starvation"]
         rows["nexus_p0"][str(latency)] = {
