@@ -369,7 +369,7 @@ SPM0 ve SPM1, RA/DA/MA register banklarından ayrı erişim kaynaklarıdır. SPM
 Bu bölüm port hedeflerini tanımlar; kesin timing ve bank mapping sonraki mikro-mimari revizyonda sabitlenecektir.
 
 
-## 22. Cache-level preload / residency komutları (taslak)
+## 22. Bellek alanı yerleşimi ve preload/residency komutları (taslak)
 
 NEXSUS CPU, programın veriyi yalnızca demand-load ile getirmesine bağlı kalmamalıdır. Programcı belirli bir veri aralığının cache hiyerarşisinde önceden hazırlanmasını isteyebilmelidir. Bunun için L1–L4 hedefli komut ailesi önerilir.
 
@@ -417,8 +417,8 @@ LOAD.Lx, normal LOAD komutunun register'a veri getiren davranışından ayrı bi
 
 NEXUS Flow'daki `area` ve `zone` tanımları, bu mekanizmanın compiler tarafındaki doğal karşılığı olabilir:
 
-- `area`: verinin mantıksal/ömrü tanımlı bölgesi ve allocation kapsamı.
-- `zone`: verinin yerleşim/erişim hedefi veya kullanım politikası (ör. L1/L2/L3/L4, SPM, memory domain).
+- `area`: yalnızca ilgili çekirdeğin özel L1 alanını hedefler; çekirdek-local çalışma alanı ve lifetime kapsamıdır.
+- `zone`: yalnızca çekirdekler arası paylaşılan L2/L3/L4 bellek alanlarını hedefler. SPM veya L1, zone seviyesi olarak kabul edilmez.
 - Compiler, scope/lifetime ve erişim örüntüsünden güvenli preload noktaları çıkarabilir.
 - Programcı açıkça zone seçtiğinde compiler bunu uygun CACHE.LOAD/PREFETCH komutlarına dönüştürebilir; CPU runtime range ve cache seviyesini kontrol eder.
 - `area`/`zone` bildirimi tek başına veri cache'e yüklenmiş demek değildir; gerçek preload, açık komut veya compiler'ın ürettiği operasyonla gerçekleşir.
@@ -492,3 +492,26 @@ Bu kod yalnızca kavramsal gösterimdir; Nexus Flow'un kesin grammar'ı değildi
 - `ZONE.ADDR`: descriptor/handle içinden ortak adres ve uzunluk bilgisini alma.
 
 Bunlar şimdilik komut ailesi önerileridir. Normal LOAD/STORE ortak alana gerçek veri okuma/yazma işlemini yapar; ZONE komutları yaşam süresi, sahiplik ve görünürlük yönetir. `LOAD.L2/L3/L4` adlarının tahsis mi, placement mı, yoksa cache residency hint'i mi ifade edeceği bu ayrımla birlikte netleştirilecektir.
+
+
+### 22.9 Çekirdek sayısına göre paylaşılan bellek topolojisi
+
+Kullanıcının belirlediği temel paylaşım kuralı:
+
+| Bellek seviyesi | Paylaşım kapsamı | Temel yerleşim |
+|---|---:|---|
+| L1 | 1 çekirdek | Her çekirdeğin kendine ait özel alanı; `area` hedefidir |
+| L2 | 2 çekirdek | Her iki çekirdeğin ortak eriştiği zone |
+| L3 | 4 çekirdek | Her dört çekirdeğin ortak eriştiği zone |
+| L4 | 8 ve üzeri çekirdek | Geniş çekirdek gruplarının / sistemin ortak zone alanı |
+
+- Bu tablo paylaşım kapsamını tanımlar; kapasite, bant genişliği ve gecikme değerleri henüz belirlenmemiştir.
+- L2/L3/L4, bu mimaride yalnızca geleneksel cache seviyelerinin isimleri olarak değil, çekirdek gruplarına göre paylaşılan bellek domain'leri olarak ele alınır.
+- Birden fazla L2 grubu, daha geniş L3 kapsamı altında; birden fazla L3 grubu da L4 kapsamı altında organize edilebilir. Böylece hiyerarşi, çekirdek sayısı büyüdükçe kademeli paylaşım sağlar.
+- L4'ün sekiz çekirdekten daha büyük sistemlerdeki kesin kapsamı (tek global domain mi, birden fazla fabric domain mi) sistem topolojisiyle belirlenecektir.
+- `zone` tahsisi hedef seviyeyi belirtir. Aynı zone adresi, o seviyenin erişim kapsamındaki çekirdekler tarafından paylaşılır; kapsam dışındaki çekirdekler için adres/handle aktarımı tek başına erişim yetkisi oluşturmaz.
+- Çekirdekler arası veri paylaşımında payload kopyalanmaz; üretici ortak zone'a yazar ve handle/adresi yayımlar. Tüketici aynı ortak bellek konumuna erişir. Publish/acquire, ownership, lifetime ve memory visibility kuralları geçerlidir.
+- Daha geniş kapsama ihtiyaç duyulduğunda veri uygun üst seviyedeki zone'a tahsis edilir veya kontrollü biçimde taşınır. Bu yer değiştirme, adresin paylaşılmasıyla otomatik gerçekleşmiş sayılmaz.
+- Gerçek donanımda seviyeler ayrı fiziksel banklar, dağıtık bellek dilimleri veya cache destekli ortak domain'ler şeklinde uygulanabilir; ISA görünür semantiği aynı kalır.
+
+Örnek kapsam: 8 çekirdekli bir yapılandırmada her çekirdeğin özel L1'i, çekirdek çiftleri için dört L2 paylaşım alanı, dört çekirdeklik gruplar için iki L3 alanı ve sekiz çekirdeğin erişebildiği bir L4 domain'i bulunabilir. Bu yalnızca topoloji örneğidir; fiziksel bank sayısı ve kapasiteyi sabitlemez.
