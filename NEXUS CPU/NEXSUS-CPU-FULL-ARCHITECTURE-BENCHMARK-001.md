@@ -77,6 +77,7 @@ The input generator must be deterministic. Each kernel has a small reference imp
 | K14 | Mixed system load | Concurrent compute, memory, tasks and events | Aggregate throughput, fairness, tail latency |
 | K15 | Instruction-fetch stress | Small loops, large code, page boundaries and partial final pages | Front-end starvation, PX refill, SPM0 bank switching |
 | K16 | ME512 matrix tile | 512-bit tile operations with explicit input/output movement | Dedicated ME512 throughput, operand supply, result drain and contention |
+| K17 | Atomic contention | Shared-address read-modify-write operations across cores | Atomic unit throughput, memory serialization, bank/bus contention |
 
 ## 5. Branch prediction and control-flow experiment
 
@@ -215,7 +216,7 @@ The functional model must validate outputs independently from the timing engine.
 ## 10. Required test matrix
 
 At minimum, run:
-- four architecture profiles × all 16 kernels;
+- four architecture profiles × all 17 kernels;
 - low/base/high sensitivity for unresolved parameters;
 - cold-cache and warm-cache variants where relevant;
 - single-core and 8-core variants;
