@@ -485,8 +485,8 @@ L1–L4, klasik otomatik cache zinciri değil, birbirinden ayrı veri belleği d
 Bellek operandı, hedef domain'i ve o domain içindeki adresi açıkça belirtir. Örnek gösterim:
 
 ```text
-LOAD  RA04, L1:[RA10]
-STORE L2:[RA20], RA04
+LOAD.L1 DA4, [RA10 + 0]
+STORE.L2 [RA20 + 0], DA4
 ```
 
 Burada RA10/RA20 ilgili bellek adresini tutan register'lardır; köşeli parantez bellek erişimini ifade eder. Kesin makine kodu alanları ve adresleme modları kodlama aşamasında belirlenecektir.
