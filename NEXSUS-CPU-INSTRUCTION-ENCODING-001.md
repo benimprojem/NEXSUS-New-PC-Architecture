@@ -777,6 +777,16 @@ MMAC.S.N8.W32 MA24, MA0, MA8, MA16
 - MTRANS register grup uzunluğu `ceil(N × N × W / 256)` ile hesaplanır. D/A başlangıç selector'ları bu uzunluğun katı olmalı, grup MA31'i aşmamalıdır. D=A tam alias geçerlidir; kısmi örtüşme geçersizdir.
 - Numeric opcode değerleri henüz atanmamıştır.
 
+### 6.7 Matrix reduction encoding
+
+- `MREDUCE.S/U.ROWS/COLS.Nx.Wy` R2 kullanır: D çıktı register grubu başlangıcı, A kaynak matrix tile grubu başlangıcıdır.
+- W, kaynak matrix eleman genişliğini; M, N=2/4/8 tile şeklini seçer. M kodları MTRANS ile aynıdır: 000=2×2, 001=4×4, 010=8×8.
+- AUX[35] axis alanıdır: 0=ROWS, 1=COLS. AUX[34:0] sıfır olmalıdır. Signedness S/U opcode varyantıyla seçilir.
+- Kaynak A register sayısı `ceil(N × N × W / 256)`; hedef D register sayısı `ceil(N × (W + ceil(log2(N))) / 256)` olarak türetilir.
+- D ve A grupları kendi uzunluklarına göre hizalanır, MA31'i aşamaz ve birbirleriyle çakışamaz.
+- MREDUCE için W=8/16/32/64 geçerlidir; 8×8 için W=64 ayrılmıştır. AUX reserved bit ihlali, geçersiz M/W veya grup sınır/alignment ihlali illegal operand/encoding fault üretir.
+- Numeric opcode değerleri henüz atanmadı.
+
 ## 7. EXT prefix ve literal genişletme
 
 EXT, bağımsız bir işlem veya hedef opcode'u taşıyan alternatif komut formatı değildir. Normal bir komutun önüne gelen **genişletme prefix'idir**. Bu yaklaşım, aynı literal taşıma mekanizmasının farklı opcode ailelerinde kullanılmasını sağlar.
