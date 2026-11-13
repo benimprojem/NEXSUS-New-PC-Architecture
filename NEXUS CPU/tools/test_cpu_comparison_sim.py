@@ -289,6 +289,23 @@ class CrossArchitectureComparisonTests(unittest.TestCase):
         self.assertEqual({r["kernels"]["p0_small"]["ops"]
                           for r in sweep["results"].values()}, {256})
 
+    def test_fetch_latency_sweep_preserves_same_command_workload(self):
+        workloads = {"p0_starvation": [
+            sim.Op(i, "INT", label="P0 starvation", command_address=(i % 2048)*8)
+            for i in range(128)
+        ]}
+        sweep = sim.run_fetch_latency_sweep(workloads)
+        self.assertEqual(sweep["operations_per_run"], 128)
+        self.assertEqual(set(sweep["results"]), {
+            "amd_9950x", "intel_285k_p", "intel_285k_e",
+            "nexus_conventional", "nexus_p0",
+        })
+        self.assertEqual(set(sweep["results"]["nexus_conventional"]), {"8", "16", "24", "32"})
+        self.assertEqual(set(sweep["results"]["nexus_p0"]), {"4", "8", "12", "16"})
+        self.assertTrue(all(row["ops"] == 128
+                            for group in sweep["results"].values()
+                            for row in group.values()))
+
 
 class FourWayAblationTests(unittest.TestCase):
     def test_four_profiles_preserve_operation_count_and_report_interaction(self):
