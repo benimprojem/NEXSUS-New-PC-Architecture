@@ -86,43 +86,10 @@ PROFILES = {
         "branch_penalty": 17, "frequency_ghz": 3.0,
         "dram_lat": 120, "dram_bytes_per_cycle": 32
     },
-    "nexus_candidate": {
-        "name": "NEXSUS CPU / configurable candidate",
-        "core_count": 8, "core_type": "uniform", "frontend": 4,
-        "dispatch": 4, "issue": 5, "retire": 4, "rob": 64,
-        "units": {"INT": 2, "FP": 2, "VEC": 1, "LOAD": 2, "STORE": 1, "BR": 1, "CTX": 1, "ATOM": 1},
-        "latency": {"INT": 1, "FP": 3, "VEC": 2, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 4},
-        "l1_kb": 128, "l2_kb": 1024, "l3_kb": 8192, "l4_kb": 65536,
-        "l1_lat": 2, "l2_lat": 8, "l3_lat": 24, "l4_lat": 64, "dram_lat": 120,
-        "branch_penalty": 10, "frequency_ghz": 3.0,
-        "bank_hash": "folded", "dram_bytes_per_cycle": 32
-    },
-    "nexus_8l4s": {
-        "name": "NEXSUS / 8L4S memory-focused candidate",
-        "core_count": 8, "core_type": "uniform", "frontend": 6,
-        "dispatch": 6, "issue": 8, "retire": 6, "rob": 128,
-        "units": {"INT": 3, "FP": 3, "VEC": 1, "LOAD": 8, "STORE": 4, "BR": 1, "CTX": 1, "ATOM": 1},
-        "latency": {"INT": 1, "FP": 3, "VEC": 2, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 4},
-        "l1_kb": 128, "l2_kb": 1024, "l3_kb": 8192, "l4_kb": 65536,
-        "l1_lat": 2, "l2_lat": 8, "l3_lat": 24, "l4_lat": 64, "dram_lat": 120,
-        "branch_penalty": 10, "frequency_ghz": 3.0,
-        "bank_hash": "folded", "dram_bytes_per_cycle": 32
-    },
     "nexus_balanced_128": {
-        "name": "NEXSUS / balanced 128-window candidate",
+        "name": "NEXSUS CPU / selected 128-window architecture",
         "core_count": 8, "core_type": "uniform", "frontend": 8,
         "dispatch": 8, "issue": 10, "retire": 8, "rob": 128,
-        "units": {"INT": 4, "FP": 4, "VEC": 2, "LOAD": 8, "STORE": 4, "BR": 2, "CTX": 1, "ATOM": 1},
-        "latency": {"INT": 1, "FP": 3, "VEC": 2, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 4},
-        "l1_kb": 128, "l2_kb": 1024, "l3_kb": 8192, "l4_kb": 65536,
-        "l1_lat": 2, "l2_lat": 8, "l3_lat": 24, "l4_lat": 64, "dram_lat": 120,
-        "branch_penalty": 10, "frequency_ghz": 3.0,
-        "bank_hash": "folded", "dram_bytes_per_cycle": 32
-    },
-    "nexus_wide_balanced": {
-        "name": "NEXSUS / wide balanced candidate",
-        "core_count": 8, "core_type": "uniform", "frontend": 8,
-        "dispatch": 8, "issue": 10, "retire": 8, "rob": 192,
         "units": {"INT": 4, "FP": 4, "VEC": 2, "LOAD": 8, "STORE": 4, "BR": 2, "CTX": 1, "ATOM": 1},
         "latency": {"INT": 1, "FP": 3, "VEC": 2, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 4},
         "l1_kb": 128, "l2_kb": 1024, "l3_kb": 8192, "l4_kb": 65536,
