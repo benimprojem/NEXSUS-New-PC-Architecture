@@ -919,6 +919,19 @@ ATOM.STORE.RELEASE.L4.W64 [RA34], DA8
 Bu örnek, producer ile transferi başlatan çekirdek arasındaki L3 synchronization'ı ve transferi başlatan çekirdeğin L4'e yayınını ayrı adımlar olarak gösterir. Transferin kendisi bu iki synchronization ilişkisini otomatik kurmaz.
 
 
+**10. Eşzamanlı erişim ve aralık çakışması**
+
+- Çakışma, aynı domain içindeki iki erişimin byte aralıklarının kesişmesiyle belirlenir. Domain farklıysa sayısal adres eşitliği tek başına çakışma oluşturmaz.
+- Aynı aralığa birden fazla LOAD eşzamanlı ilerleyebilir. STORE içeren çakışan işlemler domain coherence order içinde sıralanır; normal LOAD/STORE erişimleri RELAXED kalır ve yarış durumunda yazılım belirli bir kazanan değeri varsayamaz.
+- İki çekirdeğin aynı byte aralığına eşzamanlı normal STORE yapması data race'tir. Donanım tutarlı bir commit sırası sağlar; ancak program sırasına göre son yazanın kazanacağı veya yazılımın belirli bir sonucu göreceği garanti edilmez.
+- Normal LOAD/STORE ile aynı aralığa ATOM erişimi karıştırılmamalıdır. ATOM işlemleri kendi tanımlı atomic serialization kurallarını korur; normal erişimle karışık kontrolsüz erişim data race'tir ve release/acquire synchronization olmadan sonucu tanımlı değildir. Normal STORE, ATOM işlemini yazılım açısından güvenli bir atomic handoff'a dönüştürmez.
+- MEMXFER kabul edildiğinde kaynak byte aralığı **read-reserved**, hedef byte aralığı **write-reserved ve unpublished** olur. Kaynak aralıkta LOAD yapılabilir; kaynakla örtüşen STORE veya ATOM, transfer bitene kadar MEMORY_ACCESS_FAULT / TRANSFER_RANGE_BUSY üretir. Hedef aralıkta LOAD, STORE veya ATOM aynı fault'u üretir.
+- Aynı domain'de iki aktif transferin kaynak-kaynak örtüşmesi serbesttir. Herhangi bir transferin hedefi başka bir aktif transferin kaynağı veya hedefiyle örtüşüyorsa ikinci transfer kabul edilmez; MEMORY_ACCESS_FAULT / TRANSFER_RANGE_BUSY oluşur, token üretilmez ve payload hareketi başlamaz.
+- XFER.MEM ve XFER.START, kabul öncesinde çakışan önceki bellek işlemlerinin tamamlanmış olmasını gerektirir. Aynı aralıkta hâlihazırda devam eden bir işlem varsa transfer bekleyerek kilitlenmek yerine TRANSFER_RANGE_BUSY ile reddedilir. Böylece aynı yürütme akışının WAIT'e ulaşmasını engelleyen bir bekleme döngüsü oluşmaz.
+- XFER.START'ın hedef rezervasyonu başarılı kabulün parçasıdır. Başarılı WAIT veya XFER.MEM completion'ı rezervasyonu kaldırır. Transfer hatasında hedef aralık geçersiz/unpublished kalır; fiziksel kısmi yazmalar olabilir, ancak yeni bir tam yazma/başarılı transfer olmadan hedef yayımlanamaz.
+- Çakışma denetimi mimari olarak byte aralığı ve domain bazındadır. Mikro-mimari, cache-line/bank/beat kaynakları nedeniyle daha geniş alanlarda geçici seri hale getirme yapabilir; bu, ilgisiz erişimlere mimari fault üretme hakkı vermez.
+- Bu kurallar tek global kilit gerektirmez. Rezervasyon ve arbitration yalnızca ilgili domain ve çakışan byte aralıkları için uygulanır; bağımsız aralıklar ve bağımsız domain'ler paralel kalabilir.
+
 ## 11. Instruction dispatch ve paralellik
 
 - Integer/logic komutları ALU0/ALU1 (ve konfigürasyonda ALU2) üzerinde yürütülür.
