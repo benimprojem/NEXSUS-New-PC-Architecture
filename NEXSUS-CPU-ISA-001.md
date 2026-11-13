@@ -593,10 +593,10 @@ MA registerları 256-bit fiziksel genişliktedir. ME512 512-bit yürütme yoludu
 
 ### 8.4 Vector reduction komutları
 
-- `VSUM.S.W` / `VSUM.U.W`, kaynak MA register'ındaki tüm lane'leri signed/unsigned olarak toplayıp sonucu hedef MA register'ının en düşük 256 bitine yazar. Sonucun üst bitleri sıfırlanır; signed sonuç iki'nin tümleyeni 256-bit olarak sign-extend edilir.
-- `VDOT.S.W` / `VDOT.U.W`, A ve B'nin karşılık gelen lane'lerini çarpıp tüm lane çarpımlarını toplar. Sonuç aynı şekilde 256-bit genişlikte D MA'ya yazılır.
-- VSUM için lane sayısı 256/W; VDOT için de 256/W'dir. W=8/16/32/64/128/256 vector lane genişlikleri geçerlidir.
-- 256-bit sonuç, tanımlanan bütün lane genişlikleri için tam toplamı ve tam dot-product sonucunu taşır; bu komutlarda ara/sonuç taşması oluşmaz.
+- `VSUM.S.W` / `VSUM.U.W`, kaynak MA register'ındaki tüm lane'leri signed/unsigned olarak toplayıp sonucu hedef MA register'ının 256-bit alanına yazar. Signed sonuç iki'nin tümleyeni olarak sign-extend, unsigned sonuç zero-extend edilir.
+- `VDOT.S.W` / `VDOT.U.W`, A ve B'nin karşılık gelen lane'lerini çarpıp tüm lane çarpımlarını toplar; tam sonuç 256-bit D MA'ya yazılır.
+- VSUM için W=8/16/32/64/128/256 geçerlidir. VDOT için W=8/16/32/64 geçerlidir; 128/256-bit lane çarpımları 256-bit hedefe sığmayacağından ayrılmıştır.
+- 256-bit sonuç, desteklenen bütün VSUM ve VDOT genişliklerinde tam sonucu taşır; ara/sonuç taşması oluşmaz.
 - D, A veya B ile aynı MA selector'ı olabilir; kaynaklar komut başlangıcında snapshot edilir. D'nin tamamı tek commit ile güncellenir.
 - Signed/unsigned yorum opcode varyantıyla seçilir. Floating-point reduction/dot product bu komutların kapsamında değildir.
 - `VSUM` ve `VDOT` R3 formatını kullanır; D/A/B MA selector'larıdır, M=000 ve AUX=0 olmalıdır. Numeric opcode değerleri henüz atanmadı.
