@@ -1,33 +1,45 @@
 # NEXSUS CPU Architecture Revision — 2026-11-13
 
-**Status:** Selected architecture direction; encoding and performance validation still open  
-**Scope:** Restore 64-entry register banks and adopt P0/P1 command double buffering.
+**Status:** Selected architecture direction; simulator validation in progress  
+**Scope:** Restore original NEXSUS memory bandwidth and P0/P1 command double buffering.
 
-## 1. Register-bank restoration
+## 1. Memory bandwidth correction (the intended 64 → 32 reversal)
 
-The earlier 32-entry reduction is reverted. Every architectural bank has 64 entries:
+The parameter temporarily normalized for vendor comparison was **aggregate DRAM data bandwidth**, not register count:
+
+| Profile | Aggregate DRAM bandwidth in simulator |
+|---|---:|
+| AMD Zen 5 reference | 32 B/cycle |
+| Intel Lion Cove P reference | 32 B/cycle |
+| Intel Skymont E reference | 32 B/cycle |
+| **NEXSUS 128 architecture** | **64 B/cycle (restored)** |
+
+NEXSUS had originally been modeled at 64 bytes/cycle. It was reduced to 32 B/cycle solely to make an equal-bandwidth comparison. That fairness normalization is now undone: vendor reference profiles remain at 32 B/cycle and NEXSUS returns to its architectural 64 B/cycle. The new comparison intentionally includes NEXSUS's wider memory path. Earlier equalized numbers are historical and must be rerun.
+
+This is **Data-RAM/DRAM aggregate bandwidth**. It is distinct from:
+- physical bank slice: 64-bit per bank;
+- aggregate 8-bank data group: 512-bit (64 bytes) per full beat;
+- App-RAM P0/P1 instruction refill path: separate 512-bit interface candidate.
+
+## 2. Register architecture — unchanged (32 entries)
+
+The previous edit that changed register banks to 64 entries was a mistake and has been reverted. Selected banks remain:
 
 | Bank | Entries | Entry width | Bank bytes |
 |---|---:|---:|---:|
-| RA | 64 | 64-bit | 512 B |
-| FA | 64 | 64-bit | 512 B |
-| DA | 64 | 64-bit | 512 B |
-| MA | 64 | 256-bit | 2,048 B |
-| **Total** | **256 registers** | — | **3,584 B (3.5 KiB)** |
+| RA | 32 | 64-bit | 256 B |
+| FA | 32 | 64-bit | 256 B |
+| DA | 32 | 64-bit | 256 B |
+| MA | 32 | 256-bit | 1,024 B |
+| **Total** | **128 registers** | — | **1,792 B (1.75 KiB)** |
 
-- RA0–RA63, FA0–FA63, DA0–DA63, MA0–MA63.
-- RA views RB/RC/RD remain 32/16/8-bit slices of the same 64-bit RA entry.
-- Register selectors require 6 bits (0–63).
-- FA128 pairs use even starts through FA62:FA63; ME512 pairs use even MA starts through MA62:MA63.
-- Interrupt save masks become 64 bits per bank.
-- Full architectural register payload is 3,584 bytes; with the existing 64-byte frame header, 3,648 bytes.
-- A 4-KiB resident context slot fits this payload and header. SPM3–SPM6 (32 KiB) hold two 4-KiB slots per bank: **8 resident complete contexts/core**. Other task contexts remain in protected Data RAM.
+- RA0–RA31, FA0–FA31, DA0–DA31, MA0–MA31.
+- Register selectors remain 5 bits.
+- FA128 pairs use even starts through FA30:FA31; ME512 pairs use even MA starts through MA30:MA31.
+- Full architectural register payload is 1,792 bytes; with the 64-byte frame header, 1,856 bytes.
+- A 2-KiB resident context slot fits. SPM3–SPM6 (32 KiB) hold four 2-KiB slots per bank: **16 resident complete contexts/core**. Other task contexts remain in protected Data RAM.
 
-### Encoding consequence
-
-The 64-bit instruction envelope (OP8 + FMT4 + payload52) remains the current top-level proposal. However, format diagrams drafted for 5-bit register selectors are not frozen: selector fields must be widened to 6 bits and every format's operand positions, reserved bits and immediate/displacement budgets must be audited. Do not emit or treat old 32-register encodings as a finalized binary ABI.
-
-## 2. P0/P1 command double buffer
+## 3. P0/P1 command double buffer
 
 Selected command-prefetch organization:
 
@@ -38,28 +50,24 @@ Selected command-prefetch organization:
 | **Total** | **16 KiB** | Ping-pong command storage |
 
 Each buffer contains 1,024 64-bit command words. The intended sequence:
-
 1. Load the first 8-KiB command block into P0.
 2. While execution consumes P0, load the next 8-KiB block into P1.
 3. At the block boundary, switch active/inactive roles.
-4. Prefetch the next block into the now-inactive P0.
-5. Repeat continuously; the command path is refillable and is not task architectural state.
+4. Prefetch the next block into the now-inactive buffer.
+5. Repeat continuously.
 
-### Refill assumption used by the first simulator model
-
+### Refill assumption
 - App RAM refill interface: 512 bits/cycle (64 bytes/cycle).
-- 8 KiB block transfer: 128 cycles, excluding any separately modeled setup/queue delay.
-- One refill engine/core.
-- Prefetch of the next block overlaps execution from the active buffer.
-- If the next block is not ready at the boundary, execution waits; no ideal zero-stall assumption.
-- These are explicit model assumptions, not validated physical timing. App RAM banking, command queue depth, branch redirects, refill arbitration and actual sustainable bandwidth remain open.
+- 8 KiB block transfer: 128 cycles, excluding separately modeled setup/queue delay.
+- One refill engine/core; next-block prefetch overlaps active-buffer execution.
+- If the next block is not ready at the boundary, execution waits.
+- This is a model assumption, not validated physical timing. App RAM bank behavior, command queues, branch redirects, arbitration and sustainable bandwidth remain open.
 
-The P0/P1 model supersedes the earlier single 8-KiB P0 / 8-cycle-line-refill baseline. Previously published ablation and cross-architecture numbers are historical for that old model and must be regenerated before they are used to compare the revised architecture.
+The P0/P1 model supersedes the earlier single 8-KiB P0 baseline. Previous ablation/comparison figures are historical until rerun.
 
-## 3. Next validation
-
-1. Re-run identical AMD Zen 5, Intel Lion Cove P, Intel Skymont E and NEXSUS workloads with the updated P0/P1 path.
-2. Sweep P0/P1 block refill time (64/96/128/160 cycles) and total buffer capacity (4/8/16/32 KiB).
-3. Rebuild all ISA format diagrams with 6-bit selectors and check payload constraints.
-4. Update register-pressure, context-save, interrupt and compiler/assembler models for 64-entry banks.
+## 4. Next validation
+1. Rerun AMD Zen 5, Intel P, Intel E and NEXSUS with restored 64 B/cycle NEXSUS DRAM bandwidth and P0/P1.
+2. Sweep P0/P1 refill delay and capacity.
+3. Audit all 5-bit register selector format diagrams (register width has not changed).
+4. Validate task-context and exception behavior against the unchanged 32-entry banks.
 5. Treat model output as architecture exploration, not measured silicon performance.
