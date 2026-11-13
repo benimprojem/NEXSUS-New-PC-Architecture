@@ -118,6 +118,45 @@ class SelectedNexusProfileTests(unittest.TestCase):
         })
 
 
+class SharedCacheGroupTests(unittest.TestCase):
+    def test_l1_is_private_but_l2_is_shared_by_pair(self):
+        p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        caches = sim.build_cache_hierarchies(p, 8)
+        self.assertIsNot(caches[0].l1, caches[1].l1)
+        self.assertIs(caches[0].l2, caches[1].l2)
+        self.assertIsNot(caches[0].l2, caches[2].l2)
+        caches[0].fill(0x1000, "DRAM")
+        self.assertEqual(caches[1].probe(0x1000)[1], "L2")
+        self.assertEqual(caches[2].probe(0x1000)[1], "L3")
+
+    def test_l3_is_shared_by_four_cores(self):
+        p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        caches = sim.build_cache_hierarchies(p, 8)
+        self.assertIs(caches[0].l3, caches[3].l3)
+        self.assertIsNot(caches[0].l3, caches[4].l3)
+        caches[0].fill(0x2000, "DRAM")
+        self.assertEqual(caches[3].probe(0x2000)[1], "L3")
+        self.assertEqual(caches[4].probe(0x2000)[1], "L4")
+
+    def test_l4_is_shared_by_eight_core_group_not_next_group(self):
+        p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        caches = sim.build_cache_hierarchies(p, 16)
+        self.assertIs(caches[0].l4, caches[7].l4)
+        self.assertIsNot(caches[0].l4, caches[8].l4)
+        caches[0].fill(0x3000, "DRAM")
+        self.assertEqual(caches[7].probe(0x3000)[1], "L4")
+        self.assertEqual(caches[8].probe(0x3000)[1], "DRAM")
+
+    def test_shared_cache_fill_is_deferred_until_access_completion(self):
+        p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        caches = sim.build_cache_hierarchies(p, 8)
+        latency, level = caches[0].probe(0x4000)
+        self.assertEqual(level, "DRAM")
+        self.assertEqual(caches[1].probe(0x4000)[1], "DRAM")
+        caches[0].fill(0x4000, level)
+        self.assertEqual(caches[1].probe(0x4000)[1], "L2")
+
+
 class WorkloadPartitionTests(unittest.TestCase):
     def test_partition_preserves_operation_count_and_dependencies(self):
         workloads = sim.build_composite_workload(scale=1)
