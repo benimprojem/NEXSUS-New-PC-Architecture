@@ -82,7 +82,7 @@ PROFILES = {
         "name": "Apple M6 / 12-core ARM SoC (heterogeneous approximation)",
         "core_count": 12, "core_type": "uniform", "frontend": 6,
         "dispatch": 8, "issue": 8, "retire": 8, "rob": 384,
-        "units": {"INT": 6, "FP": 4, "VEC": 2, "LOAD": 4, "STORE": 2, "BR": 1, "CTX": 1, "ATOM": 1},
+        "units": {"INT": 6, "FP": 4, "VEC": 2, "LOAD": 4, "STORE": 2, "BR": 1, "CTX": 1, "ATOM": 1, "IRQ": 1},
         "latency": {"INT": 1, "FP": 3, "VEC": 2, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 6, "IRQ": 10},
         "l1_kb": 64, "l2_kb": 4096, "l3_kb": 24576, "l4_kb": 0,
         "l1_lat": 3, "l2_lat": 12, "l3_lat": 36, "l4_lat": 0, "dram_lat": 100,
