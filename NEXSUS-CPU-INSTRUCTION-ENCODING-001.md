@@ -728,6 +728,46 @@ W alanının yorumu opcode ailesine bağlıdır. Örneğin FADD için W=010 FP32
 - Numeric opcode değerleri henüz atanmadı; opcode-family haritası yalnızca önerilen aralıkları gösterir.
 
 
+### 6.5 Matrix komutlarının encoding eşlemesi
+
+Matrix tile şekli, formatın M alanında; eleman genişliği W alanında kodlanır. D/A/B/C alanları MA tile gruplarının **ilk register selector'larını** taşır. Tile grubunun uzunluğu N ve W'den ISA'da tanımlanan formülle türetilir.
+
+**Tile shape kodları**
+
+| Tile şekli | R3 M[1:0] | R4 M[2:0] |
+|---|---|---|
+| 2×2 | 00 | 000 |
+| 4×4 | 01 | 001 |
+| 8×8 | 10 | 010 |
+| Ayrılmış | 11 | 011–111 |
+
+**Eleman genişliği W kodları**
+
+| W | Eleman genişliği |
+|---|---:|
+| 000 | 8 bit |
+| 001 | 16 bit |
+| 010 | 32 bit |
+| 011 | 64 bit |
+| 100–111 | Matrix komutlarında ayrılmış |
+
+- 8×8 matrix komutlarında W=011 (64-bit) geçersizdir.
+- MMUL.S/U R3 kullanır: D/A/B tile başlangıç selector'larıdır; W eleman genişliğini, M tile şeklini seçer.
+- MMAC.S/U R4 kullanır: D/A/B/C tile başlangıç selector'larıdır; W eleman genişliğini, M tile şeklini seçer.
+- Signed/unsigned yorumu ayrı opcode varyantıyla seçilir; ek signedness biti kullanılmaz.
+- AUX alanı ilk sürümde sıfır olmalıdır. Ayrılmış M/W kodları, sıfır olmayan AUX veya ISA'daki MA grup sınır/alignment kurallarının ihlali illegal operand/encoding fault üretir.
+- Register grup uzunluğu `ceil(N × N × W / 256)` MA register'dır. Her başlangıç selector'ı bu grup uzunluğunun katı olmalı ve grup MA31'i aşmamalıdır.
+- Hedefin kaynak tile ile tam alias olması ISA'daki snapshot/commit kurallarıyla geçerlidir. Kısmi/örtüşen tile grupları geçersizdir.
+- Numeric opcode değerleri henüz atanmadı; bu eşleme yalnızca format/operand kodlamasını tanımlar.
+
+Örnek sembolik gösterimler:
+
+```asm
+MMUL.S.N4.W16 MA8, MA0, MA4
+MMUL.U.N8.W16 MA16, MA0, MA4
+MMAC.S.N8.W32 MA24, MA0, MA8, MA16
+```
+
 ## 7. EXT prefix ve literal genişletme
 
 EXT, bağımsız bir işlem veya hedef opcode'u taşıyan alternatif komut formatı değildir. Normal bir komutun önüne gelen **genişletme prefix'idir**. Bu yaklaşım, aynı literal taşıma mekanizmasının farklı opcode ailelerinde kullanılmasını sağlar.
