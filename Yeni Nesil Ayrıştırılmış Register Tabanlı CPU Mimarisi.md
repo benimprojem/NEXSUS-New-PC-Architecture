@@ -1134,3 +1134,28 @@ Bu bölüm CPU'nun genel RAM ve cache/shared-memory organizasyonunu tanımlar; b
 Bu yaklaşım **address handoff / zero-copy inter-core sharing** modelidir. Verinin ilk kez ortak RAM'e yazılması devam eder; kaldırılan işlem, çekirdekler arasında aynı payload'ın tekrar tekrar kopyalanmasıdır.
 
 İlgili ISA komut taslağı ve kurallar: [NEXSUS-CPU-ISA-001.md — §22.6–22.8](NEXSUS-CPU-ISA-001.md).
+
+
+## 26. Çekirdek sayısına göre L1–L4 bellek paylaşım topolojisi
+
+Bellek paylaşım kapsamı çekirdek gruplarına göre kademelendirilir:
+
+| Seviye | Paylaşım kapsamı | Tanım |
+|---|---:|---|
+| L1 | 1 çekirdek | Her çekirdeğin kendine ait özel yerel alanı; Nexus Flow `area` hedefi |
+| L2 | 2 çekirdek | Her iki çekirdeğin ortak eriştiği bellek alanı; `zone` hedefi |
+| L3 | 4 çekirdek | Her dört çekirdeğin ortak eriştiği bellek alanı; `zone` hedefi |
+| L4 | 8 ve üzeri çekirdek | Daha geniş çekirdek grubunun / sistemin ortak bellek alanı; `zone` hedefi |
+
+- L2, L3 ve L4'ün paylaşım grupları iç içe kademelenebilir: çekirdek çiftleri L2, dört çekirdekli kümeler L3, sekiz ve üzeri kapsam ise L4 domain'i oluşturur.
+- Örneğin 8 çekirdekte 8 özel L1, 4 adet iki çekirdekli L2 grubu, 2 adet dört çekirdekli L3 grubu ve 8 çekirdeğin eriştiği bir L4 domain'i bulunabilir.
+- Bu sayılar paylaşım kapsamını belirtir; bellek kapasitesi, bant genişliği, gecikme ve fiziksel bank sayısı henüz sabitlenmemiştir.
+- `area` yalnızca çekirdeğin kendi L1 alanına tahsis yapar. `zone` ise seçilen L2/L3/L4 paylaşım domain'inde ortak alan ayırır.
+- Zone içindeki veri bir kez yazılır; diğer çekirdekler aynı adres/handle üzerinden erişir. Böylece çekirdekler arasında payload kopyalama yerine adres/descriptor paylaşımı yapılır.
+- Bir handle yalnızca ilgili zone domain'ine erişim yetkisi olan çekirdeklerde geçerlidir. Publish/acquire, ownership, lifetime ve cache visibility/synchronization kuralları korunur.
+- Daha geniş paylaşım kapsamı gerektiğinde veri uygun üst seviyedeki zone'a tahsis edilir veya kontrollü biçimde taşınır; yalnızca handle göndermek veriyi başka seviyeye taşımaz.
+- L2/L3/L4'ün fiziksel olarak cache, dağıtık RAM bankları veya fabric üzerinden erişilen bellek dilimleriyle gerçekleştirilmesi uygulama kararıdır; mimari sözleşme paylaşım kapsamını tanımlar.
+
+Bu topoloji CPU bellek mimarisinin paylaşım modelidir; belirli bir RAM hücre teknolojisini varsaymaz. Kesin kapasite ve timing değerleri çekirdek sayısı, fabric bant genişliği ve ürün hedefleri belirlendikten sonra eklenecektir.
+
+ISA ayrıntısı: [NEXSUS-CPU-ISA-001.md — §22.9](NEXSUS-CPU-ISA-001.md).
