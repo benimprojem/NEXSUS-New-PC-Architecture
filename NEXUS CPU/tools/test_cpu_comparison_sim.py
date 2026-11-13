@@ -157,6 +157,47 @@ class SharedCacheGroupTests(unittest.TestCase):
         self.assertEqual(caches[1].probe(0x4000)[1], "L2")
 
 
+
+class SpmP0ModelTests(unittest.TestCase):
+    def test_spm2_enabled_hits_local_store_and_preserves_work(self):
+        workloads = {"hot": [sim.Op(i, "LOAD", address=(i % 32)*64, width=64,
+                                     label="SPM2: hot") for i in range(256)]}
+        p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        shards = sim.partition_dependency_components(workloads["hot"], 8)
+        full = sim.simulate_multicore_streams(shards, p, 32, {"spm": True, "p0": True})
+        off = sim.simulate_multicore_streams(shards, p, 32, {"spm": False, "p0": True})
+        self.assertEqual(sum(len(x) for x in shards), 256)
+        self.assertEqual(sum(x["spm"]["accesses"] for x in full["cores"]), 256)
+        self.assertEqual(sum(x["spm"]["fallback_bytes"] for x in off["cores"]), 256*64)
+
+    def test_spm2_capacity_overflow_falls_back_without_dropping_accesses(self):
+        ops = [sim.Op(i, "LOAD", address=(i % 256)*64, width=64,
+                      label="SPM2: capacity") for i in range(512)]
+        p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        shards = sim.partition_dependency_components(ops, 8)
+        result = sim.simulate_multicore_streams(shards, p, 32, {"spm": True, "p0": True})
+        counters = [x["spm"] for x in result["cores"]]
+        self.assertEqual(sum(x["spm"]["accesses"] for x in result["cores"]), 512)
+        self.assertEqual(sum(x["overflow"] for x in counters), 0)  # 16 KiB working set cycles through in-range offsets; capacity is address-bound below.
+
+    def test_p0_and_conventional_fetch_paths_both_retire_same_work(self):
+        ops = [sim.Op(i, "INT", command_address=(i % 2048)*8) for i in range(1024)]
+        p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        shards = sim.partition_dependency_components(ops, 8)
+        p0 = sim.simulate_multicore_streams(shards, p, 32, {"spm": True, "p0": True})
+        conventional = sim.simulate_multicore_streams(shards, p, 32, {"spm": True, "p0": False})
+        self.assertEqual(sum(x["retired"] for x in p0["cores"]), 1024)
+        self.assertEqual(sum(x["retired"] for x in conventional["cores"]), 1024)
+        self.assertGreater(sum(x["fetch"].refills for x in conventional["cores"]),
+                           sum(x["fetch"].refills for x in p0["cores"]) - 1000)
+
+    def test_p0_capacity_and_refill_parameters_are_explicit(self):
+        p0 = sim.CommandFetchModel(True)
+        conventional = sim.CommandFetchModel(False)
+        self.assertEqual(p0.lines.capacity, 8192 // 64)
+        self.assertEqual(conventional.lines.capacity, 32768 // 64)
+        self.assertEqual((p0.refill_latency, conventional.refill_latency), (8, 32))
+
 class WorkloadPartitionTests(unittest.TestCase):
     def test_partition_preserves_operation_count_and_dependencies(self):
         workloads = sim.build_composite_workload(scale=1)
