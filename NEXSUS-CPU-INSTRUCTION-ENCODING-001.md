@@ -890,19 +890,75 @@ OP alanı 8-bit olduğundan 256 primary opcode değeri sunar. İlk aşamada opco
 
 | OP aralığı | Ayrılan aile | Durum |
 |---|---|---|
-| 0x00–0x0F | Control-flow / branch | Öneri |
-| 0x10–0x2F | Integer / scalar ALU | Öneri |
-| 0x30–0x3F | Bit / Boolean / shift | Öneri |
-| 0x40–0x4F | Load/store / address | Öneri |
-| 0x50–0x5F | Floating point / conversion | Öneri |
-| 0x60–0x6F | Vector / Matrix / ME512 | Öneri |
-| 0x70–0x7F | Register transfer / bank move | Öneri |
-| 0x80–0x8F | SPM access / SPM control | Öneri |
-| 0x90–0xAF | System / synchronization | Öneri |
-| 0xB0–0xEF | Reserved / future extensions | Ayrılmış |
-| 0xF0–0xFF | Escape / EXT / implementation-defined | Ayrılmış |
+| 0x00–0x0F | Control-flow / branch | Aile aralığı ayrıldı; bireysel atamalar açık |
+| 0x10–0x2F | Integer / scalar ALU | Aile aralığı ayrıldı; bireysel atamalar açık |
+| 0x30–0x3F | Bit / Boolean / shift | Aile aralığı ayrıldı; bireysel atamalar açık |
+| 0x40–0x4F | Load/store / address | Aile aralığı ayrıldı; bireysel atamalar açık |
+| 0x50–0x5F | Floating point / conversion | Aile aralığı ayrıldı; bireysel atamalar açık |
+| 0x60–0x83 | Vector / Matrix / ME512 | Alt aile aralığı ayrıldı; aşağıda 0x60–0x82 atandı |
+| 0x84–0x93 | Register transfer / bank move | Aile aralığı ayrıldı; bireysel atamalar açık |
+| 0x94–0xA3 | SPM access / SPM control | Aile aralığı ayrıldı; bireysel atamalar açık |
+| 0xA4–0xC3 | System / synchronization | Aile aralığı ayrıldı; bireysel atamalar açık |
+| 0xC4–0xEF | Reserved / future extensions | Ayrılmış |
+| 0xF0–0xFF | Escape / EXT / implementation-defined | Ayrılmış; EXT için bireysel değer açık |
 
-Bu aralıklar final opcode numaraları değildir. Primary opcode, FMT ile birlikte komut tanımını seçer; aynı aile içinde farklı formatlar kullanılabilir.
+Primary opcode, FMT ile birlikte komut tanımını seçer. Aşağıda sayısal değer verilen Vector/Matrix komutları bu revizyonda atanmıştır; diğer ailelerin aralıkları yalnızca rezerve edilmiştir.
+
+### 8.1 Vector ve Matrix primary opcode atamaları
+
+Aşağıdaki değerler bu revizyonla atanmıştır. Her mnemonic varyantı ayrı 8-bit primary opcode kullanır; operand formatı ve W/M alanları ilgili encoding kurallarına göre yorumlanır.
+
+**Vector — 0x60–0x7B**
+
+| OP | Mnemonic | Format | Açıklama |
+|---:|---|---|---|
+| 0x60 | VADD | R3 | Lane toplama |
+| 0x61 | VSUB | R3 | Lane çıkarma |
+| 0x62 | VMUL | R3 | Düşük W-bit lane çarpımı |
+| 0x63 | VMACC | R4 | Lane çarp-topla |
+| 0x64 | VMIN.S | R3 | Signed lane minimum |
+| 0x65 | VMIN.U | R3 | Unsigned lane minimum |
+| 0x66 | VMAX.S | R3 | Signed lane maximum |
+| 0x67 | VMAX.U | R3 | Unsigned lane maximum |
+| 0x68 | VAND | R3 | 256-bit bitwise AND |
+| 0x69 | VOR | R3 | 256-bit bitwise OR |
+| 0x6A | VXOR | R3 | 256-bit bitwise XOR |
+| 0x6B | VSHL | R3 | Lane logical left shift |
+| 0x6C | VSHR | R3 | Lane logical right shift |
+| 0x6D | VSHR.S | R3 | Lane arithmetic right shift |
+| 0x6E | VDIV.S | R3 | Signed lane division |
+| 0x6F | VDIV.U | R3 | Unsigned lane division |
+| 0x70 | VMOD.S | R3 | Signed lane remainder |
+| 0x71 | VMOD.U | R3 | Unsigned lane remainder |
+| 0x72 | VCMPEQ | R3 | Lane equality mask |
+| 0x73 | VCMPNE | R3 | Lane inequality mask |
+| 0x74 | VCMPLT.S | R3 | Signed lane less-than mask |
+| 0x75 | VCMPLT.U | R3 | Unsigned lane less-than mask |
+| 0x76 | VCMPLE.S | R3 | Signed lane less-or-equal mask |
+| 0x77 | VCMPLE.U | R3 | Unsigned lane less-or-equal mask |
+| 0x78 | VSUM.S | R3 | Signed lane reduction |
+| 0x79 | VSUM.U | R3 | Unsigned lane reduction |
+| 0x7A | VDOT.S | R3 | Signed lane dot product |
+| 0x7B | VDOT.U | R3 | Unsigned lane dot product |
+
+**Matrix — 0x7C–0x82**
+
+| OP | Mnemonic | Format | Açıklama |
+|---:|---|---|---|
+| 0x7C | MMUL.S | R3 | Signed matrix multiply |
+| 0x7D | MMUL.U | R3 | Unsigned matrix multiply |
+| 0x7E | MMAC.S | R4 | Signed matrix multiply-accumulate |
+| 0x7F | MMAC.U | R4 | Unsigned matrix multiply-accumulate |
+| 0x80 | MTRANS | R2 | Tile transpose |
+| 0x81 | MREDUCE.S | R2 | Signed row/column reduction |
+| 0x82 | MREDUCE.U | R2 | Unsigned row/column reduction |
+
+- 0x83 Vector/Matrix ailesi için ayrılmış genişletme değeridir; ilk sürümde illegal/reserved kabul edilir.
+- Vector ve Matrix opcode'larında bank seçimi ayrıca kodlanmaz; operand alanları ISA tanımına göre MA register selector'larıdır.
+- MREDUCE için ROWS/COLS seçimi R2 AUX[35] bitindedir; MTRANS için AUX sıfırdır.
+- Signed/unsigned varyantlar ayrı primary opcode olduğundan M alanı tile shape, W alanı eleman genişliği için kullanılmaya devam eder.
+- Numeric opcode tablosunda bulunmayan bir mnemonic alias yeni opcode oluşturmaz. Alias yalnızca aynı opcode ve operand alanlarına assembler düzeyinde çevrilebilir.
+- Bu tablo primary opcode atamasıdır; execution latency, issue portu veya ME512'nin çevrim başına tamamlayacağı iş miktarını belirlemez.
 
 ## 9. Decoder ve P0 akışı
 
