@@ -369,49 +369,39 @@ SPM0 ve SPM1, RA/DA/MA register banklarından ayrı erişim kaynaklarıdır. SPM
 Bu bölüm port hedeflerini tanımlar; kesin timing ve bank mapping sonraki mikro-mimari revizyonda sabitlenecektir.
 
 
-## 22. Bellek alanı yerleşimi ve preload/residency komutları (taslak)
+## 22. Ayrık veri bellekleri, yerleşim ve aktarım komutları (taslak)
 
 NEXSUS CPU, programın veriyi yalnızca demand-load ile getirmesine bağlı kalmamalıdır. Programcı belirli bir veri aralığının cache hiyerarşisinde önceden hazırlanmasını isteyebilmelidir. Bunun için L1–L4 hedefli komut ailesi önerilir.
 
-### 22.1 Komut ailesi
+### 22.1 Bellek alanlarının komut modeli
 
-| Mnemonic | Amaç | Semantik hedef |
-|---|---|---|
-| LOAD.L1 | Veri aralığını L1'e almayı iste | Hedef seviye L1 |
-| LOAD.L2 | Veri aralığını L2'ye almayı iste | Hedef seviye L2 |
-| LOAD.L3 | Veri aralığını L3'e almayı iste | Hedef seviye L3 |
-| LOAD.L4 | Veri aralığını L4'e almayı iste | Hedef seviye L4 |
-| PREFETCH.L1–L4 | Yakında kullanılacak veri için düşük öncelikli hazırlık | Hint; register sonucu üretmez |
-| EVICT.L1–L4 | Belirtilen seviyeden çıkarılmasını iste | Policy/koherens kurallarına tabi |
-| CACHE.WAIT | Önceki preload transaction'larının tamamlanmasını bekle | Fence/token ile kapsamlandırılır |
+L1–L4, klasik otomatik cache zinciri değil, birbirinden ayrı veri belleği domain'leridir. Bu nedenle eski `LOAD.Lx`, `PREFETCH.Lx` ve `EVICT.Lx` taslağı otomatik cache doldurma/boşaltma anlamında kullanılmayacaktır.
 
-LOAD.Lx, normal LOAD komutunun register'a veri getiren davranışından ayrı bir **cache residency/preload** ailesi olarak ele alınmalıdır. Normal LOAD dst,[addr] ise register'a veri döndürür. Bu isim çakışmasını önlemek için nihai mnemonic'de LOAD.Lx yerine CACHE.LOAD.Lx veya CLLOAD.Lx seçeneği de değerlendirilmelidir; şimdilik LOAD.Lx taslak adıdır.
+- `LOAD` ve `STORE`, komutun adreslediği bellek domain'inde gerçek veri okuma/yazma işlemini yapar.
+- `XFER`, iki ayrı domain arasında CPU tarafından açıkça istenen veri aktarımıdır.
+- `area` ve `zone`, programlama dili/derleyici düzeyinde yerleşim ve paylaşım kapsamını belirtir; kendi başlarına gizli veri kopyalama başlatmaz.
+- Bellek domain'leri arasında otomatik terfi, düşürme, cache fill veya migration yoktur.
 
-### 22.2 Operand biçimi
+### 22.2 Bellek adresleme biçimi
 
-Önerilen soyut biçim:
+Bellek operandı, hedef domain'i ve o domain içindeki adresi açıkça belirtir. Örnek gösterim:
 
-`LOAD.Lx [base + offset], length, policy`
+```text
+LOAD  RA04, L1:[RA10]
+STORE L2:[RA20], RA04
+```
 
-- base + offset: başlangıç adresi.
-- length: hazırlanacak byte aralığı.
-- policy: normal, retain, streaming, read-mostly gibi allocation/eviction davranışı.
-- Hedef seviye komut suffix'iyle seçilir.
+Burada RA10/RA20 ilgili bellek adresini tutan register'lardır; köşeli parantez bellek erişimini ifade eder. Kesin makine kodu alanları ve adresleme modları kodlama aşamasında belirlenecektir.
 
-İşlem bir register'a veri döndürmez; cache controller'a bir range transaction gönderir. Tamamlanma durumu CACHE.WAIT veya transaction token üzerinden gözlenir.
+### 22.3 Ayrık domain kuralları
 
-### 22.3 Kurallar ve güvenlik
-
-1. İstek cache line granularity'sine yuvarlanır; sınır taşması ve adres overflow kontrol edilir.
-2. Range uzunluğu, outstanding transaction sayısı ve aynı anda preload edilebilecek byte miktarı donanım limitlerine tabidir.
-3. Cache hierarchy'de istenen seviye bulunmuyorsa implementation-defined fallback uygulanır veya capability/status ile bildirilir; sessizce yanlış seviye garantisi verilmez.
-4. L1/L2 çoğunlukla core-private, L3/L4 shared/system-level olabilir; gerçek yerleşim ürün konfigürasyonunda bildirilir.
-5. Cache coherence korunur. Preload komutu dirty data'yı kaybetmez ve normal memory ordering kurallarını atlatamaz.
-6. Yazılabilir data için başka core/device ile yarış varsa coherence ve ownership protokolü geçerlidir.
-7. Preload işlemi normal load gibi architecturally visible register değerini değiştirmez; yalnızca veri hazırlama/placement isteğidir.
-8. Bir range'in hedef seviyede kalacağına dair süre garantisi verilmez; kapasite baskısı, coherence, başka erişimler veya replacement policy veriyi çıkarabilir.
-9. `CACHE.WAIT` yalnızca belirtilen token/önceki kapsam dahilindeki isteklerin tamamlandığını bildirir; tek başına memory fence yerine geçmez.
-10. L2/L3/L4'ün fiziksel bellek organizasyonu ve erişim gecikmeleri sistem konfigürasyonunda tanımlanmalıdır; bunlar otomatik olarak klasik cache seviyeleriyle bire bir aynı kabul edilmez.
+1. L1 her çekirdeğe özel, L2 iki çekirdeğe, L3 dört çekirdeğe ve L4 sekiz veya daha geniş çekirdek grubuna açık domain'dir.
+2. L1–L4 arasında doğrudan bellekten belleğe otomatik bağlantı veya otomatik aktarım varsayılmaz.
+3. Bir domain'deki adres başka bir domain'de aynı içeriğin bulunduğu anlamına gelmez.
+4. Domain'ler arası kopyalama CPU tarafından yürütülen açık bir `XFER` işlemiyle yapılır.
+5. Paylaşılan domain'lerde senkronizasyon, erişim izni, sahiplik ve veri görünürlüğü kuralları ayrıca geçerlidir.
+6. Program komut belleği P0, veri belleklerinden ayrıdır; komut fetch yolu P0'a, normal veri LOAD/STORE yolları ise seçilen veri domain'ine yönelir.
+7. P0 ile L1–L4 arasında da otomatik kopyalama veya veri göçü yoktur. Kodun veri alanına veya verinin komut alanına taşınması gerekiyorsa açık CPU talimatlarıyla yapılır.
 
 ### 22.4 Area / Zone ile ilişki
 
@@ -481,18 +471,9 @@ zone shared_frame at L3 {
 
 Bu kod yalnızca kavramsal gösterimdir; Nexus Flow'un kesin grammar'ı değildir. CPU ISA tarafında zone allocate/publish/acquire/release ve memory-ordering operasyonlarının opcode/semantiği ayrıca tasarlanacaktır.
 
-### 22.8 LOAD.Lx komut ailesinin yeniden yorumlanması
+### 22.8 Eski preload komutlarının durumu
 
-`LOAD.L1` çekirdek-local L1 area'ya preload/placement isteği olarak kalabilir. `LOAD.L2`, `LOAD.L3`, `LOAD.L4` ise yalnızca klasik cache prefetch komutları olarak değil, hedef shared memory domain'e veri aralığı yerleştirme/tahsis etme komutları olarak ele alınmalıdır. Zone tahsisi ve zone içi veri üretimi birbirinden ayrılmalıdır:
-
-- `ZONE.ALLOC` / `ZONE.FREE`: shared zone alanı tahsis/serbest bırakma.
-- `ZONE.PUBLISH`: üreticinin yazmayı bitirdiği aralığı tüketicilere görünür kılma.
-- `ZONE.ACQUIRE`: tüketicinin yayımlanmış aralığı güvenli biçimde sahiplenmesi/okumaya hazır hale getirmesi.
-- `ZONE.RELEASE`: tüketicinin kullanımını bitirdiğini bildirme; alanın yeniden kullanılabilmesini sağlar.
-- `ZONE.ADDR`: descriptor/handle içinden ortak adres ve uzunluk bilgisini alma.
-
-Bunlar şimdilik komut ailesi önerileridir. Normal LOAD/STORE ortak alana gerçek veri okuma/yazma işlemini yapar; ZONE komutları yaşam süresi, sahiplik ve görünürlük yönetir. `LOAD.L2/L3/L4` adlarının tahsis mi, placement mı, yoksa cache residency hint'i mi ifade edeceği bu ayrımla birlikte netleştirilecektir.
-
+Önceki taslakta yer alan `LOAD.L1–L4`, `PREFETCH.L1–L4` ve `EVICT.L1–L4` komutları otomatik cache residency yönetimi olarak ISA kapsamından çıkarılmıştır. Ayrık bellek modelinde veri, yalnızca açıkça hedeflenen domain'de okunur veya yazılır. Başka bir domain'e kopyalanması gerekiyorsa `XFER` kullanılır.
 
 ### 22.9 Çekirdek sayısına göre paylaşılan bellek topolojisi
 
@@ -532,7 +513,7 @@ L1/L2/L3/L4 birbirine otomatik bağlı, veriyi kendiliğinden aşağı/yukarı t
 
 Bu değerler ilk mimari hedeflerdir; nihai silikon kapasitesi değildir. Her basamakta domain başına kapasite 8 kat artırılmıştır. 8'den fazla çekirdekte L4 kapasitesi, sistem topolojisine göre sekizli gruplar veya daha geniş ortak domain'ler halinde ölçeklenebilir. L4'ün tek global domain olması zorunlu değildir.
 
-### 22.11 Seviyeler arası veri aktarımı
+### 22.11 Bellek domain'leri arasında CPU kontrollü veri aktarımı
 
 - L1, L2, L3 ve L4 fiziksel/mantıksal olarak ayrı bellek domain'leridir; aralarında doğrudan bellek bağlantısı veya otomatik aktarım yolu varsayılmaz.
 - Bir verinin bir seviyeden diğerine taşınması gerekiyorsa aktarımı CPU açıkça başlatır ve yönetir.
@@ -540,14 +521,31 @@ Bu değerler ilk mimari hedeflerdir; nihai silikon kapasitesi değildir. Her bas
 - Aktarım tamamlanmadan hedefteki kopya geçerli kabul edilmez. Başarılı tamamlanma, hata ve kısmi aktarım davranışı ISA tarafından raporlanmalıdır.
 - Kaynak ve hedef aralıklarının çakışma/alias durumu kontrol edilir. Aynı domain içindeki örtüşen aralıklar için COPY/MOVE semantiği ayrıca tanımlanır.
 - Bu işlem çekirdekler arası zero-copy zone paylaşımından farklıdır: aynı zone adresini paylaşmak kopya gerektirmez; farklı Lx domain'ine taşımak ise gerçek bir CPU kontrollü veri aktarımıdır.
-- İlk komut taslağı: `XFER dst_level:dst_addr, src_level:src_addr, length`. Komut CPU tarafından yürütülür; ayrı bir DMA motorunun otomatik aktarım yaptığı varsayılmaz. Uygulama bunu çok çevrimli bir CPU memory-operation olarak gerçekleştirebilir.
-- İleride büyük aralıklar için isteğe bağlı asynchronous form ve `XFER.WAIT token` eklenebilir. Bu, aktarımın CPU tarafından başlatılması ve kontrol edilmesi ilkesini değiştirmez.
+- `XFER`, CPU'nun başlattığı çok çevrimli bir aktarım işlemidir. Aktarım sabit boyutlu/ sınırlı beat'ler halinde ilerler; tek çevrimde tüm aralığın taşınması gerekmez.
+- CPU, aktarım beat'lerini kaynak domain'den okuyup hedef domain'e yazar. Ayrı ve bağımsız bir DMA motoru varsayılmaz.
+- Aktarım devam ederken kaynakları çakışmayan ALU/FPU/ME işlemleri yürütülebilir. Bellek portu, register veya bağımlılık çakışması varsa ilgili işlem bekler.
+- Büyük/asenkron aktarım için `XFER.START` bir token üretir; `XFER.WAIT token` ilgili aktarım tamamlanana kadar bekler. Bağımlı kod, aktarım tamamlanmadan hedef veriyi kullanmamalıdır.
 
 Örnek taslak:
 
 ```asm
-XFER L3:RA20, L1:RA10, 4096
-; 4 KiB veri L1 kaynak aralığından L3 hedef aralığına CPU tarafından taşınır.
+XFER L3:[RA20], L1:[RA10], 4096
+; RA10 kaynak adresini, RA20 hedef adresini tutar.
+; 4 KiB veri L1'den L3'e CPU kontrollü olarak aktarılır.
 ```
 
 Buradaki register gösterimleri yalnızca adres operandı örneğidir; kesin operand encoding'i ve transfer buffer/throughput tasarımı henüz sabitlenmemiştir.
+
+
+### 22.12 P0 program komut belleği
+
+P0, program komutlarını ve yürütülebilir kodu tutan, L1–L4 veri belleklerinden fiziksel/mantıksal olarak ayrılmış program belleği domain'idir.
+
+- Instruction fetch birimi komutları P0'dan getirir.
+- L1–L4 veri belleği olarak kullanılır; program kodu bu alanlarda varsayılan olarak tutulmaz.
+- P0'ın kapasitesi, bant genişliği, gecikmesi ve bank organizasyonu henüz açık tasarım parametreleridir.
+- P0 ile L1–L4 arasında otomatik kopyalama, cache fill veya migration yoktur.
+- Program yükleme, kod güncelleme, JIT/üretilebilir kod veya kodun başka bir alana aktarılması gibi durumlar açık CPU kontrollü aktarım/yükleme işlemleriyle yürütülür.
+- Komut belleğine yazma ve yürütme izinleri ayrı koruma/erişim kurallarıyla tanımlanmalıdır. Kodun değiştirildiği durumlarda instruction-fetch görünürlüğü ve senkronizasyonu açıkça sağlanmalıdır.
+
+Bu ayrım, **program kodu belleği (P0)** ile **uygulama veri belleği (L1–L4)** arasında net bir bellek mimarisi sınırı oluşturur. P0, L1'in bir alt seviyesi veya cache'i değildir.
