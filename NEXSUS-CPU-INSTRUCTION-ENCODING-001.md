@@ -88,7 +88,7 @@ FMT alanı için ilk öneri:
 | 1001 | MEMX | Indexed load/store: base + index × scale + displacement |
 | 1010 | MEMUPD | Load/store with base-register pre/post increment/decrement |
 | 1011 | MEMXUPD | Indexed load/store with base-register pre/post increment/decrement |
-| 1010–1111 | Reserved | Gelecek formatlar |
+| 1100–1111 | Reserved | Gelecek formatlar |
 
 FMT kodları taslak değerlerdir; opcode tablosu dondurulurken sabitlenecektir.
 
@@ -439,7 +439,7 @@ Assembly gösterimi:
 
 Bu suffix'ler XFER opcode'unun M alanını ve W değerini seçen assembly gösterimleridir; ayrı opcode değerleri henüz atanmış değildir.
 
-### 4.8 XFER tabanlı sayısal dönüşüm — FCONV
+### 4.11 XFER tabanlı sayısal dönüşüm — FCONV
 
 FCONV bit kopyalama yapmaz; kaynak sayısal değeri hedef türüne dönüştürür. XFER alan yerleşimini kullanır, ancak ayrı opcode ve dönüşüm alt alanlarına sahiptir.
 
@@ -502,7 +502,7 @@ W, DST_TYPE genişliğiyle aynı olmalıdır. F128 kaynak veya hedef, FA bankın
 
 Normal MOV.* XFER komutlarında M/AUX alanları ilgili transfer opcode tanımına göre yorumlanır; FCONV alt alanları onlara uygulanmaz.
 
-### 4.9 BR — PC-relative branch
+### 4.12 BR — PC-relative branch
 
 ```text
 63       56 55    52 51   48 47                         16 15          0
@@ -516,7 +516,7 @@ Normal MOV.* XFER komutlarında M/AUX alanları ilgili transfer opcode tanımın
 - COND, branch koşulunu belirler; koşul kodları ayrı tabloda tanımlanacaktır.
 - Reserved alan sıfır olmalıdır.
 
-### 4.10 SYS — System ve kontrol komutları
+### 4.13 SYS — System ve kontrol komutları
 
 SYS formatı privilege, system state, interrupt, synchronization ve özel kontrol komutları için ayrılmıştır. Alt alan yerleşimi her komut sınıfı için ayrı tabloda tanımlanacaktır. Henüz system register bankı veya CSR sayısı kesinleştirilmemiştir.
 
