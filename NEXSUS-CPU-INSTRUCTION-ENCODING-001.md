@@ -205,8 +205,8 @@ BEXT ve BINS iki register ile iki küçük alan parametresi kullandığından R2
 - BASE: RA bankından 64-bit adres tabanı selector'ı.
 - W: erişim genişliği (8/16/32/64/128/256/512 bit).
 - AM[2:1]: veri bellek domain'i.
-- AM[0]: adresleme biçimi; ilk sürümde yalnızca **0 = base + signed displacement** geçerlidir.
-- DISP: signed 32-bit byte displacement.
+- AM[0]: adresleme biçimi: **0 = base register + displacement**, **1 = absolute domain address**.
+- DISP: normal formda signed 32-bit byte displacement. EXT paketinde sıfır olmalıdır; genişletilmiş displacement/adres literal word'den alınır.
 - R: reserved; sıfır olmalıdır.
 
 **AM alanı**
@@ -218,13 +218,11 @@ BEXT ve BINS iki register ile iki küçük alan parametresi kullandığından R2
 | 10 | L3 | İlgili dört çekirdeklik grubun ortak domain'i |
 | 11 | L4 | İlgili sekizli veya daha geniş grubun ortak domain'i |
 
-İlk adresleme biçimi için AM[0]=0 olmalıdır. Böylece geçerli AM değerleri L1=000, L2=010, L3=100, L4=110 olur. AM[0]=1 olan biçimler şimdilik reserved'dır. Domain, komutun gerçek veri erişim hedefidir; örtük cache fill veya başka Lx seviyesine kopyalama anlamına gelmez.
+AM[0]=0, base-register adreslemesidir. EXT kullanılmayan komutta geçerli domain kodları L1=000, L2=010, L3=100, L4=110 olur; bu biçimde EA, RA[BASE] ile signed DISP32 toplamıdır. EXT formunda DISP=0 zorunludur; literal RAW_LITERAL/COUNT=1 olmalıdır ve signed 64-bit byte displacement olarak yorumlanır: `EA = RA[BASE] + sign_extend(LITERAL64)`. Toplama 64-bit adres alanında taşma veya negatif yönde alt-taşma oluşturursa `ADDRESS_OVERFLOW_FAULT` oluşur.
 
-Effective address:
+AM[0]=1, yalnızca EXT formunda kullanılabilen absolute domain address biçimidir. BASE=0 ve DISP=0 zorunludur; literal word unsigned 64-bit domain adresidir ve doğrudan EA olarak kullanılır. EXT olmadan AM[0]=1 illegal encoding'dir. Bu adres, seçilen L1/L2/L3/L4 domain'inin adres uzayında yorumlanır; fiziksel adres olduğu varsayılmaz.
 
-`EA = RA[BASE] + sign_extend(DISP)`
-
-64-bit adresin tamamı RA kaydında tutulur. Böylece 32-bit displacement, 64-bit adres alanını sınırlamaz.
+Her iki EXT biçiminde de paket sırası EXT prefix (RAW_LITERAL, COUNT=1) → MEM instruction word → 64-bit literal word'dür. Domain, komutun gerçek veri erişim hedefidir; örtük cache fill veya başka Lx seviyesine kopyalama anlamına gelmez.
 
 **DA kayıtlarına erişim dağılımı**
 
