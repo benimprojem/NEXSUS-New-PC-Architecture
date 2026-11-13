@@ -402,13 +402,12 @@ W alanının yorumu opcode ailesine bağlıdır. Örneğin FADD için W=010 FP32
 
 ### 6.3 DA / 256-bit transfer grubu
 
-- DA kayıtları 64-bit'tir.
-- Tek MA kaydı ile 256-bit transfer, dört ardışık DA kaydını kullanır.
-- Önerilen başlangıç hizalaması 4 kayıtlık gruba göredir: DA0:DA3, DA4:DA7, …, DA28:DA31.
-- XFER formatında DA selector, grubun ilk kaydını gösterir.
-- Bu grup hizalaması ilk encoding önerisidir; son ISA doğrulamasında kesinleştirilecektir.
-
-LOAD/STORE için çoklu DA kayıt dağılımı bu bölümde tanımlanmıştır. Açık kalan konu, effective address için doğal hizalama ve misaligned erişimlerin desteklenme/exception davranışıdır; SPM hizalama kuralları kendi bölümünde ele alınır.
+- DA kayıtları 64-bit'tir. XFER içindeki DA selector, çok kayıtlı transferde grubun ilk kaydını gösterir.
+- **256-bit DA↔MA transferi:** bir MA kaydı ile dört ardışık DA kaydı kullanılır. DA başlangıcı 4'ün katı olmalıdır: DA0:DA3, DA4:DA7, …, DA28:DA31.
+- **512-bit DA↔MA transferi:** çift indisli MA pair'i ve sekiz ardışık DA kaydını kullanır. MA pair başlangıcı çift; DA başlangıcı 8'in katı olmalıdır: DA0:DA7, DA8:DA15, DA16:DA23 veya DA24:DA31.
+- 256-bit transferde DA selector 0,4,8,12,16,20,24 veya 28 olabilir. 512-bit transferde yalnızca 0,8,16 veya 24 olabilir.
+- Bu grup hizalama kuralları yalnızca XFER ile tam MA register/pair aktarımı içindir. MEM LOAD/STORE için DA selector hizalaması gerektirilmez; orada yalnızca DA31 sınırı kontrol edilir.
+- 128-bit ve daha küçük scalar/register transferleri bu MA grup kuralına tabi değildir.
 
 ## 7. Immediate ve 64-bit literal genişletme
 
