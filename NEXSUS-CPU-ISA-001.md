@@ -612,7 +612,7 @@ Matrix komutları, vector lane komutlarından ayrı bir operand modeli kullanır
 
 - Her MA register'ı 256 bit'tir. Tile verisi, MA register'ları boyunca ardışık ve kesintisiz biçimde paketlenir.
 - Bir tile'ın MA register sayısı: `ceil(N × N × element_width / 256)`. Tile başlangıç selector'ı, bu register grubunun ilk MA register'ını gösterir.
-- Tile register grubu MA0–MA31 sınırını aşamaz. Register grupları birbirleriyle çakışamaz; yalnızca hedef tile'ın kaynak tile'lardan biriyle aynı başlangıç selector'ını kullanmasına, komutun snapshot/commit kuralları çerçevesinde izin verilir.
+- Tile register grubu MA0–MA31 sınırını aşamaz. Operand grupları aynı tile'ı paylaşacaksa başlangıç selector'ları ve aralıkları tamamen aynı olmalıdır; bu, A=B gibi kaynak alias'larına ve D'nin bir kaynakla tam alias olmasına izin verir. Kısmi/örtüşen ama eşit olmayan aralıklar geçersizdir.
 - Gruplar, kendi register sayılarının katı olan selector'lardan başlatılır. Örneğin 8-register tile grubu MA0, MA8, MA16 veya MA24'ten başlayabilir. Bu kural operand gruplarının sınırlarını ve decoder kontrolünü sadeleştirir.
 - 8×8 tile için 64-bit eleman genişliği ilk sürümde desteklenmez. Bu sınır, MA register dosyasına sığan açık operand grupları ve MMAC'in dört ayrı tile operandı gerektirmesi dikkate alınarak konmuştur. Daha geniş elemanlar ileride farklı tile aktarım/operand modeliyle değerlendirilebilir.
 - Tile elemanları row-major sıralanır: önce satır 0'ın sütunları, ardından satır 1 ve devamı. İlk eleman bit aralığı tile'ın en düşük anlamlı bitleridir. Son MA register'ında kullanılmayan yüksek bitler yazımda sıfırlanır.
@@ -633,7 +633,7 @@ Matrix komutları, vector lane komutlarından ayrı bir operand modeli kullanır
 - Her çıktı elemanının ara birikimi, ürünlerin toplamını kayıpsız tutacak genişlikte hesaplanır: `2×W + ceil(log2(N))` bit. MMAC'teki C elemanı bu genişliğe signed/unsigned varyantına göre genişletilerek eklenir.
 - Sonuç, hedef tile'da W bit'e modulo `2^W` daraltılarak yazılır. İlk sürümde saturating sonuç, ayrı high-half sonuç veya overflow fault yoktur.
 - Kaynak tile'lar komut başlangıcında snapshot edilir. D, A/B/C ile aynı başlangıç MA selector'ını kullanabilir; sonuç bütün hedef tile için tek mimari commit olarak yazılır. Fault oluşursa hedef tile'ın hiçbir register'ı değiştirilmez.
-- MMUL için D/A/B; MMAC için D/A/B/C operand tile grupları aynı N ve W parametrelerini kullanır. Grupların register aralıkları MA0–MA31 içinde kalmalı ve birbirleriyle çakışmamalıdır; D'nin A, B veya C ile tam alias olması bu çakışma kuralının istisnasıdır.
+- MMUL için D/A/B; MMAC için D/A/B/C operand tile grupları aynı N ve W parametrelerini kullanır. Grupların register aralıkları MA0–MA31 içinde kalmalıdır. İki operand aynı tile'ı kullanıyorsa tam alias geçerlidir; kısmi/örtüşen ama eşit olmayan aralıklar geçersizdir.
 - Tile boyutu veya W kombinasyonu desteklenmiyorsa, selector grubu hizasızsa ya da register aralığı MA31'i aşıyorsa `ILLEGAL_OPERAND_CONFIGURATION_FAULT` oluşur; hedef tile değişmez.
 - İlk sürümde rectangular matrix, transpose, mixed-precision, saturating matrix arithmetic, sparse matrix, tile mask, matrix load/store formatı ve matrix descriptor register'ı tanımlanmaz. Tile verisi MA register'larına mevcut register-transfer/vector-data yollarıyla yerleştirilir.
 - MMUL/MMAC numeric opcode değerleri henüz atanmadı.
