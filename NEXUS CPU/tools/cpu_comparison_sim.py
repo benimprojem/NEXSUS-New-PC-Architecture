@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""NEXSUS CPU comparison simulator — deterministic architectural model v0.1.
+"""NEXSUS CPU comparison simulator — controlled 8-core model v0.2.
 
 This is an event/cycle-level teaching and design-space model, not RTL, gem5,
 or a vendor-certified replica. Unknown NEXSUS parameters are explicit inputs.
@@ -55,14 +55,14 @@ class CoreProfile:
 PROFILES = {
     "amd_9950x": {
         "name": "AMD Ryzen 9 9950X / Zen 5",
-        "core_count": 16, "core_type": "uniform", "frontend": 4,
+        "core_count": 8, "core_type": "uniform", "frontend": 4,
         "dispatch": 8, "issue": 8, "retire": 8, "rob": 448,
         "units": {"INT": 6, "FP": 4, "VEC": 2, "LOAD": 4, "STORE": 2, "BR": 1, "CTX": 1, "ATOM": 1},
         "latency": {"INT": 1, "FP": 3, "VEC": 3, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 8},
         "l1_kb": 48, "l2_kb": 1024, "l3_kb": 32768, "l4_kb": 0,
         "l1_lat": 4, "l2_lat": 14, "l3_lat": 48, "l4_lat": 0, "dram_lat": 220,
-        "branch_penalty": 15, "frequency_ghz": 4.3,
-        "dram_bytes_per_cycle": 32
+        "branch_penalty": 15, "frequency_ghz": 3.0,
+        "dram_lat": 120, "dram_bytes_per_cycle": 32
     },
     "intel_285k_p": {
         "name": "Intel Core Ultra 9 285K / Lion Cove P-core",
@@ -72,8 +72,8 @@ PROFILES = {
         "latency": {"INT": 1, "FP": 3, "VEC": 3, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 8},
         "l1_kb": 48, "l2_kb": 3072, "l3_kb": 36864, "l4_kb": 0,
         "l1_lat": 4, "l2_lat": 17, "l3_lat": 84, "l4_lat": 0, "dram_lat": 230,
-        "branch_penalty": 16, "frequency_ghz": 3.7,
-        "dram_bytes_per_cycle": 32
+        "branch_penalty": 16, "frequency_ghz": 3.0,
+        "dram_lat": 120, "dram_bytes_per_cycle": 32
     },
     "intel_285k_e": {
         "name": "Intel Core Ultra 9 285K / Skymont E-core",
@@ -83,8 +83,8 @@ PROFILES = {
         "latency": {"INT": 1, "FP": 4, "VEC": 4, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 10, "CTX": 8},
         "l1_kb": 32, "l2_kb": 4096, "l3_kb": 36864, "l4_kb": 0,
         "l1_lat": 4, "l2_lat": 16, "l3_lat": 90, "l4_lat": 0, "dram_lat": 240,
-        "branch_penalty": 17, "frequency_ghz": 3.2,
-        "dram_bytes_per_cycle": 24
+        "branch_penalty": 17, "frequency_ghz": 3.0,
+        "dram_lat": 120, "dram_bytes_per_cycle": 32
     },
     "nexus_candidate": {
         "name": "NEXSUS CPU / configurable candidate",
@@ -94,7 +94,7 @@ PROFILES = {
         "latency": {"INT": 1, "FP": 3, "VEC": 2, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 4},
         "l1_kb": 128, "l2_kb": 1024, "l3_kb": 8192, "l4_kb": 65536,
         "l1_lat": 2, "l2_lat": 8, "l3_lat": 24, "l4_lat": 64, "dram_lat": 120,
-        "branch_penalty": 10, "frequency_ghz": 2.0,
+        "branch_penalty": 10, "frequency_ghz": 3.0,
         "bank_hash": "folded", "dram_bytes_per_cycle": 64
     }
 }
@@ -305,24 +305,78 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
         "cache_accesses": hits
     }
 
+def partition_dependency_components(ops: List[Op], core_count: int) -> List[List[Op]]:
+    """Pack independent dependency components onto cores without breaking dependencies."""
+    adjacency = [[] for _ in ops]
+    for op in ops:
+        for dep in op.deps:
+            adjacency[op.seq].append(dep)
+            adjacency[dep].append(op.seq)
+    seen = set()
+    components = []
+    for root in range(len(ops)):
+        if root in seen:
+            continue
+        stack = [root]
+        seen.add(root)
+        component = []
+        while stack:
+            node = stack.pop()
+            component.append(node)
+            for nxt in adjacency[node]:
+                if nxt not in seen:
+                    seen.add(nxt)
+                    stack.append(nxt)
+        components.append(sorted(component))
+    components.sort(key=len, reverse=True)
+    bins = [[] for _ in range(max(1, core_count))]
+    loads = [0] * len(bins)
+    for component in components:
+        target = min(range(len(bins)), key=lambda i: loads[i])
+        bins[target].extend(component)
+        loads[target] += len(component)
+    shards = []
+    for indices in bins:
+        indices.sort()
+        remap = {old: new for new, old in enumerate(indices)}
+        shard = []
+        for new_seq, old_seq in enumerate(indices):
+            op = ops[old_seq]
+            shard.append(Op(new_seq, op.kind,
+                            tuple(remap[d] for d in op.deps if d in remap),
+                            op.address, op.width, op.label))
+        if shard:
+            shards.append(shard)
+    return shards
+
 def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=None) -> dict:
     p = profile_from_dict(profile_dict)
     cores = core_count or p.core_count
     results = {}
-    # For v0.1, each kernel is parallelized as independent equal-sized shards.
-    # This exposes core-count scaling but does not yet model shared LLC contention.
     for name, ops in workloads.items():
-        shard_count = min(cores, max(1, len(ops)))
-        shards = [[] for _ in range(shard_count)]
-        # Preserve dependencies within each shard by partitioning independent
-        # work items in a future workload revision; v0.1 runs the full stream on
-        # one core to avoid inventing illegal dependency splitting.
-        one = simulate_stream(ops, p)
-        results[name] = {**one, "parallel_model": "single-stream baseline"}
+        shards = partition_dependency_components(ops, cores)
+        per_core = [simulate_stream(shard, p) for shard in shards]
+        elapsed_cycles = max((x["cycles"] for x in per_core), default=0)
+        total_ops = sum(x["ops"] for x in per_core)
+        summed_cycles = sum(x["cycles"] for x in per_core)
+        cache_totals = {k: sum(x["cache_accesses"][k] for x in per_core)
+                        for k in ("L1", "L2", "L3", "L4", "DRAM")}
+        results[name] = {
+            "cycles": elapsed_cycles, "ops": total_ops,
+            "aggregate_ipc": round(total_ops/max(1, elapsed_cycles), 3),
+            "core_cycles_sum": summed_cycles,
+            "active_cores": len(per_core),
+            "per_core_cycles": [x["cycles"] for x in per_core],
+            "max_rob_occupancy": max((x["max_rob_occupancy"] for x in per_core), default=0),
+            "branch_mispredicts": sum(x["branch_mispredicts"] for x in per_core),
+            "cache_accesses": cache_totals,
+            "parallel_model": "dependency-component multicore; private caches; shared-memory contention not yet modeled"
+        }
     total_cycles = sum(v["cycles"] for v in results.values())
     total_ops = sum(v["ops"] for v in results.values())
-    return {"cpu": p.name, "cores_configured": cores, "kernels": results,
-            "total_cycles": total_cycles, "total_ops": total_ops,
+    return {"cpu": p.name, "cores_configured": cores, "clock_ghz": p.frequency_ghz,
+            "cpu_ram_reference_clock_ghz": p.frequency_ghz,
+            "kernels": results, "total_cycles": total_cycles, "total_ops": total_ops,
             "aggregate_ipc": round(total_ops/max(1,total_cycles),3),
             "time_ms_at_configured_clock": round(total_cycles/(p.frequency_ghz*1e6),6)}
 
@@ -336,12 +390,13 @@ def main():
     profiles = {}
     for key in ("amd_9950x","intel_285k_p","intel_285k_e"):
         profiles[key] = simulate_cpu(workloads, PROFILES[key])
-    profiles["nexus_candidate"] = simulate_cpu(workloads, PROFILES["nexus_candidate"], args.nexus_cores)
+    profiles["nexus_candidate"] = simulate_cpu(workloads, PROFILES["nexus_candidate"], max(8, args.nexus_cores))
     if args.json:
         print(json.dumps(profiles, indent=2))
         return
-    print("NEXSUS CPU COMPOSITE WORKLOAD — MODEL v0.1")
-    print("NOTE: single-stream baseline; multicore scheduler is not implemented yet.")
+    print("NEXSUS CPU COMPOSITE WORKLOAD — CONTROLLED 8-CORE MODEL v0.2")
+    print("All targets: 8 cores, 3.0 GHz CPU/reference-memory clock, same DRAM latency/bandwidth assumptions.")
+    print("Parallelism: dependency components distributed across cores; shared inter-core memory contention remains a known limitation.")
     print(f"{'CPU profile':48} {'cycles':>12} {'ops':>10} {'IPC':>8} {'time ms*':>12}")
     for result in profiles.values():
         print(f"{result['cpu'][:48]:48} {result['total_cycles']:12d} {result['total_ops']:10d} "
