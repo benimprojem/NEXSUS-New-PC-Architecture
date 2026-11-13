@@ -351,6 +351,7 @@ FETCH_AND.ACQ_REL.L4.W64 DA9, [RA20], DA10
 ```
 
 Bu mnemonic'ler sembolik assembly gösterimleridir. ATOM formatının bit yerleşimi ve ORDER kodları `NEXSUS-CPU-INSTRUCTION-ENCODING-001.md` belgesinde tanımlanır; numeric opcode ataması henüz yapılmamıştır.
+
 ## 6. SPM komutları
 
 SPM0 kayıt-ofsetiyle, SPM1–SPM7 byte-ofsetiyle adreslenir. Bu komut isimleri taslak mnemonic'lerdir.
