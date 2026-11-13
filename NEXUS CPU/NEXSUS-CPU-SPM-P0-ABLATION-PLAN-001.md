@@ -1,7 +1,7 @@
 # NEXSUS CPU — SPM and P0 Ablation Experiment Plan
 
 **Document ID:** NEXSUS-CPU-SPM-P0-ABLATION-PLAN-001  
-**Status:** Experimental specification; simulator implementation pending  
+**Status:** Experimental specification; first-stage P0 and SPM2 models implemented; remaining SPM roles pending  
 **Purpose:** Quantify the independent and combined contribution of NEXSUS SPM and P0 against controlled conventional CPU reference profiles.
 
 ## 1. Why a separate experiment is required
@@ -24,7 +24,7 @@ This plan uses controlled ablation: keep the same NEXSUS core profile and worklo
 | N-NO-P0 | Enabled | Disabled | Isolate P0 contribution |
 | N-BASE | Disabled | Disabled | Combined-feature baseline |
 
-The four profiles must keep core count, clock, execution units, pipeline widths, ROB, memory workload, cache assumptions and DRAM controller configuration identical. Only the selected feature and its explicitly documented fallback behavior may change.
+The four profiles must keep core count, clock, execution units, pipeline widths, ROB, memory workload, cache assumptions and DRAM controller configuration identical. Only the selected feature and its explicitly documented fallback behavior may change. The simulator API accepts independent `spm` and `p0` booleans; full four-way report generation is the next integration step.
 
 The interaction effect must also be reported. SPM and P0 gains are not assumed to be additive.
 
@@ -148,9 +148,9 @@ Publish sensitivity ranges. Do not present a single best-case setting as a prove
 
 1. Implement the lockstep multicore shared bank/DRAM controller first: global eight-bank state, work-conserving chip-wide bus, rotating core arbitration and bounded fairness.
 2. Add regression tests for cross-core bank conflicts, independent-bank parallelism, bus saturation and dynamic bandwidth borrowing.
-3. Add SPM/P0 feature configuration and per-role/per-refill counters without changing architectural operation counts.
-4. Add P0 enabled/disabled command-fetch model and targeted P0 kernels, using a conventional instruction-cache/front-end fallback when P0 is disabled.
-5. Add SPM2 access/fallback model and hot-working-set/capacity kernels.
+3. Add SPM/P0 feature configuration and per-role/per-refill counters without changing architectural operation counts. **First stage now implemented:** P0 toggle, conventional I-cache fallback, SPM2 toggle and overflow fallback.
+4. Extend the P0 model with redirect/refill overlap, command-path arbitration and more realistic loop/working-set traces. Initial P0 sequential/branch/working-set/starvation kernels and a conventional I-cache fallback are implemented.
+5. Extend SPM2 model with bank/port configuration, true capacity spills and task migration semantics. Initial hot-working-set and capacity kernels are implemented.
 6. Add SPM3–SPM6 task-context residency, SPM1 OS exchange and SPM7 exception-entry models with their targeted kernels.
 7. Add four-profile ablation regression tests proving that feature toggles preserve operation counts and output signatures.
 8. Publish parameter sweeps and uncertainty ranges before drawing architecture conclusions.
@@ -165,4 +165,4 @@ Publish sensitivity ranges. Do not present a single best-case setting as a prove
 
 ## 11. Current status
 
-This document defines the experiment and fair fallback rules. The current v0.2.3 simulator does not yet model SPM or P0 timing, capacity, refill, port conflicts or task-residency behavior. No performance gain is claimed until those models and regression tests are implemented and run.
+This document defines the experiment and fair fallback rules. The simulator now has a first-stage NEXSUS-only P0/conventional-fetch model and SPM2 direct-access/fallback model. P0 is represented by an 8 KiB command store with 64-byte (eight-command) refill lines and an 8-cycle provisional refill; P0-off uses a 32 KiB conventional instruction cache and a 32-cycle provisional refill. Both use one outstanding refill per core. SPM2 uses an 8 KiB addressable task workspace, a provisional 2-cycle access and one modeled port per core; out-of-range accesses fall back to the ordinary cache/Data RAM path. These are explicit sensitivity parameters, not validated physical timings. SPM0, SPM1, SPM3–SPM7 context/exception/OS behavior, calibrated command-path arbitration and richer branch redirect behavior remain pending. No performance gain is claimed until the full model is validated.
