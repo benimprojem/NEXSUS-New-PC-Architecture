@@ -282,3 +282,14 @@ These parameters must remain configurable and visible in every result.
 ### 14.1 Accelerator boundary
 
 ME512 is part of the NEXSUS CPU execution-resource test and receives its own workload. FAPU and NPU are separate system accelerator blocks in the wider NEXSUS platform; their queueing, DMA, memory arbitration, and host synchronization need a later system-level offload suite. They must not be counted as ordinary CPU execution units or silently included in CPU IPC.
+
+
+### 14.2 Native vector and matrix execution mapping
+
+The logical vector workload uses 512-bit operations and is lowered to each profile's modeled native width:
+- AMD Zen 5: 512-bit AVX-512 path (modeled as one 512-bit logical operation);
+- Intel Xeon 698X: 512-bit AVX-512 path plus an AMX matrix-tile resource for the ME512-equivalent matrix workload;
+- Apple M6: 128-bit ARM Advanced SIMD path in this provisional model (four modeled slices for a 512-bit logical vector operation);
+- NEXSUS: 512-bit vector path plus the dedicated ME512 execution unit.
+
+These are model mappings, not claims that the vendor implementations have identical throughput or latency. Intel AMX tile setup/data movement costs and Apple M6's exact vector/matrix execution details remain calibration items. The workload graph and output validation remain identical across all backends.
