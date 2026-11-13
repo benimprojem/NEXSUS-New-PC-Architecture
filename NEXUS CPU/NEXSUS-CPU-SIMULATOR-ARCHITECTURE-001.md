@@ -57,7 +57,7 @@ This layer answers: **How many modeled cycles and resources does execution requi
 
 It models, as configurable resources:
 - fetch, decode, dispatch and issue;
-- P0 refill and App RAM bank groups;
+- PX page-pool refill, dual-bank SPM0 code feed, and App RAM bank groups;
 - register-bank read/write ports and dependency/forwarding rules;
 - ALU, FPU and ME512 pipelines;
 - AGU and memory request queues;
@@ -151,7 +151,7 @@ At minimum report:
 - instructions/operations issued, completed and retired;
 - IPC and per-unit utilization;
 - dependency, issue, queue-full, bank-conflict and port-turnaround stall cycles;
-- App RAM fetch stalls and P0 refill efficiency;
+- App RAM/PX refill stalls, SPM0 bank-switch bubbles, double-buffer overlap efficiency, and PX_NEXT/PX_END handling;
 - Data RAM and L1–L4 bytes read/written;
 - per-bank service and conflict histograms;
 - wide-access assembly/commit delay;
@@ -186,7 +186,7 @@ Build the simulator incrementally:
 - **Phase B — Functional reference CPU:** scalar execution and memory semantics.
 - **Phase C — Functional NEXSUS CPU:** ISA/register/SPM/memory/fault behavior.
 - **Phase D — Timing engine:** discrete-event or cycle-stepped resource scheduler; start with explicit cycle steps for deterministic arbitration.
-- **Phase E — NEXSUS microarchitecture:** P0, execution units, SPM, bank controller, App/Data RAM, L1–L4.
+- **Phase E — NEXSUS microarchitecture:** PX P0–P7 pool, 4 KiB dual-bank SPM0, execution units, SPM, bank controller, App/Data RAM, L1–L4.
 - **Phase F — System behavior:** tasks, context residency, IRQ/exception and MEMXFER/Fabric.
 - **Phase G — Reference timing model:** conventional pipeline, SIMD, cache/memory, branch and task/IRQ behavior.
 - **Phase H — Comparative benchmark runner:** paired runs, parameter sweeps, CSV/JSON outputs and plots.
@@ -235,3 +235,29 @@ The final directory and filenames must use ASCII-safe names; the conceptual plac
 ## 13. Immediate next step
 
 Before implementing the timing engine, freeze the first simulator configuration schema and a small shared workload IR. Then implement W01 scalar integer loop end-to-end on both functional backends. This creates the first verified comparison path before adding vector, memory and system complexity.
+
+
+## 14. Updated PX / SPM0 model
+
+The previous simulator baseline listed SPM0 as a single 2 KiB buffer. That is superseded. The current proposal is 4 KiB SPM0 split into two 2 KiB banks, with PX Manager filling the inactive bank while CPU fetch consumes the active bank.
+
+The simulator must model:
+- separate PX pool residency (P0–P7, 8×2 KiB) and SPM0 active code banks (2×2 KiB);
+- active-bank fetch consumption and inactive-bank refill as concurrent resources;
+- per-bank states and task/generation/logical-page tags;
+- atomic bank switch at a legal instruction boundary;
+- full-page automatic continuation;
+- PX_NEXT for partial intermediate pages and PX_END for partial final pages, both metadata-only and excluded from executable instruction counts/bytes;
+- valid-byte bounds, 64-bit instruction alignment, malformed metadata faults, and no execution of padding;
+- refill latency, bandwidth, arbitration, contention, and prefetch readiness;
+- refill wait cycles when the next bank is not READY;
+- task switches while one or both SPM0 banks contain code for the outgoing task.
+
+A required ablation matrix is:
+1. single 2 KiB SPM0 baseline (historical comparison only);
+2. 4 KiB dual-bank SPM0 with no lookahead;
+3. 4 KiB dual-bank with one-page lookahead;
+4. dual-bank with partial-page metadata markers;
+5. dual-bank under competing task/code-refill pressure.
+
+For each profile report instruction-fetch stalls, bank-switch bubbles, refill overlap ratio, percentage of boundaries READY on time, useful bytes transferred, wasted bytes transferred, and task-switch interactions. The simulator must not assume zero-stall operation: it should derive stalls from the configured source latency and transfer service model.
