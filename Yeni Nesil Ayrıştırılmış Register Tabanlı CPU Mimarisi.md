@@ -1201,38 +1201,48 @@ Ayrıntılı ISA semantiği: [NEXSUS-CPU-ISA-001.md — §22.10–22.11](NEXSUS-
 
 ## 28. P0 program komut ön belleği ve kod/veri ayrımı
 
-NEXSUS CPU'da program komutları ile uygulama verileri farklı bellek domain'lerinde tutulur. Programın ana kod belleği, komut ön belleği P0 ve uygulama veri bellekleri birbirinden ayrıdır.
+NEXSUS CPU'da program komutları ile uygulama verileri farklı RAM alanlarında tutulur. Programın ana kodu **App RAM**'de, uygulama verileri ayrı **Data RAM**'de bulunur. P0, App RAM'den gelen komutları yürütme öncesinde tutan çekirdek-özel komut ön belleğidir. SPM0 ise yürütme aşamasındaki geçici komut kayıt alanıdır.
 
-| Bellek | Görev | Kayıt genişliği | İlk kapasite hedefi |
+| Bellek | Görev | Kayıt genişliği | Kapasite |
 |---|---|---:|---:|
-| P0 | Instruction-fetch için program komut ön belleği | 64 bit sabit | 32 KiB / çekirdek |
-| L1 | Çekirdeğe özel veri belleği | Veri erişim genişliklerine bağlı | 128 KiB / çekirdek |
+| App RAM | Programın ana kodunu tutar | 64-bit komut sözcükleri | Uygulama gereksinimine göre |
+| P0 | App RAM'den komutları fetch aşamasında hazır tutar | 64 bit sabit | 8 KiB standart; 16 KiB genişletilebilir / çekirdek |
+| L1 / Data RAM | Çekirdeğe özel uygulama verisi | Veri erişim genişliklerine bağlı | 128 KiB / çekirdek |
 | L2 | İki çekirdek için paylaşılan veri belleği | Veri erişim genişliklerine bağlı | 1 MiB / ikili grup |
 | L3 | Dört çekirdek için paylaşılan veri belleği | Veri erişim genişliklerine bağlı | 8 MiB / dörtlü grup |
-| L4 | Sekiz veya daha geniş çekirdek grubu için veri belleği | Veri erişim genişliklerine bağlı | 64 MiB / sekizli grup |
-| SPM0 | Yürütme sırasında geçici komut/kayıt alanı | 64 bit kayıt | 32 KiB / çekirdek |
+| L4 | Sekiz veya daha geniş çekirdek grubu için paylaşılan veri belleği | Veri erişim genişliklerine bağlı | 64 MiB / sekizli grup |
+| SPM0 | Dispatch edilmiş/yürütülmekte olan komutlar için geçici kayıt alanı | 64 bit kayıt | 32 KiB / çekirdek |
 
-### 28.1 P0'ın mimari kuralları
+### 28.1 Kod ve veri ayrımı
 
-- P0, ana program kod belleğinden instruction-fetch birimine komut sağlayan ön bellek katmanıdır; programın tamamının P0'a sığması zorunlu değildir.
-- P0 kayıtları daima 64 bit genişliğindedir. 32 KiB P0, 4.096 adet komut sözcüğü tutar.
-- 16 KiB (2.048 komut) ve 64 KiB (8.192 komut) olası küçük/büyük yapılandırmalardır; başlangıç hedefi çekirdek başına 32 KiB'tır.
-- Instruction fetch P0 üzerinden yürütülür. P0, L1–L4 veri belleklerinin parçası değildir.
-- P0 ile L1–L4 arasında otomatik kod/veri kopyalama veya migration yapılmaz.
-- Programın yüklenmesi ve kod güncellemeleri CPU tarafından açıkça yönetilir.
-- P0'a yazma, kod yürütme izni ve değiştirilen komutların fetch birimine görünür olması ayrı koruma ve senkronizasyon kuralları gerektirir.
+- App RAM program komutlarının ana kaynağıdır; P0 programın tamamını saklamak zorunda değildir.
+- Data RAM uygulamanın normal veri alanıdır. Komut fetch işlemi Data RAM/L1–L4 veri yollarından bağımsızdır.
+- P0, L1–L4 veri belleği hiyerarşisinin parçası değildir ve veri saklamak için kullanılamaz.
+- App RAM'den P0'a komut getirme/refill işlemi instruction-fetch donanımının otomatik işlemidir. Bu, L1–L4 arasında bulunmayan otomatik veri migration ile karıştırılmamalıdır.
+- Program yükleyici/OS kodu App RAM'e yerleştirir; P0 yürütme adresine göre ihtiyaç duyulan komutları getirir.
+- Çalışma sırasında kod değiştirilirse P0 tutarlılığı, yürütme izni ve fetch senkronizasyonu korunmalıdır.
 
-### 28.2 SPM0 ile görev ayrımı
+### 28.2 P0 kapasitesi ve kayıt biçimi
 
-P0 komutları yürütme birimine hazır tutarken SPM0, yürütme sırasında ihtiyaç duyulan geçici komut/kayıt alanıdır. SPM0, komut ön belleği değildir ve P0'ın yerini almaz.
+- Her P0 kaydı **daima 64 bit** genişliğindedir; bir kayıt bir komut sözcüğüdür.
+- Standart P0 kapasitesi **8 KiB / çekirdek**: 1.024 adet 64-bit komut kaydı.
+- P0, donanım yapılandırmasıyla **16 KiB / çekirdeğe genişletilebilir**: 2.048 adet komut kaydı.
+- 8 KiB temel, 16 KiB genişletilmiş konfigürasyondur. Kapasite seçimi çekirdek yapılandırmasına aittir; komut genişliği değişmez.
+- Fetch miss durumunda gerekli komut veya komut bloğu App RAM'den P0'a getirilir. Fetch line/block boyutu, refill genişliği, bank sayısı ve portlar mikro-mimari aşamasında belirlenecektir.
+- Dallanma ve kontrol akışı değişiminde fetch yeni adrese yönelir. Yanlış yoldan getirilmiş, henüz yürütülmemiş komutlar iptal edilir; P0'ın tüm geçerli içeriğinin silinmesi gerekmez.
 
-- SPM0 için mevcut 8 × 4 KiB sayfa düzeni korunur; toplam kapasite 32 KiB olur.
+### 28.3 SPM0 ile görev ayrımı
+
+P0 komutları fetch aşamasında hazır tutar; SPM0 ise dispatch edilmiş ve yürütülmekte olan komutların geçici kayıt/çalışma alanıdır.
+
+- SPM0'ın 8 × 4 KiB sayfa düzeni korunur; toplam kapasite 32 KiB olur.
 - SPM0 kayıtları 64 bit genişliğindedir; her 4 KiB sayfada 512 kayıt bulunur.
-- P0'dan gelen komutların yürütme akışında kullanılacak geçici kayıtları SPM0'da tutulabilir.
-- P0 ve SPM0 ayrı bellek kaynaklarıdır; görevleri ve erişim yolları birbirine karıştırılmamalıdır.
+- P0'dan alınan komutlar yürütme akışına aktarılırken SPM0, yürütme tarafının geçici komut kayıtlarını tutar.
+- SPM0 komut ön belleği değildir; App RAM'den komut fetch etmez ve P0'ın yerini almaz.
+- P0 fetch, SPM0 dispatch/yürütme aşamasına hizmet eder.
 
-### 28.3 Domain'ler arası aktarım
+### 28.4 P0 ve veri domain'leri arasında aktarım
 
-P0 dahil farklı bellek domain'leri arasında veri veya kod taşınması gerektiğinde aktarım CPU tarafından açıkça başlatılır. `XFER` çok çevrimli ve parçalara bölünmüş çalışır. Aktarım sürerken bağımsız ALU/FPU/ME işleri, bellek ve yürütme kaynakları çakışmadığı sürece ilerleyebilir. Asenkron kullanımda `XFER.START` token üretir ve `XFER.WAIT token` tamamlanmayı bekler.
+P0 ile L1–L4 veri domain'leri birbirinden ayrıdır. App RAM'den P0'a otomatik komut refill edilmesi dışında kod ve veri domain'leri arasında örtük kopyalama yapılmaz. Kodun açıkça başka bir domain'e taşınması veya değiştirilmesi gerekiyorsa CPU kontrollü aktarım ve kod-yürütme senkronizasyonu gerekir.
 
-ISA komut semantiği: [NEXSUS-CPU-ISA-001.md — §22.11–22.13](NEXSUS-CPU-ISA-001.md).
+ISA ayrıntısı: [NEXSUS-CPU-ISA-001.md — §22.12–22.13](NEXSUS-CPU-ISA-001.md).
