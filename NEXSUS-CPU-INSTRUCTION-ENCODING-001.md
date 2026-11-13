@@ -85,7 +85,8 @@ FMT alanı için ilk öneri:
 | 0110 | SYS | System, control ve özel register komutları |
 | 0111 | EXT | Takip eden 64-bit literal/extension word kullanan komut |
 | 1000 | R4 | Dört register operandlı işlemler (FMA, VMACC, MADD vb.) |
-| 1001–1111 | Reserved | Gelecek formatlar |
+| 1001 | MEMX | Indexed load/store: base + index × scale + displacement |
+| 1010–1111 | Reserved | Gelecek formatlar |
 
 FMT kodları taslak değerlerdir; opcode tablosu dondurulurken sabitlenecektir.
 
@@ -249,7 +250,71 @@ DA kayıtları 64-bit olduğundan erişim genişliğine göre gereken kayıt say
 - LOAD fault durumunda hedef DA kayıtlarının hiçbiri mimari olarak güncellenmez. STORE için tüm aralık, izin ve sınır kontrolleri yazma commit'inden önce tamamlanır; bu kontrollerden biri başarısızsa hiçbir byte yazılmaz.
 - Başarılı 128/256/512-bit LOAD/STORE tek bir mimari komuttur; mikro-mimari bunu birden fazla beat'e bölebilir. Bu, başka çekirdeklerin aynı aralığa eşzamanlı erişimine karşı kendiliğinden atomicity garantisi vermez. Gerekli eşzamanlama/atomic davranış ayrı komutlarla sağlanır.
 
-### 4.7 XFER — Register bankları arası açık aktarım
+### 4.7 MEMX — İndeksli bellek erişimi
+
+MEMX, MEM formatının register-indirect adreslemesini genişletir. D, W ve AM alanlarının anlamı MEM ile aynıdır; ek olarak bir INDEX register'ı ve SCALE alanı bulunur.
+
+```text
+63       56 55    52 51   47 46   42 41   37 36  34 33  31 30              3 2 0
++----------+--------+-------+-------+-------+------+-------+----------------+---+
+| OP (8)   |FMT (4) | D (5) | BASE(5)| INDEX(5)| W(3)| AM(3)| DISP (28)     |   |
++----------+--------+-------+-------+-------+------+-------+----------------+---+
+```
+
+Bit alanı tanımı (payload bitleri):
+- D[51:47]: LOAD hedefi / STORE kaynağı DA başlangıç selector'ı.
+- BASE[46:42]: RA bankında taban adres register selector'ı.
+- INDEX[41:37]: RA bankında indeks register selector'ı.
+- W[36:34]: erişim genişliği; MEM ile aynı 8/16/32/64/128/256/512-bit kodları.
+- AM[33:31]: domain ve adresleme biçimi; MEM ile aynı anlam.
+- SCALE[30:28]: indeks çarpanı.
+- DISP[27:0]: normal formda signed 28-bit byte displacement.
+- FMT=1001, MEMX formatını belirtir; bu formatta kullanılmayan/reserved bit yoktur.
+
+**SCALE kodları**
+
+| SCALE | Çarpan |
+|---:|---:|
+| 000 | 1 |
+| 001 | 2 |
+| 010 | 4 |
+| 011 | 8 |
+| 100 | 16 |
+| 101–111 | Reserved; illegal encoding |
+
+**Adres hesaplama**
+
+Normal MEMX formunda:
+
+`EA = RA[BASE] + (signed(RA[INDEX]) × SCALE) + sign_extend(DISP28)`
+
+- BASE ve INDEX birbirinden bağımsız RA selector'larıdır; aynı selector kullanılabilir.
+- INDEX, signed two's-complement 64-bit tamsayı olarak yorumlanır. Negatif indeksler desteklenir.
+- SCALE çarpanı yalnızca indeks terimine uygulanır; DISP byte cinsindendir ve ölçeklenmez.
+- Ara hesaplama taşması sessizce sarılmaz. Matematiksel sonuç 0…2^64−1 aralığının dışındaysa `ADDRESS_OVERFLOW_FAULT` oluşur.
+- EXT formunda DISP28=0 zorunludur ve literal signed 64-bit byte displacement olarak kullanılır:
+
+`EA = RA[BASE] + (signed(RA[INDEX]) × SCALE) + signed(LITERAL64)`
+
+- MEMX ile EXT paket sırası EXT prefix (`RAW_LITERAL/COUNT=1`) → MEMX instruction word → 64-bit literal word'dür.
+- MEMX yalnızca base + indexed addressing içindir. Absolute adresleme MEM formatındaki EXT + AM[0]=1 biçimiyle yapılır; MEMX absolute mod taşımaz.
+- Domain seçimi, doğal hizalama, DA selector sınırı, izin, bounds ve fault davranışları MEM ile aynıdır.
+- EXT kullanılmayan MEMX komutu tek 64-bit word'dür. EXT kullanılan MEMX paketi üç 64-bit word'dür.
+
+Örnek assembly gösterimleri:
+
+```asm
+LOAD.L1.W64 DA4, [RA10 + RA11*1 + 8]
+LOAD.L2.W128 DA8:DA9, [RA12 + RA13*4 - 16]
+STORE.L3.W256 [RA20 + RA21*8 + 32], DA12:DA15
+
+; Geniş displacement: EXT literal signed 64-bit byte offset
+LOAD.L1.W64 DA2, [RA4 + RA5*2 + disp64(0x100000000)]
+```
+
+`disp64(value)` assembler gösterimidir; MEMX.DISP alanı sıfır kodlanır ve literal EXT paketinden alınır. İndeks ölçeği ve register selector'ları normal MEMX word'ünde kalır.
+
+### 4.8 XFER — Register bankları arası açık aktarım
 
 ```text
 63       56 55    52 51  50 49   45 44  43 42   38 37  35 34  32 31     0
