@@ -78,6 +78,7 @@ The input generator must be deterministic. Each kernel has a small reference imp
 | K15 | Instruction-fetch stress | Small loops, large code, page boundaries and partial final pages | Front-end starvation, PX refill, SPM0 bank switching |
 | K16 | ME512 matrix tile | 512-bit tile operations with explicit input/output movement | Dedicated ME512 throughput, operand supply, result drain and contention |
 | K17 | Atomic contention | Shared-address read-modify-write operations across cores | Atomic unit throughput, memory serialization, bank/bus contention |
+| K18 | IRQ/exception service | Deterministic interrupt-service proxy with context entry/exit | IRQ unit latency, context-frame overhead and dependent-work recovery |
 
 ## 5. Branch prediction and control-flow experiment
 
@@ -216,7 +217,7 @@ The functional model must validate outputs independently from the timing engine.
 ## 10. Required test matrix
 
 At minimum, run:
-- four architecture profiles × all 17 kernels;
+- four architecture profiles × all 18 kernels;
 - low/base/high sensitivity for unresolved parameters;
 - cold-cache and warm-cache variants where relevant;
 - single-core and 8-core variants;
@@ -303,3 +304,8 @@ These are model mappings, not claims that the vendor implementations have identi
 - Apple M6 announcement and CPU topology: https://www.apple.com/newsroom/2026/08/apple-introduces-m6-and-m5-ultra-for-a-big-leap-in-performance-and-ai-compute/
 
 Vendor disclosures define core counts, supported instruction families and memory-channel limits where available. Unpublished pipeline widths, execution ports, cache latencies and branch predictor accuracy remain simulator assumptions, not copied vendor specifications.
+
+
+### 14.4 IRQ/exception modeling scope
+
+The current IRQ kernel is a deterministic service-latency proxy that schedules an IRQ service operation and a context-frame operation in the dependency graph. It does not yet model asynchronous event arrival, priority preemption, nested exceptions, interrupt masking or full OS handler dispatch. Those require a dedicated event-router/scheduler model before interrupt-latency claims are publishable.
