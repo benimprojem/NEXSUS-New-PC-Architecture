@@ -229,10 +229,22 @@ Thread komutları (SPAWN, SEND, RECEIVE/LISTEN, DONE vb.) CPU çekirdek ISA'sın
 - Decoder/issue logic bağımsız komutları uygun kaynaklar müsaitse paralel dispatch edebilir.
 - Aynı registera yazma, operand dependency, port sayısı ve memory conflict paralelliği sınırlar.
 
+### 11.1 Dört register operandlı komutların encoding eşlemesi
+
+Aşağıdaki komutlar tek instruction word içinde `R4` formatını kullanır; dördüncü operandı kaybetmek veya komutu yazılımsal olarak iki komuta bölmek gerekmez:
+
+| Komut | Encoding | Operand eşlemesi |
+|---|---|---|
+| `FMA dst, a, b, c` | R4 | D=dst, A=a, B=b, C=c (FA bankı) |
+| `VMACC.W dst, a, b, acc` | R4 | D=dst, A=a, B=b, C=acc (MA bankı) |
+| `MADD dst, a, b, acc` | R4 | D=dst, A=a, B=b, C=acc (MA bankı) |
+
+R4 alan yerleşimi ve FMT kodu `NEXSUS-CPU-INSTRUCTION-ENCODING-001.md` belgesinde tanımlanır. Pair kullanan MA/FA operandlarında selector, pair'in ilk (çift indisli) kaydını gösterir. R4 kullanılması komutun tek çevrimde tamamlanacağı anlamına gelmez.
+
 ## 12. Açık kalan ISA kararları
 
-1. Opcode ve instruction bit layout.
-2. 3-operand/4-operand formatların encoding'i.
+1. Numeric opcode atamaları ve instruction bit layout'unun dondurulması.
+2. R4 dışındaki özel/karma operandların (özellikle FCONV, bit-field ve system komutları) kesin encoding'i.
 3. Flag register mı predicate register mı kullanılacağı.
 4. Integer MUL/DIV'nin ALU içi veya ayrı pipeline olması.
 5. FP rounding mode, exception ve NaN davranışları.
