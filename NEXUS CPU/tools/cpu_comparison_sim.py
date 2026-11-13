@@ -350,6 +350,10 @@ def validate_px_page_descriptors(pages: List[dict]) -> bool:
         if valid_bytes == 2048:
             if marker not in (None, "FULL"):
                 raise ValueError("full 2-KiB pages continue automatically and take no marker")
+            if page.get("stream_end", False) and not is_last:
+                raise ValueError("stream_end can only appear on the final code page")
+            if is_last and not page.get("stream_end", False):
+                raise ValueError("a full final page requires stream_end metadata, not PX_END")
             if not is_last and int(pages[index + 1]["logical_page_id"]) != page_id + 1:
                 raise ValueError("full-page sequential continuation must name the next logical page")
         elif marker == "PX_NEXT":
@@ -407,6 +411,8 @@ class CommandFetchModel:
             return block + 1
         valid_bytes = int(descriptor.get("valid_bytes", self.p0_buffer_bytes))
         marker = descriptor.get("marker")
+        if descriptor.get("stream_end", False):
+            return None
         if valid_bytes == self.p0_buffer_bytes:
             return block + 1
         if marker == "PX_END":
