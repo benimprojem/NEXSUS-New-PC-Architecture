@@ -466,7 +466,7 @@ FETCH_ADD.RELAXED.L1.W64 DA7, [RA14], DA8
 FETCH_AND.ACQ_REL.L4.W64 DA9, [RA20], DA10
 ```
 
-Bu mnemonic'ler ATOM formatını ve ORDER alanını seçen assembly gösterimleridir; numeric opcode değerleri henüz atanmış değildir.
+Bu mnemonic'ler ATOM formatını ve ORDER alanını seçen assembly gösterimleridir; numeric opcode değerleri §8.5 ve §8.6'da atanmıştır.
 
 ### 4.11 XFER — Register bankları arası açık aktarım
 
@@ -896,10 +896,10 @@ OP alanı 8-bit olduğundan 256 primary opcode değeri sunar. İlk aşamada opco
 | 0x00–0x0F | Control-flow / branch | 0x00–0x04 atandı; 0x05–0x0F ayrıldı |
 | 0x10–0x2F | Integer / scalar ALU | 0x10–0x1F atandı; 0x20–0x2F ayrıldı |
 | 0x30–0x3F | Bit / Boolean / shift | 0x30–0x3A atandı; 0x3B–0x3F ayrıldı |
-| 0x40–0x4F | Load/store / address | Aile aralığı ayrıldı; bireysel atamalar açık |
+| 0x40–0x4F | Load/store / atomic memory | 0x40–0x4F atandı; 0x84 atomic XOR tamamlayıcısı |
 | 0x50–0x5F | Floating point / conversion | 0x50–0x5B atandı; 0x5C–0x5F ayrıldı |
 | 0x60–0x83 | Vector / Matrix / ME512 | Alt aile aralığı ayrıldı; aşağıda 0x60–0x82 atandı |
-| 0x84–0x93 | Register transfer / bank move | Aile aralığı ayrıldı; bireysel atamalar açık |
+| 0x84–0x93 | Atomic extension / register transfer | 0x84 ATOM.FETCH_XOR; 0x85 XFER; 0x86–0x93 reserved |
 | 0x94–0xA3 | SPM access / SPM control | Aile aralığı ayrıldı; bireysel atamalar açık |
 | 0xA4–0xC3 | System / synchronization | Aile aralığı ayrıldı; bireysel atamalar açık |
 | 0xC4–0xEF | Reserved / future extensions | Ayrılmış |
@@ -1077,6 +1077,47 @@ Aşağıdaki değerler bu revizyonla atanmıştır. Her mnemonic varyantı ayrı
 - Numeric opcode tablosunda bulunmayan bir mnemonic alias yeni opcode oluşturmaz. Alias yalnızca aynı opcode ve operand alanlarına assembler düzeyinde çevrilebilir.
 - Bu tablo primary opcode atamasıdır; execution latency, issue portu veya ME512'nin çevrim başına tamamlayacağı iş miktarını belirlemez.
 
+### 8.5 Memory, atomic ve transfer primary opcode atamaları
+
+Bellek komutları tek bir opcode'a sıkıştırılmayacaktır: normal LOAD/STORE, indexed/update erişimleri ve atomic işlemler ayrı primary opcode alır. FMT, her opcode'un operand yerleşimini seçer; opcode ise erişim davranışını sabitler.
+
+| OP | Mnemonic | Format | İşlev |
+|---:|---|---|---|
+| 0x40 | LOAD | MEM | DA'ya ham bellek okuma |
+| 0x41 | STORE | MEM | DA'dan ham bellek yazma |
+| 0x42 | LOADX | MEMX | Base + index×scale + displacement okuma |
+| 0x43 | STOREX | MEMX | Base + index×scale + displacement yazma |
+| 0x44 | LOADUPD | MEMUPD | Otomatik BASE güncellemeli okuma |
+| 0x45 | STOREUPD | MEMUPD | Otomatik BASE güncellemeli yazma |
+| 0x46 | LOADXUPD | MEMXUPD | İndeksli ve BASE güncellemeli okuma |
+| 0x47 | STOREXUPD | MEMXUPD | İndeksli ve BASE güncellemeli yazma |
+| 0x48 | ATOM.LOAD | ATOM | Atomic load |
+| 0x49 | ATOM.STORE | ATOM | Atomic store |
+| 0x4A | CAS | ATOM | Compare-and-swap |
+| 0x4B | SWAP | ATOM | Atomic exchange |
+| 0x4C | FETCH_ADD | ATOM | Atomic fetch-add |
+| 0x4D | FETCH_SUB | ATOM | Atomic fetch-sub |
+| 0x4E | FETCH_AND | ATOM | Atomic fetch-and |
+| 0x4F | FETCH_OR | ATOM | Atomic fetch-or |
+| 0x84 | FETCH_XOR | ATOM | Atomic fetch-xor; atomic aile tamamlayıcısı |
+
+**Opcode/format doğrulamaları**
+- LOAD/STORE opcode'ları yalnızca MEM; LOADX/STOREX yalnızca MEMX; LOADUPD/STOREUPD yalnızca MEMUPD; LOADXUPD/STOREXUPD yalnızca MEMXUPD kullanır.
+- ATOM.LOAD/STORE/CAS/SWAP/FETCH_* yalnızca ATOM formatını kullanır. D/A/B operand kullanımı ve ORDER kısıtları §4.10'da tanımlıdır.
+- LOAD/STORE ve ATOM komutlarının fault/commit davranışları §4.6 ve §4.10'a tabidir; opcode seçimi bu davranışları değiştirmez.
+- 0x84, register transfer ailesine değil atomic memory ailesine ait tek bir genişletme opcode'udur. Register transfer primary opcode'u 0x85'tir.
+- 0x50–0x5B FP opcode alanı ve 0x60–0x83 vector/matrix alanı değişmez.
+
+### 8.6 Register-bank transfer primary opcode
+
+| OP | Mnemonic | Format | İşlev |
+|---:|---|---|---|
+| 0x85 | XFER | XFER | RA/FA/DA/MA bankları arasında açık ham bit aktarımı ve DA→RA genişletme |
+
+- XFER M alanı BIT_COPY, SIGN_EXTEND ve ZERO_EXTEND alt türlerini seçer; ayrıntılar §4.11'de tanımlıdır.
+- FCONV, sayısal dönüşüm için 0x5B primary opcode'sunu ve XFER alan yerleşimini kullanır; XFER ile aynı opcode değildir.
+- 0x86–0x93 register transfer genişletmeleri için reserved'dır.
+
 ### 8.4 Floating-point primary opcode atamaları
 
 Floating-point komutları için 0x50–0x5F aralığı ayrılmıştır. İlk sürümde 12 primary opcode atanmış, dört değer genişletme için boş bırakılmıştır.
@@ -1146,7 +1187,7 @@ Aşağıdaki örnekler tam 64-bit hexadecimal makine kodu değildir; atanmış p
 
 ## 12. Henüz dondurulmamış kararlar
 
-- MEMUPD/MEMXUPD ve ATOM opcode numaraları ile assembler mnemonic alias tablosu henüz atanmadı.
+- MEMUPD/MEMXUPD ve ATOM opcode numaraları §8.5 ile atandı; assembler mnemonic alias tablosunun ayrıntılı canonical spelling listesi ayrıca tamamlanacaktır.
 - ATOM ordering, scalar 8/16/32/64-bit işlemler ve CAS/SWAP/FETCH_* operand semantiği taslak olarak tanımlandı; fiziksel coherence, arbitration ve bank locking mikro-mimari aşamasında belirlenecek.
 
 1. OP ve FMT sayısal kodlarının nihai tablosu.
