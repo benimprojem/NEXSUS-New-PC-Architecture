@@ -267,3 +267,6 @@ This mapping lets every architecture use its available modeled execution resourc
 The SPM0 fetch model now accepts logical-page descriptors. It validates the fetch offset against valid_bytes, resolves PX_NEXT to the declared next logical page, stops sequential prefetch on PX_END, and automatically advances full 2 KiB pages. Invalid padding fetches and sequential continuation after PX_END raise a modeled fault. Branch-target fetches can be marked non-sequential so logical PC mapping remains distinct from page-stream continuation.
 
 Regression tests cover full-page automatic continuation, partial intermediate pages, partial final pages, marker-free full pages, invalid padding, wrong next-page IDs and 64-bit alignment. PX_NEXT/PX_END remain descriptor metadata and are not Op records.
+
+
+An exactly full 2 KiB final page ends through the code-region descriptor (`stream_end=true`); it does not use PX_END. PX_END remains the metadata marker for a partial final page. The fetch model stops prefetching when `stream_end` is set.
