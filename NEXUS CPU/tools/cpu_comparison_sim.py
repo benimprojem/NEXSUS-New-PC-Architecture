@@ -102,7 +102,7 @@ PROFILES = {
 
 def add_op(ops: List[Op], kind: str, deps=(), address=0, width=8, label="", command_address=None):
     seq = len(ops)
-    pc = seq * 8 if command_address is None else command_address
+    pc = -1 if command_address is None else command_address
     ops.append(Op(seq, kind, tuple(dict.fromkeys(deps)), address, width, label, pc))
     return seq
 
@@ -186,18 +186,22 @@ def build_composite_workload(scale: int = 1) -> Dict[str, List[Op]]:
         add_op(ops, "BR", label="independent branch stress")
     result["branch_stress"] = ops
 
-    # J) Explicit SPM2 hot set: same 4 KiB task-local working set is revisited.
+    # J) Dependent pointer chain repeatedly visits a 4 KiB SPM2-resident set.
     ops = []
-    for i in range(2048*n):
-        add_op(ops, "LOAD" if i % 4 else "STORE", (),
-               address=(i % 64) * 64, width=64, label="SPM2: hot task working set")
+    previous = None
+    for i in range(512*n):
+        previous = add_op(ops, "LOAD", () if previous is None else (previous,),
+                          address=(i % 64) * 64, width=64,
+                          label="SPM2: dependent hot task working set")
     result["spm_hot_workset"] = ops
 
-    # K) SPM2 capacity sweep: addresses cover 16 KiB, exceeding the 8 KiB SPM2.
+    # K) Dependent chain covers 16 KiB: half fits SPM2, half uses Data RAM.
     ops = []
-    for i in range(2048*n):
-        add_op(ops, "LOAD", (), address=(i % 256) * 64, width=64,
-               label="SPM2: capacity sweep")
+    previous = None
+    for i in range(512*n):
+        previous = add_op(ops, "LOAD", () if previous is None else (previous,),
+                          address=(i % 256) * 64, width=64,
+                          label="SPM2: dependent capacity sweep")
     result["spm_capacity_sweep"] = ops
 
     # L) Sequential command supply; one unique command address per operation.
@@ -218,9 +222,9 @@ def build_composite_workload(scale: int = 1) -> Dict[str, List[Op]]:
         add_op(ops, "INT", label="P0 working set", command_address=(i % 256)*8)
     result["p0_working_set"] = ops
 
-    # O) Repeated 16 KiB command loop (exceeds P0 and 32 KiB conventional I-cache).
+    # O) Two passes over 16 KiB of commands: exceeds P0 but fits conventional I-cache.
     ops = []
-    for i in range(8192*n):
+    for i in range(32768*n):
         add_op(ops, "INT", label="P0 starvation", command_address=(i % 2048)*8)
     result["p0_starvation"] = ops
 
@@ -574,9 +578,17 @@ def partition_dependency_components(ops: List[Op], core_count: int) -> List[List
         shard = []
         for new_seq, old_seq in enumerate(indices):
             op = ops[old_seq]
+            if op.label.startswith("P0 working set"):
+                command_pc = (new_seq % 256) * 8
+            elif op.label.startswith("P0 starvation"):
+                command_pc = (new_seq % 2048) * 8
+            elif op.label.startswith("P0 sequential") or op.label.startswith("P0 branch"):
+                command_pc = new_seq * 8
+            else:
+                command_pc = op.command_address if op.command_address >= 0 else new_seq * 8
             shard.append(Op(new_seq, op.kind,
                             tuple(remap[d] for d in op.deps if d in remap),
-                            op.address, op.width, op.label, op.command_address))
+                            op.address, op.width, op.label, command_pc))
         if shard:
             shards.append(shard)
     return shards
