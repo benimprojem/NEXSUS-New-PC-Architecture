@@ -1117,3 +1117,20 @@ ISA davranışının ayrıntısı: [NEXSUS-CPU-ISA-001.md — §19–20](NEXSUS-
 ## 24.1 ME512 accumulator ve tile ayrımı
 
 ME512'nin dış operand yolu 512-bit'tir; bu değer iç matrix accumulator genişliğini veya matris boyutunu belirlemez. MA pair'leri operand/result transfer biçimidir. Matrix shape, element packing, tile boyutu, accumulation precision ve iç accumulator kapasitesi ayrı mikro-mimari parametreler olarak kalır. Bu kararlar benchmark/iş yükü ve alan-güç hedefleriyle birlikte verilecektir; ISA'da şimdilik tek bir accumulator genişliği sabitlenmez.
+
+
+# 25. `area` / `zone` bellek yerleşim modeli
+
+Bu bölüm CPU'nun genel RAM ve cache/shared-memory organizasyonunu tanımlar; belirli bir fiziksel RAM teknolojisini varsaymaz.
+
+- **`area` → L1 / core-local:** Çekirdeğe ait yerel çalışma alanı. Sık erişilen, kısa ömürlü veya çekirdek içinde yoğun kullanılan veriler için ayrılır. Başka çekirdeklerin bu alanı ortak bellek gibi kullanması hedeflenmez.
+- **`zone` → L2/L3/L4 / shared memory:** Birden fazla çekirdeğin erişebildiği ortak bellek alanı. Çekirdekler payload'ı birbirine kopyalamak yerine zone içindeki adresi veya handle'ı paylaşır.
+- Üretici veriyi zone'a bir kez yazar ve publish eder. Tüketici aynı adresi acquire ederek okur. Böylece çekirdekler arasında tekrarlanan payload kopyaları ortadan kalkar; adres/descriptor aktarımı yeterli olur.
+- Zone descriptor en azından base address, length, alignment, target level ve access/ownership metadata'sını temsil etmelidir. Descriptor küçük bir kontrol verisidir; asıl payload ortak RAM bölgesinde kalır.
+- Zone tahsisi ve serbest bırakılması lifetime ile yönetilir. Tüketici kullanımını bitirmeden üretici aynı alanı yeniden kullanamaz.
+- Publish/acquire işlemleri memory ordering ve cache visibility kurallarına uymalıdır. Adresin paylaşılması tek başına cache coherence veya yazma görünürlüğü sağlamaz.
+- Aynı zone aralığına çoklu yazma için açık ownership, atomik işlem veya senkronizasyon gerekir.
+
+Bu yaklaşım **address handoff / zero-copy inter-core sharing** modelidir. Verinin ilk kez ortak RAM'e yazılması devam eder; kaldırılan işlem, çekirdekler arasında aynı payload'ın tekrar tekrar kopyalanmasıdır.
+
+İlgili ISA komut taslağı ve kurallar: [NEXSUS-CPU-ISA-001.md — §22.6–22.8](NEXSUS-CPU-ISA-001.md).
