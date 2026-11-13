@@ -255,10 +255,10 @@ DA kayıtları 64-bit olduğundan erişim genişliğine göre gereken kayıt say
 MEMX, MEM formatının register-indirect adreslemesini genişletir. D, W ve AM alanlarının anlamı MEM ile aynıdır; ek olarak bir INDEX register'ı ve SCALE alanı bulunur.
 
 ```text
-63       56 55    52 51   47 46   42 41   37 36  34 33  31 30              3 2 0
-+----------+--------+-------+-------+-------+------+-------+----------------+---+
-| OP (8)   |FMT (4) | D (5) | BASE(5)| INDEX(5)| W(3)| AM(3)| DISP (28)     |   |
-+----------+--------+-------+-------+-------+------+-------+----------------+---+
+63       56 55    52 51   47 46   42 41   37 36  34 33  31 30  28 27             0
++----------+--------+-------+-------+-------+------+-------+------+----------------+
+| OP (8)   |FMT (4) | D (5) | BASE(5)| INDEX(5)| W(3)| AM(3)|SCALE | DISP (28)      |
++----------+--------+-------+-------+-------+------+-------+------+----------------+
 ```
 
 Bit alanı tanımı (payload bitleri):
@@ -266,7 +266,7 @@ Bit alanı tanımı (payload bitleri):
 - BASE[46:42]: RA bankında taban adres register selector'ı.
 - INDEX[41:37]: RA bankında indeks register selector'ı.
 - W[36:34]: erişim genişliği; MEM ile aynı 8/16/32/64/128/256/512-bit kodları.
-- AM[33:31]: domain ve adresleme biçimi; MEM ile aynı anlam.
+- AM[33:31]: domain alanı; AM[0]=0 zorunludur. MEMX absolute adresleme desteklemez.
 - SCALE[30:28]: indeks çarpanı.
 - DISP[27:0]: normal formda signed 28-bit byte displacement.
 - FMT=1001, MEMX formatını belirtir; bu formatta kullanılmayan/reserved bit yoktur.
