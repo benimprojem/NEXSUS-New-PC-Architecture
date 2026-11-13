@@ -254,6 +254,7 @@ The following remain open implementation details:
 - NEXSUS-CPU-TASK-SCHEDULING-SPM-RESIDENCY-001.md — task identity and handoff.
 - NEXSUS-SYSTEM-NODE-COMMUNICATION-001.md — Fabric task descriptors and payload requests.
 - NEXSUS System Fabric.md — Address Manager, bank parallelism, and Fabric arbitration.
+- NEXSUS-CPU-MEMORY-BANK-TOPOLOGY-001.md — 8×64-bit bank grouping, address interleaving and throughput model.
 
 
 ## 10.4 Fiziksel bank çakışması, interleaving ve read/write turnaround
