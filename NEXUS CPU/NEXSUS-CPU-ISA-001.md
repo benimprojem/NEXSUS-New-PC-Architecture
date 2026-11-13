@@ -252,7 +252,7 @@ Memory komutlarının numeric OP atamaları Encoding belgesi §8.5–§8.6 ile e
 | 0x87 | XFER.START | MEMXFER |
 | 0x88 | XFER.WAIT | MEMXFER |
 
-MEMXFER, register bank XFER (0x85) ile aynı komut değildir. Kaynak/hedef L1–L4 domain'leri, RA içindeki byte adresleri ve RA içindeki byte uzunluğu ile CPU kontrollü kopyalama yapar. Synchronous XFER.MEM tamamlanana kadar bekler; XFER.START token üretir; XFER.WAIT token'ın tamamlanmasını bekler. Her iki uç için erişim izni, aralık ve sahiplik kontrolleri `NEXSUS-CPU-MEMORY-ACCESS-CONTROL-001.md` belgesindeki kurallara tabidir. MEMXFER 52-bit payload alan eşlemesi ve token edge-case davranışları Instruction Encoding §4.15'te tanımlıdır; maksimum transfer boyutu ve eşzamanlı token kapasitesi mikro-mimari aşamasında tamamlanacaktır. §4.14 yalnızca SYS/FENCE formatıdır.
+MEMXFER, register bank XFER (0x85) ile aynı komut değildir. Kaynak/hedef L1–L4 domain'leri, RA içindeki byte adresleri ve RA içindeki byte uzunluğu ile CPU kontrollü kopyalama yapar. Synchronous XFER.MEM tamamlanana kadar bekler; XFER.START token üretir; XFER.WAIT token'ın tamamlanmasını bekler. Her iki uç için erişim izni, aralık ve sahiplik kontrolleri `NEXSUS-CPU-MEMORY-ACCESS-CONTROL-001.md` belgesindeki kurallara tabidir. MEMXFER 52-bit payload alan eşlemesi ve token edge-case davranışları Instruction Encoding §4.15'te tanımlıdır. Uzunluk 64-bit unsigned byte count'tur ve sabit küçük bir ISA üst sınırı yoktur; token kayıt sayısı implementation-defined olup platform/OS capability bilgisinde raporlanır. §4.14 yalnızca SYS/FENCE formatıdır.
 
 ## 5.3 Little-endian bellek ve register-grup sıralaması
 
@@ -1147,23 +1147,15 @@ NEXUS Flow'daki `area` ve `zone` tanımları, bu mekanizmanın compiler tarafın
 - Programın açıkça istediği veri okuma/yazma işlemi LOAD/STORE ile; farklı domain'e gerçek kopyalama ise XFER ile gerçekleştirilir. Compiler yalnızca bu açık semantiği koruyan komutlar üretir.
 - Cache seviyesine kalıcı pinning varsayılan davranış olmamalıdır. Gerekirse ayrı, kapasite sınırı olan ve açıkça serbest bırakılan pin/residency mekanizması tasarlanır.
 
-Örnek ISA taslağı:
-
-```asm
-LOAD.L2 [RA10 + 0], 4096, RETAIN
-CACHE.WAIT
-```
-
-Bu örnek 4 KiB aralığı L2'ye hazırlama isteğidir; RA10 base register örnektir. Komut encoding'i, token modeli, line size, maximum range ve policy kodları henüz kesinleşmemiştir.
+**Eski taslak notu:** Önceki `LOAD.L2 [RA10], length, RETAIN` / `CACHE.WAIT` örneği, range-preload/residency komutları ISA kapsamından çıkarıldığı için yürürlükteki komut sözdizimi değildir. Gerçek domain'ler arası kopyalama için §22.11 ve §22.16'daki `XFER.MEM` / `XFER.START` / `XFER.WAIT` kullanılır.
 
 ### 22.5 Açık kararlar
 
 - L1–L4 seviyelerinin NEXSUS platformlarında kesin fiziksel karşılığı.
-- Synchronous/asynchronous completion ve token sayısı.
-- RETAIN/pin davranışı, quota ve release komutları.
-- Cache line size, range limit, alignment ve fault reporting.
-- Coherence domain ve DMA/device interaction.
-- Compiler'ın area/zone bilgisini hangi durumlarda otomatik preload'a çevireceği.
+- İleride ayrı bir residency/pinning mekanizması gerekirse quota, lifetime ve release politikası.
+- Cache line size ve coherence domain ayrıntıları.
+- DMA/device interaction ve Fabric agent'larıyla ortak senkronizasyon kuralları.
+- Compiler'ın area/zone bilgisini yerleşim ve kod optimizasyonunda nasıl kullanacağı; otomatik preload üretmesi mevcut ISA baseline'ında yoktur..
 
 
 ### 22.6 Nexus Flow `area` ve `zone` için kesin görev ayrımı
