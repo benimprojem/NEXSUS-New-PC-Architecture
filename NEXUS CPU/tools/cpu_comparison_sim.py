@@ -596,7 +596,9 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
     states = []
     for shard in shards:
         states.append({
-            "ops": shard, "cache": None, "fetch": None,\n            "spm_busy_until": 0,\n            "spm": {"accesses": 0, "bytes": 0, "port_conflicts": 0, "overflow": 0, "fallback_bytes": 0},
+            "ops": shard, "cache": None, "fetch": None,
+            "spm_busy_until": 0,
+            "spm": {"accesses": 0, "bytes": 0, "port_conflicts": 0, "overflow": 0, "fallback_bytes": 0},
             "ready_at": [0] * len(shard), "done": [False] * len(shard),
             "issued": [False] * len(shard), "dispatched": [False] * len(shard),
             "rob": deque(), "unit_busy": {k: [0] * v for k, v in p.units.items()},
