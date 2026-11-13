@@ -51,6 +51,8 @@ class CoreProfile:
     core_count: int = 1
     core_type: str = "uniform"
     branch_predictor: str = "modern_assumed"
+    vector_bits: int = 128
+    matrix_unit: str = "VEC"
 
 # Publicly documented or independently measured values are marked in docs.
 # Unpublished/uncertain values are conservative model assumptions, not claims.
@@ -63,17 +65,18 @@ PROFILES = {
         "latency": {"INT": 1, "FP": 3, "VEC": 3, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 8},
         "l1_kb": 48, "l2_kb": 1024, "l3_kb": 196608, "l4_kb": 0,
         "l1_lat": 4, "l2_lat": 14, "l3_lat": 48, "l4_lat": 0, "dram_lat": 120,
-        "branch_penalty": 15, "frequency_ghz": 4.3, "dram_bytes_per_cycle": 21
+        "branch_penalty": 15, "frequency_ghz": 4.3, "dram_bytes_per_cycle": 21, "vector_bits": 512, "matrix_unit": "VEC"
     },
     "intel_xeon_698x": {
         "name": "Intel Xeon 698X / Redwood Cove+",
         "core_count": 86, "core_type": "uniform", "frontend": 6,
         "dispatch": 8, "issue": 8, "retire": 8, "rob": 512,
-        "units": {"INT": 6, "FP": 4, "VEC": 2, "LOAD": 4, "STORE": 2, "BR": 1, "CTX": 1, "ATOM": 1},
-        "latency": {"INT": 1, "FP": 4, "VEC": 3, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 10, "CTX": 8},
+        "units": {"INT": 6, "FP": 4, "VEC": 2, "AMX": 1, "LOAD": 4, "STORE": 2, "BR": 1, "CTX": 1, "ATOM": 1},
+        "latency": {"INT": 1, "FP": 4, "VEC": 3, "AMX": 2, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 10, "CTX": 8},
         "l1_kb": 48, "l2_kb": 2048, "l3_kb": 344064, "l4_kb": 0,
         "l1_lat": 4, "l2_lat": 16, "l3_lat": 60, "l4_lat": 0, "dram_lat": 150,
-        "branch_penalty": 16, "frequency_ghz": 2.0, "dram_bytes_per_cycle": 160
+        "branch_penalty": 16, "frequency_ghz": 2.0, "dram_bytes_per_cycle": 160, "vector_bits": 512, "matrix_unit": "AMX",
+        "branch_predictor": "modern_assumed"
     },
     "apple_m6": {
         "name": "Apple M6 / 12-core ARM SoC (heterogeneous approximation)",
@@ -83,7 +86,7 @@ PROFILES = {
         "latency": {"INT": 1, "FP": 3, "VEC": 2, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 6},
         "l1_kb": 64, "l2_kb": 4096, "l3_kb": 24576, "l4_kb": 0,
         "l1_lat": 3, "l2_lat": 12, "l3_lat": 36, "l4_lat": 0, "dram_lat": 100,
-        "branch_penalty": 12, "frequency_ghz": 3.0, "dram_bytes_per_cycle": 48
+        "branch_penalty": 12, "frequency_ghz": 3.0, "dram_bytes_per_cycle": 48, "vector_bits": 128, "matrix_unit": "VEC"
     },
     "nexus_balanced_128": {
         "name": "NEXSUS CPU / 8-core proposed architecture",
@@ -94,7 +97,7 @@ PROFILES = {
         "l1_kb": 128, "l2_kb": 1024, "l3_kb": 8192, "l4_kb": 65536,
         "l1_lat": 2, "l2_lat": 8, "l3_lat": 24, "l4_lat": 64, "dram_lat": 120,
         "branch_penalty": 10, "frequency_ghz": 3.0, "bank_hash": "folded", "dram_bytes_per_cycle": 64,
-        "branch_predictor": "small_2bit"
+        "branch_predictor": "small_2bit", "vector_bits": 512, "matrix_unit": "ME512"
     }
 }
 
@@ -175,7 +178,7 @@ def build_composite_workload(scale: int = 1) -> Dict[str, List[Op]]:
     # it is not yet a faithful ME512 matrix instruction model.
     ops = []
     for i in range(256*n):
-        add_op(ops, "VEC", label="independent vector throughput")
+        add_op(ops, "VEC", width=64, label="independent 512-bit logical vector throughput")
     result["vector_throughput"] = ops
 
     # H2) ME512 matrix/vector accelerator path; reference CPUs map to VEC.
@@ -183,7 +186,7 @@ def build_composite_workload(scale: int = 1) -> Dict[str, List[Op]]:
     for tile in range(64*n):
         a = add_op(ops, "LOAD", (), 0x5000000 + tile*128, 64, "ME512 input A")
         b = add_op(ops, "LOAD", (), 0x6000000 + tile*128, 64, "ME512 input B")
-        m = add_op(ops, "ME512", (a,b), label="ME512 512-bit tile operation")
+        m = add_op(ops, "ME512", (a,b), width=64, label="ME512 512-bit tile operation")
         add_op(ops, "STORE", (m,), 0x7000000 + tile*128, 64, "ME512 output")
     result["me512_matrix"] = ops
 
@@ -622,14 +625,16 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
                 stalls["issue_width_blocked_op_cycles"] += 1
                 continue
             kind = op.kind
-            exec_kind = "VEC" if kind == "ME512" and not p.name.startswith("NEXSUS CPU") else kind
+            exec_kind = p.matrix_unit if kind == "ME512" else kind
             resource = "LOAD" if exec_kind == "LOAD" else ("STORE" if exec_kind == "STORE" else exec_kind)
             slots = unit_busy.get(resource, [])
             slot = next((i for i,t in enumerate(slots) if t <= cycle), None)
             if slot is None:
                 stalls["execution_unit_blocked_op_cycles"] += 1
                 continue
-            latency = p.latency.get(exec_kind, 1)
+            vector_factor = (max(1, math.ceil(op.width * 8 / p.vector_bits))
+                             if kind == "VEC" else 1)
+            latency = p.latency.get(exec_kind, 1) * vector_factor
             if kind in ("LOAD", "STORE"):
                 mem_lat, level = cache.access(op.address)
                 hits[level] += 1
@@ -844,7 +849,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 if issued_now >= p.issue:
                     st["stalls"]["issue_width_blocked_op_cycles"] += 1
                     continue
-                exec_kind = "VEC" if op.kind == "ME512" and not is_nexus else op.kind
+                exec_kind = p.matrix_unit if op.kind == "ME512" else op.kind
                 resource = "LOAD" if exec_kind == "LOAD" else ("STORE" if exec_kind == "STORE" else exec_kind)
                 slots = st["unit_busy"].get(resource, [])
                 slot = next((i for i, available in enumerate(slots) if available <= cycle), None)
@@ -874,7 +879,9 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                         mem_lat, level = st["cache"].probe(op.address)
                         st["hits"][level] += 1
                 item = {"core": core_id, "seq": seq, "slot": slot,
-                        "latency": max(p.latency.get(exec_kind, 1), mem_lat),
+                        "latency": max(p.latency.get(exec_kind, 1) *
+                                       (max(1, math.ceil(op.width * 8 / p.vector_bits)) if op.kind == "VEC" else 1),
+                                       mem_lat),
                         "level": level}
                 if level == "DRAM":
                     item["request_id"] = f"{core_id}:{seq}"
