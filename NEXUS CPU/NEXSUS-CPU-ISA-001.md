@@ -1343,49 +1343,52 @@ XFER.WAIT RA6
 
 
 
-### 22.12 P0/P1 program komut ön belleği ve sabit komut genişliği
+### 22.12 App RAM, L0I, PX ve sabit komut genişliği
 
-P0 ve P1, App RAM'deki program kodundan komutları instruction-fetch birimine hazır tutan, L1–L4 veri belleklerinden ayrı **ping-pong command-buffer** çiftidir. Programın ana kodu App RAM'de bulunur; aktif buffer yürütmeye komut sağlarken inactive buffer bir sonraki komut bloğunu hazırlar. Uygulama verileri ayrı Data RAM alanındadır.
+NEXSUS'un uygulama kodu yolu Data RAM yolundan ayrıdır:
 
-- P0/P1 kayıt genişliği **her zaman 64 bit**tir. Her kayıt tek bir 64-bit komut sözcüğüdür; komut adresleri 8-byte hizalıdır.
-- Seçilen kapasite **P0=8 KiB + P1=8 KiB = 16 KiB/core**. Her buffer 1.024 komut kaydı tutar.
-- İlk komut bloğu P0'a alınır. P0 yürütülürken sonraki 8-KiB blok P1'e refill/prefetch edilir. Blok sınırında aktif/inaktif roller değişir; artık boş olan buffer sonraki blok için doldurulur. Akış boyunca bu ping-pong tekrarlanır.
-- Programın tamamının P0/P1'e sığması gerekmez; komut akışı bloklar halinde sürekli beslenir.
-- App RAM'den buffer'a komut transferini instruction-fetch donanımı yönetir. 512-bit/cycle refill yolu adayında 8-KiB blok transferi 128 cycle veri süresi gerektirir; bu süre aktif buffer yürütmesiyle örtüşebilir. Bu değer fiziksel doğrulama bekleyen model varsayımıdır.
-- Inactive buffer zamanında hazır değilse fetch bekler; mimari sıfır-stall garantisi vermez. Gerçek App RAM bankları, queue derinliği, arbitration ve refill setup süresi mikro-mimari doğrulama konusudur.
-- Dallanma, çağrı/dönüş veya exception sonrasında fetch yeni adrese yöneltilir. Yanlış yoldan getirilmiş, henüz yürütülmemiş komutlar iptal edilir; diğer buffer'ın geçerli içeriğinin silinmesi zorunlu değildir.
-- P0/P1, L1–L4 veri belleğinin parçası değildir ve normal veri LOAD/STORE alanı olarak kullanılamaz.
-- App RAM kod alanı ile Data RAM ayrıdır. Çalışma sırasında kod değişikliği için command-buffer invalidation/yenileme, yürütme izni ve fetch senkronizasyonu ayrıca korunmalıdır.
+```text
+App RAM -> L0I (64 KiB) -> PX P0–P7 (8 x 2 KiB) -> SPM0 (4 KiB; 2 x 2 KiB)
+```
 
-### 22.13 P0 ve SPM0 görev ayrımı
+- Her komut sözcüğü **64 bit (8 byte)** ve 8-byte hizalıdır.
+- App RAM -> L0I temel bağlantısı tek 64-bit veri yoludur; bir aktarım beat'i bir komut sözcüğü taşır. Beat/cycle oranı, outstanding istek sayısı ve gecikme ayrı mikro-mimari parametreleridir.
+- İlk tasarımda tekli okuma vardır. Dört paralel 64-bit hat (256-bit toplam) gelecekteki genişleme seçeneğidir; mevcut tasarımın özelliği olarak kabul edilmez.
+- L0I, çekirdek başına önerilen 64 KiB uygulama kodu ön belleği/staging alanıdır. App RAM'den OS'nin task ve kod bölgesi önceliklerine göre parça parça doldurulur; L0I'ın tamamının dolması beklenmez.
+- L0I -> PX aktarımı ardışık fiziksel adres taraması değildir. OS task ve mantıksal sayfa taleplerini seçer; farklı App RAM adreslerindeki kod 2 KiB mantıksal sayfalar halinde PX'e aktarılabilir.
+- PX P0–P7, her biri 2 KiB olan sekiz eşdeğer/dinamik fiziksel kod sayfası yuvasıdır; toplam kapasite 16 KiB/çekirdektir. Sayfalar sabit task yuvaları değildir.
+- PX Manager, sayfa sahipliğini, generation değerini, kaynak aralığını, valid_bytes bilgisini ve stream metadata'sını doğrular. Tam 2 KiB sayfa otomatik devam eder. Kısmi ara sayfa PX_NEXT, kısmi son sayfa PX_END metadata'sı taşır.
+- PX_NEXT ve PX_END CPU ISA komutları değildir; yalnızca PX Manager tarafından okunur. Komut baytı/slotu tüketmezler ve SPM0'a kopyalanmazlar.
+- L0I/PX yolu doğrudan yürütme bypass'ı değildir. CPU komutları SPM0'dan alır.
 
-P0 ile SPM0 farklı aşamalara hizmet eder ve birbirinin yerine geçmez:
+### 22.13 PX ve SPM0 görev ayrımı
 
-| Bellek | İşlev | Kayıt genişliği | Kapasite |
-|---|---|---:|---:|
-| P0/P1 | App RAM'den komut fetch eden ping-pong buffer çifti | 64 bit sabit | 2 × 8 KiB = 16 KiB / çekirdek |
-| SPM0 | Yürütme sırasında oluşan geçici komutsal durum, ara değerler ve sonuçlar | 64-bit temel kayıt; 8–512-bit erişim | 2 KiB / çekirdek |
+PX ve SPM0 farklı aşamalara hizmet eder:
 
-- P0, sıradaki komutları fetch aşamasında hazır tutar.
-- SPM0, CPU çalışırken yürütme sırasında oluşan geçici komutsal durumu, ara değerleri ve sonuçları tutar. Stack benzeri geçici saklama alanıdır; ancak zorunlu LIFO düzeni yoktur ve doğrudan adreslenir.
-- SPM0 toplam 2 KiB'tır; 256 adet 64-bit temel kayıt içerir. 8–512-bit erişimler gerektiğinde bir veya daha fazla temel kaydı kapsayabilir.
-- SPM1–SPM7, her biri 8 KiB olmak üzere toplam 56 KiB doğrudan adreslenebilir veri çalışma alanı sağlar; geçici veriler ve ara hesaplama değerlerini tutar.
-- P0 yalnızca App RAM'den komut fetch eder; SPM0'a komut kuyruğu veya komut kopyası aktarılmaz.
+| Bellek | İşlev | Kapasite |
+|---|---|---:|
+| L0I | App RAM'den parça parça beslenen task-aware kod ön belleği | 64 KiB / core |
+| PX P0–P7 | Mantıksal 2 KiB kod sayfalarının dinamik fiziksel havuzu | 8 × 2 KiB = 16 KiB / core |
+| SPM0-A | CPU'nun o anda yürüttüğü aktif kod bankası veya aktif bankanın rolü | 2 KiB |
+| SPM0-B | PX'in hazırladığı/sonraki aktif kod bankası; roller dönüşümlüdür | 2 KiB |
+| SPM0 toplam | Çift bankalı aktif kod çalışma alanı | 4 KiB |
 
-Fetch genişliği, branch davranışı, miss oranı ve komut besleme bant genişliği ölçüldükten sonra P0'ın bank sayısı, line size, refill genişliği ve portları mikro-mimari aşamasında belirlenecektir.
+- SPM0 yalnızca aktif komut kodu çalışma alanıdır; register image, task data veya genel amaçlı ara veri deposu değildir.
+- PX Manager, CPU bir SPM0 bankasından kod okurken diğer bankayı doldurur. Güvenli sayfa sınırında roller atomik olarak değiştirilir.
+- Boşalan banka sonraki mantıksal kod sayfasıyla yeniden doldurulur. PX sayfası hazır değilse fetch bekler; yarım dolu banka yürütülemez.
+- Register bankları RA/FA/DA/MA PX tarafından beslenmez. Register context save/restore ayrı Context Manager/SPM/Data RAM yoludur.
+- SPM1–SPM7 veri/context/OS çalışma alanlarıdır; SPM0'ın kod göreviyle karıştırılmaz.
+- App RAM ve Data RAM fiziksel/mantıksal olarak ayrıdır. L1 bu tasarımda yalnızca Data RAM verilerini tutan L1D'dir; uygulama komutları L1D kapasitesini kullanmaz.
 
+### 22.14 App-code besleme genişliği ve task-aware prefetch
 
-### 22.14 P0 fetch bant genişliği ve komut besleme hedefi
-
-Komut kaydı genişliği ile P0'ın fetch veri yolu genişliği birbirinden ayrıdır:
-
-- Tek komut kaydı 64 bit olarak kalır.
-- İlk mikro-mimari hedefi P0 ile fetch/decode tarafı arasında **512-bit (8 komut sözcüğü) tepe okuma genişliği** sağlamaktır.
-- Bu genişlik her çevrimde sekiz komutun yürütüleceği anlamına gelmez. Issue scheduler, ilk hedefte en fazla 2 ALU + 2 FPU + 1 ME512 olmak üzere beş bağımsız execution komutunu aynı çevrimde dağıtabilir; gerçek sayı bağımlılık ve kaynak uygunluğuna bağlıdır.
-- Fetch tarafındaki fazla komutlar decode/dispatch akışında sıraya alınır; SPM0 yürütme tarafındaki geçici komut kayıtlarını tutar.
-- 512-bit hedef, P0'ın her çevrim mutlaka tam dolu okunacağı garantisi değildir. Branch, P0 miss, hizalama, port ve App RAM gecikmesi gerçek besleme hızını etkiler.
-- 512-bit fetch genişliği ilk tasarım hedefidir; güç/alan/performans analizleriyle daraltılabilir veya artırılabilir. P0 kapasitesi ve 64-bit kayıt biçimi bundan bağımsızdır.
-
+- App RAM -> L0I temel bağlantısı 64-bit (8-byte), tekli okuma hattıdır.
+- Bir 64-bit transfer beat'i tek komut sözcüğü taşır. Bu, otomatik olarak her çevrimde bir beat garantisi vermez; timing ve servis oranı simülasyon/RTL ile belirlenecektir.
+- L0I App RAM'den task bazlı küçük parçalar halinde doldurulur. Farklı task'ların veya aynı task'ın farklı kod bölgelerinin kaynak adresleri ardışık olmak zorunda değildir.
+- OS hangi task'ın hangi mantıksal kod sayfasının ne zaman hazırlanacağını ve önceliğini belirler. Donanım istekleri doğrular, aktarımı yapar ve tamamlanmayı bildirir.
+- L0I -> PX sayfa aktarımı, OS'nin seçtiği mantıksal 2 KiB sayfaya göre yapılır; fiziksel App RAM adres sırasını takip etmek zorunda değildir.
+- App RAM -> L0I, L0I -> PX ve PX -> inactive SPM0 bank aşamalarının kuyrukları ayrıdır. Uygun veri hazır olduğunda aşamalar eşzamanlı ilerleyebilir.
+- Çoklu komut okuma ilk sürümde yoktur. Dört adet 64-bit bağımsız okuma hattı gelecekteki 4'lü okuma genişletmesi olarak ayrıca test edilecektir.
 
 ### 22.15 EXT prefix ve genişletilmiş komut paketi
 
