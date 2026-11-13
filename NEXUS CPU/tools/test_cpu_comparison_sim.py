@@ -409,6 +409,17 @@ class PXMetadataTests(unittest.TestCase):
         ]
         self.assertTrue(sim.validate_px_page_descriptors(pages))
 
+    def test_exact_full_final_page_uses_region_end_metadata_not_px_end(self):
+        pages = [
+            {"logical_page_id": 0, "valid_bytes": 2048, "stream_end": True},
+        ]
+        self.assertTrue(sim.validate_px_page_descriptors(pages))
+        fetch = sim.CommandFetchModel(True, page_descriptors={0: pages[0]})
+        self.assertFalse(fetch.can_fetch(0, 0))
+        fetch.complete(48)
+        self.assertTrue(fetch.can_fetch(0, 48))
+        self.assertIsNone(fetch.p0_pending)
+
     def test_partial_intermediate_page_uses_px_next_without_instruction_slot(self):
         pages = [
             {"logical_page_id": 0, "valid_bytes": 1536, "marker": "PX_NEXT",
