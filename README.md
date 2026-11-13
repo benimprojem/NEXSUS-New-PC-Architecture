@@ -679,7 +679,7 @@ Bu nedenle sonraki aşamada yapılması gereken en önemli çalışma, her bir y
 CPU ile ilgili teknik belgeler `NEXUS CPU/` klasöründe merkezi olarak tutulur. Aşağıdaki liste klasördeki mevcut belge envanteridir.
 
 ### Mimari ve komut seti
-- [CPU ana mimarisi](NEXUS%20CPU/Yeni%20Nesil%20Ayr%C4%B1%C5%9Ft%C4%B1r%C4%B1lm%C5%9F%20Register%20Tabanl%C4%B1%20CPU%20Mimarisi.md) — Register bankları, yürütme birimleri ve temel CPU organizasyonu.
+- [CPU ana mimarisi](NEXUS%20CPU/Yeni%20Nesil%20Ayr%C4%B1%C5%9Ft%C4%B1r%C4%B1lm%C4%B1%C5%9F%20Register%20Tabanl%C4%B1%20CPU%20Mimarisi.md) — Register bankları, yürütme birimleri ve temel CPU organizasyonu.
 - [CPU ISA-001](NEXUS%20CPU/NEXSUS-CPU-ISA-001.md) — Komut seti ve yürütme davranışları.
 - [Instruction Encoding-001](NEXUS%20CPU/NEXSUS-CPU-INSTRUCTION-ENCODING-001.md) — 64-bit komut biçimi ve alan kodlamaları.
 - [Special Register Architecture (SRA-001)](NEXUS%20CPU/NEXSUS-CPU-SRA-001.md) — Özel register'lar, adres üretimi ve dahili kontrol kayıtları.
