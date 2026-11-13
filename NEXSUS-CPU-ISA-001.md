@@ -703,3 +703,18 @@ Komut kaydı genişliği ile P0'ın fetch veri yolu genişliği birbirinden ayr�
 - Fetch tarafındaki fazla komutlar decode/dispatch akışında sıraya alınır; SPM0 yürütme tarafındaki geçici komut kayıtlarını tutar.
 - 512-bit hedef, P0'ın her çevrim mutlaka tam dolu okunacağı garantisi değildir. Branch, P0 miss, hizalama, port ve App RAM gecikmesi gerçek besleme hızını etkiler.
 - 512-bit fetch genişliği ilk tasarım hedefidir; güç/alan/performans analizleriyle daraltılabilir veya artırılabilir. P0 kapasitesi ve 64-bit kayıt biçimi bundan bağımsızdır.
+
+
+### 22.15 EXT prefix ve genişletilmiş komut paketi
+
+EXT, normal komutun önüne gelen bir prefix'tir; hedef opcode'un veya operandların yerine geçmez. Genişletilmiş komut akışı sırasıyla EXT prefix word, normal instruction word ve prefix'te belirtilen literal word dizisinden oluşur.
+
+- EXT prefix, literal türünü ve literal word sayısını bildirir. İlk sürümde yalnızca bir adet 64-bit literal word desteklenir.
+- Normal instruction word hedef register, kaynak register, width, addressing mode ve opcode'a ait diğer alanları taşır.
+- Literal word, normal komutun opcode semantiğinde tanımlanan immediate, displacement veya adres bileşenini genişletir. Signed/unsigned yorum ve literal'in operandla birleştirilme kuralı ilgili opcode tarafından belirlenir.
+- Decoder tüm paketi toplamadan komutu issue aşamasına göndermez. Literal word hiçbir koşulda bağımsız instruction olarak decode edilmez.
+- Paket içindeki son literal word'den sonraki adres, sıradaki komut adresidir. Branch/call/exception dönüş adresi bu paket sonuna göre hesaplanır.
+- Prefix, normal komut veya literal eksikse instruction-fetch/decode fault oluşur. Ayrılmış alanların sıfır olmaması, geçersiz COUNT veya prefix'in ardından başka bir EXT prefix gelmesi illegal encoding fault üretir.
+- EXT kullanılmayan komutlar tek 64-bit word olarak kalır; normal komutların kodlanması ve yürütülmesi değişmez.
+
+Bu mekanizma MOVI64 gibi geniş sabit yükleme işlemlerinin yanı sıra, ileride opcode bazında tanımlanacak geniş displacement ve adres operandları için de ortak taşıma yolu sağlar. Numeric EXT opcode değeri ve opcode başına literal yorumları ISA taslağında henüz dondurulmamıştır.
