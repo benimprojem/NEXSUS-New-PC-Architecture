@@ -539,28 +539,30 @@ Buradaki register gösterimleri yalnızca adres operandı örneğidir; kesin ope
 
 ### 22.12 P0 program komut ön belleği ve sabit komut genişliği
 
-P0, program komutlarını instruction-fetch birimine hazır tutan, L1–L4 veri belleklerinden ayrı bir **komut ön belleği (instruction cache)** domain'idir. Programın kalıcı/ana kod belleği ile P0 aynı şey değildir: P0, yürütülmesi beklenen komutların yakın ve hızlı kopyasını tutar.
+P0, App RAM'deki program kodundan komutları instruction-fetch birimine hazır tutan, L1–L4 veri belleklerinden ayrı bir **komut ön belleği (instruction cache)** domain'idir. Programın ana kodu App RAM'de bulunur; P0 yürütülmekte olan bölümü yakın ve hızlı erişim için tutar. Uygulama verileri ayrı Data RAM alanındadır.
 
-- P0 kayıt genişliği **her zaman 64 bit**tir. Her kayıt tek bir 64-bit komut sözcüğünü temsil eder.
-- P0 kapasitesi başlangıç hedefi olarak **32 KiB / çekirdek** seçilir. Bu, 4.096 adet 64-bit komut kaydıdır.
-- 16 KiB (2.048 komut) daha küçük bir uygulama seçeneği; 64 KiB (8.192 komut) ise daha büyük komut çalışma kümeleri için ileride değerlendirilebilecek ölçeklerdir. İlk mimari hedef 32 KiB olarak tutulur.
-- Instruction-fetch birimi komutları P0'dan alır. P0, komutların yürütme öncesi hazır tutulduğu ön bellek katmanıdır.
-- P0, L1–L4 veri belleğinin parçası değildir; veri RAM'i olarak kullanılamaz.
-- P0 ile L1–L4 arasında otomatik kopyalama veya migration varsayılmaz. Program yükleme, kod güncelleme ve kodun başka bir domain'e taşınması CPU tarafından açıkça yönetilir.
-- P0'a yazma/yükleme, kod yürütme izni ve değiştirilen komutların fetch birimine görünür olması ayrı koruma ve senkronizasyon kuralları gerektirir.
+- P0 kayıt genişliği **her zaman 64 bit**tir. Her kayıt tek bir 64-bit komut sözcüğüdür; komut adresleri 8-byte hizalıdır.
+- Standart kapasite **8 KiB / çekirdek**tir: 1.024 komut kaydı.
+- Donanım yapılandırmasıyla **16 KiB / çekirdeğe genişletilebilir**: 2.048 komut kaydı. 8 KiB temel, 16 KiB genişletilmiş konfigürasyondur.
+- App RAM'den P0'a komut getirme/refill işlemini instruction-fetch donanımı yapar. Programın tamamının P0'a sığması gerekmez; komut akışı ihtiyaç oldukça beslenir.
+- P0 miss olduğunda gerekli komut sözcüğü veya komut bloğu App RAM'den getirilir. Fetch line/block boyutu mikro-mimari aşamasında belirlenir.
+- Dallanma, çağrı/dönüş veya exception sonrasında fetch yeni adrese yöneltilir. Yanlış yoldan getirilmiş, henüz yürütülmemiş komutlar iptal edilir; P0'daki tüm geçerli içeriğin silinmesi zorunlu değildir.
+- P0, L1–L4 veri belleğinin parçası değildir ve normal veri LOAD/STORE alanı olarak kullanılamaz.
+- App RAM kod alanı ile Data RAM ayrıdır. Çalışma sırasında kod değişikliği için P0 tutarlılığı, yürütme izni ve fetch senkronizasyonu ayrıca korunmalıdır.
 
 ### 22.13 P0 ve SPM0 görev ayrımı
 
-P0 ile SPM0 birbirinin yerine geçmez:
+P0 ile SPM0 farklı aşamalara hizmet eder ve birbirinin yerine geçmez:
 
-| Bellek | İşlev | Kayıt genişliği | İlk kapasite hedefi |
+| Bellek | İşlev | Kayıt genişliği | Kapasite |
 |---|---|---:|---:|
-| P0 | Instruction-fetch için program komut ön belleği | 64 bit sabit | 32 KiB / çekirdek |
-| SPM0 | Yürütme sırasında kullanılan geçici komut/kayıt alanı | 64 bit kayıt | 32 KiB / çekirdek |
+| P0 | App RAM'den komut fetch eden ön bellek | 64 bit sabit | 8 KiB standart; 16 KiB genişletilebilir / çekirdek |
+| SPM0 | Dispatch edilmiş/yürütülmekte olan komutların geçici kayıt alanı | 64 bit kayıt | 32 KiB / çekirdek |
 
-- P0, sıradaki komutları yürütme birimine önceden hazırlar.
-- SPM0, yürütülmekte olan komutların ve yürütme akışının ihtiyaç duyduğu geçici kayıtları tutar.
-- SPM0'ın mevcut 8 × 4 KiB sayfa düzeni korunursa toplam 32 KiB kapasite ve sayfa başına 512 adet 64-bit kayıt elde edilir.
-- P0'dan SPM0'a komut/iş kaydı alınması, fetch ve yürütme arasındaki kontrollü akışın parçasıdır; SPM0, P0'ın yerine geçen bir komut ön belleği değildir.
+- P0, sıradaki komutları fetch aşamasında hazır tutar.
+- SPM0, P0'dan alınarak yürütme akışına sokulmuş komutların geçici kayıt/çalışma alanıdır.
+- SPM0'ın 8 × 4 KiB sayfa düzeni korunur; toplam 32 KiB ve sayfa başına 512 adet 64-bit kayıt bulunur.
+- P0 fetch aşamasına, SPM0 ise dispatch/yürütme aşamasına hizmet eder.
+- P0'dan SPM0'a geçiş, komut akışının fetch'ten yürütme tarafına aktarılmasıdır; App RAM'den P0'a yapılan refill işleminden farklıdır.
 
-P0'ın 32 KiB değeri ilk tasarım hedefidir. Gerçek komut çalışma kümeleri, fetch genişliği, dallanma davranışı ve çekirdek başına bant genişliği ölçüldükten sonra artırılıp azaltılabilir.
+Fetch genişliği, branch davranışı, miss oranı ve komut besleme bant genişliği ölçüldükten sonra P0'ın bank sayısı, line size, refill genişliği ve portları mikro-mimari aşamasında belirlenecektir.
