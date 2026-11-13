@@ -98,7 +98,7 @@ The Intel E-core profile is reported separately as an 8-core E-core reference, n
 
 ## 6.1 Experimental NEXSUS width candidates
 
-The original NEXSUS profile is retained unchanged as the baseline. Two additional design-space candidates are reported separately; neither is an architectural freeze.
+The original NEXSUS profile is retained unchanged as the baseline. Three additional design-space candidates are reported separately; none is an architectural freeze.
 
 | Parameter | Existing baseline | 8L4S memory-focused | Wide balanced | Balanced-128 |
 |---|---:|---:|---:|
@@ -114,7 +114,7 @@ The original NEXSUS profile is retained unchanged as the baseline. Two additiona
 | STORE units | 1 | **4** | **4** | **4** |
 | BR units | 1 | 1 | 2 | 2 |
 
-All three candidates retain the same provisional cache capacities/latencies, 8-bank folded mapping, 32-byte/reference-cycle DRAM bandwidth, operation latencies and 3.0 GHz reference clock. This isolates the effect of execution and pipeline width in the current simplified model. The candidates are not yet constrained by physical area, power, wiring, queue implementation, bank-port availability or clock closure.
+All four NEXSUS profiles retain the same provisional cache capacities/latencies, 8-bank folded mapping, 32-byte/reference-cycle DRAM bandwidth, operation latencies and 3.0 GHz reference clock. This isolates the effect of execution and pipeline width in the current simplified model. The candidates are not yet constrained by physical area, power, wiring, queue implementation, bank-port availability or clock closure.
 
 The 8L4S profile tests whether a wider memory issue subsystem improves streaming and mixed workloads while keeping compute resources moderately sized. The wide-balanced profile additionally expands integer, FP, vector, branch and pipeline capacity. Balanced-128 keeps the wide-balanced execution/front-end widths but reduces the ROB-like window from 192 to 128 to test whether the larger window is necessary. The 8 LOAD + 4 STORE figures represent modeled concurrent issue slots, not a guarantee that every access completes in the same cycle: dependencies, memory latency, bank conflicts and later shared-controller arbitration still constrain throughput.
 
