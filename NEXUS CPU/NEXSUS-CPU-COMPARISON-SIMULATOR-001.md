@@ -26,6 +26,10 @@ The simulator builds the same deterministic operation graph for every target. Th
 | numeric_tile | Matrix-like tiles, independent input loads, FP accumulation and vector operation | FPU/vector datapaths, register files, load/store |
 | streaming | Sequential read-transform-write over a large data range | Load/store throughput, cache lines, memory bandwidth and bank conflicts |
 | parallel_tasks | Independent task inputs, scalar/FP work, output and context operations | Core scheduling, synchronization and context save/restore (later parallel model) |
+| integer_throughput | Independent integer operations | ALU issue and execution capacity |
+| fp_throughput | Independent floating-point operations | FPU issue and execution capacity |
+| vector_throughput | Independent vector operations | Generic vector-unit throughput; not yet a full ME512 instruction model |
+| branch_stress | Independent branch operations | Branch issue and modeled recovery penalty |
 
 The operation graph is deterministic. Each operation carries its dependencies, memory address, width and operation class. CPU profiles map the same logical operations to their own execution resources and latency assumptions.
 
@@ -41,7 +45,7 @@ The target model is an event/cycle-driven CPU model with these components:
 6. L1/L2/L3/L4/DRAM access classification and per-bank serialization.
 7. Multicore task scheduling and shared-cache/memory contention (planned after v0.1).
 
-The v0.2 script partitions independent dependency components across eight cores, simulates each core's pipeline, and uses the slowest participating core to determine kernel completion. The text report also provides a per-kernel breakdown (cycles, operations, IPC, active cores and DRAM access count) alongside the composite total. It includes dependency tracking, issue-resource limits, in-order retirement, branch stalls, deterministic LRU private-cache approximations and local bank serialization. Shared LLC contention, a globally shared memory controller/bank queue, inter-core coherence traffic and SMT are still pending; current multicore results are therefore an intermediate model, not final throughput predictions.
+The v0.2 script partitions independent dependency components across eight cores, simulates each core's pipeline, and uses the slowest participating core to determine kernel completion. The text report also provides a per-kernel breakdown (cycles, operations, IPC, active cores and DRAM access count) alongside the composite total. The suite now adds isolated integer, FP, generic vector and branch-throughput kernels to help identify which execution resource limits each profile. It includes dependency tracking, issue-resource limits, in-order retirement, branch stalls, deterministic LRU private-cache approximations and local bank serialization. Shared LLC contention, a globally shared memory controller/bank queue, inter-core coherence traffic and SMT are still pending; current multicore results are therefore an intermediate model, not final throughput predictions. The generic vector kernel does not yet represent ME512's 512-bit paired-register behavior, matrix dimensions or data movement.
 
 ## 4. Known public reference points and model assumptions
 
