@@ -86,6 +86,8 @@ FMT alanı için ilk öneri:
 | 0111 | EXT | Takip eden 64-bit literal/extension word kullanan komut |
 | 1000 | R4 | Dört register operandlı işlemler (FMA, VMACC, MADD vb.) |
 | 1001 | MEMX | Indexed load/store: base + index × scale + displacement |
+| 1010 | MEMUPD | Load/store with base-register pre/post increment/decrement |
+| 1011 | MEMXUPD | Indexed load/store with base-register pre/post increment/decrement |
 | 1010–1111 | Reserved | Gelecek formatlar |
 
 FMT kodları taslak değerlerdir; opcode tablosu dondurulurken sabitlenecektir.
@@ -314,7 +316,81 @@ LOAD.L1.W64 DA2, [RA4 + RA5*2 + disp64(0x100000000)]
 
 `disp64(value)` assembler gösterimidir; MEMX.DISP alanı sıfır kodlanır ve literal EXT paketinden alınır. İndeks ölçeği ve register selector'ları normal MEMX word'ünde kalır.
 
-### 4.8 XFER — Register bankları arası açık aktarım
+### 4.8 MEMUPD — Otomatik taban register güncellemeli bellek erişimi
+
+MEMUPD, MEM'in base + displacement adreslemesini korur ve başarılı LOAD/STORE ile birlikte BASE register'ını erişim genişliği kadar artırır veya azaltır.
+
+```text
+63       56 55    52 51   47 46   42 41  39 38  36 35  34 33                 0
++----------+--------+-------+-------+------+-------+------+-------------------+
+| OP (8)   |FMT (4) | D (5) | BASE(5)| W(3)| AM(3)|MODE(2)| DISP (34)         |
++----------+--------+-------+-------+------+-------+------+-------------------+
+```
+
+Payload alanları toplam 52 bittir:
+- D: LOAD hedefi / STORE kaynağı DA başlangıç selector'ı.
+- BASE: güncellenecek RA taban register selector'ı.
+- W: MEM ile aynı erişim genişliği kodları (8/16/32/64/128/256/512).
+- AM: MEM domain alanı; AM[0]=0 zorunludur. Absolute adresleme bu formatta desteklenmez.
+- MODE: güncelleme yönü ve zamanı.
+- DISP: normal formda signed 34-bit byte displacement; EXT formunda sıfır olmalıdır.
+
+**MODE kodları**
+
+| MODE | İşlem | Effective address ve güncelleme |
+|---:|---|---|
+| 00 | POSTINC | EA eski BASE + DISP; başarılı erişimden sonra BASE += W/8 |
+| 01 | PREINC | EA eski BASE + W/8 + DISP; başarılı erişimle BASE += W/8 |
+| 10 | POSTDEC | EA eski BASE + DISP; başarılı erişimden sonra BASE -= W/8 |
+| 11 | PREDEC | EA eski BASE - W/8 + DISP; başarılı erişimle BASE -= W/8 |
+
+- Artış/azalış miktarı erişim genişliğinin byte karşılığıdır. Örnek: W=64 → 8 byte; W=128 → 16 byte; W=512 → 64 byte.
+- PRE/POST yalnızca BASE güncellemesinin erişim adresine göre sırasını belirler. DISP her iki modda da byte cinsinden eklenir.
+- Normal biçimde EA, base_term + signed DISP34 olur. PRE modlarında base_term, eski BASE'in ± W/8 uygulanmış değeridir; POST modlarında eski BASE değeridir.
+- EXT biçiminde DISP34=0 zorunludur; literal signed 64-bit byte displacement olur.
+- BASE güncellemesi ve LOAD/STORE tek bir mimari komut olarak commit edilir. Adres taşması, alignment, bounds, permission veya access fault oluşursa BASE ve LOAD hedefi DA kayıtları değişmeden kalır; faulting STORE hiçbir byte yazmaz.
+- PRE modunda BASE ± W/8 işleminin kendisi 64-bit adres uzayını taşırırsa ADDRESS_OVERFLOW_FAULT oluşur. POST modunda erişim başarılı olsa bile yeni BASE değeri 0…2^64−1 aralığının dışına çıkacaksa komut commit edilmez ve aynı fault oluşur.
+- Domain seçimi, doğal hizalama, DA selector sınırı, erişim izinleri ve fault kodları MEM ile aynıdır.
+
+### 4.9 MEMXUPD — İndeksli ve otomatik taban güncellemeli bellek erişimi
+
+MEMXUPD, MEMX'in base + index × scale + displacement adres hesaplamasını korur ve başarılı erişimle BASE register'ını W/8 kadar günceller.
+
+```text
+63       56 55    52 51   47 46   42 41   37 36  34 33  31 30  28 27 26 25          0
++----------+--------+-------+-------+-------+------+-------+------+-----+------------+
+| OP (8)   |FMT (4) | D (5) | BASE(5)| INDEX(5)| W(3)| AM(3)|SCALE |MODE | DISP (26)  |
++----------+--------+-------+-------+-------+------+-------+------+-----+------------+
+```
+
+Payload alanları toplam 52 bittir:
+- D: LOAD hedefi / STORE kaynağı DA başlangıç selector'ı.
+- BASE ve INDEX: RA bankı selector'ları; aynı selector kullanılabilir.
+- W ve AM: MEMX ile aynı anlam ve kısıtlar; AM[0]=0 zorunludur.
+- SCALE: MEMX ile aynı çarpan kodları (×1/×2/×4/×8/×16); 101–111 reserved.
+- MODE: MEMUPD ile aynı POSTINC/PREINC/POSTDEC/PREDEC kodları.
+- DISP: normal formda signed 26-bit byte displacement; EXT formunda sıfır olmalıdır.
+
+**Adres ve update semantiği**
+- INDEX, komut başlangıcındaki eski RA[INDEX] değerinden signed 64-bit olarak okunur. BASE=INDEX olsa bile indeks terimi eski register değerinden alınır.
+- POST modlarında EA = old_BASE + (signed(old_INDEX) × SCALE) + DISP; başarılı erişimden sonra BASE, W/8 kadar artırılır/azaltılır.
+- PRE modlarında EA = (old_BASE ± W/8) + (signed(old_INDEX) × SCALE) + DISP; başarılı erişimle BASE, aynı ± W/8 güncellemesini alır.
+- EXT biçiminde DISP26=0 zorunludur; literal signed 64-bit byte displacement olarak DISP teriminin yerini alır.
+- İndeks çarpımı, displacement ekleme, effective address ve BASE güncellemesi matematiksel olarak 64-bit unsigned adres aralığında kalmalıdır; taşma/sarım yoktur.
+- BASE update ve bellek erişimi tek mimari commit'tir. Herhangi bir fault durumunda BASE ve LOAD hedef DA kayıtları değişmeden kalır; STORE hiçbir byte yazmaz.
+- Diğer tüm domain, alignment, DA sınırı, izin ve fault kuralları MEM/MEMX ile aynıdır.
+- Otomatik update miktarı W/8'dir. Farklı stride gereken yapılar için ayrı ADD/ADDI ile BASE açıkça değiştirilir; bu komutlar keyfi stride register'ı taşımaz.
+
+**Assembly gösterimi**
+```asm
+LOAD.POSTINC.L1.W64 DA0, [RA10]
+LOAD.PREDEC.L2.W128 DA4:DA5, [RA12 - 16]
+STORE.POSTINC.L3.W256 [RA20], DA8:DA11
+LOAD.POSTINC.L1.W64 DA2, [RA4 + RA5*2 + 8]
+```
+
+POSTINC/PREINC/POSTDEC/PREDEC suffix'leri MEMUPD veya MEMXUPD MODE alanını seçen assembler gösterimleridir; bağımsız opcode numaraları henüz atanmış değildir. Bu biçimlerde EXT kullanıldığında literal signed 64-bit displacement sağlar ve ilgili DISP alanı sıfır kodlanır.
+### 4.10 XFER — Register bankları arası açık aktarım
 
 ```text
 63       56 55    52 51  50 49   45 44  43 42   38 37  35 34  32 31     0
@@ -647,6 +723,8 @@ Aşağıdaki örnekler gerçek hexadecimal makine kodu değildir; opcode değerl
 
 ## 12. Henüz dondurulmamış kararlar
 
+- MEMUPD/MEMXUPD opcode numaraları ve assembler mnemonic alias tablosu henüz atanmadı. PRE/POST update semantiği ve W/8 stride ilk taslak olarak tanımlandı; farklı stride ayrı ADD/ADDI ile yapılır.
+
 1. OP ve FMT sayısal kodlarının nihai tablosu.
 3. EXT opcode'unun numeric değeri ve gelecekte COUNT>1 çoklu literal semantiği.
 4. DA↔MA 256/512-bit grup hizalaması ISA/encoding düzeyinde tanımlandı; mikro-mimari transfer portları ve timing'i açık.
@@ -667,7 +745,8 @@ Aşağıdaki örnekler gerçek hexadecimal makine kodu değildir; opcode değerl
 - Register selector: **5 bit** (her bankta 32 kayıt).
 - Register bank kodu: **2 bit** (yalnızca genel XFER formatında).
 - Immediate: temel RI formatında **signed 36 bit**.
-- Memory displacement: **signed 32 bit**, 64-bit RA base ile.
+- Memory displacement: MEM için **signed 32 bit**, MEMUPD için **signed 34 bit**, MEMX için **signed 28 bit**, MEMXUPD için **signed 26 bit**, 64-bit RA base ile.
+- Otomatik adres güncelleme: MEMUPD/MEMXUPD, POST/PRE increment/decrement; miktar W/8 byte, yalnızca başarılı bellek erişiminde commit.
 - MEM domain seçimi: AM[2:1] ile L1/L2/L3/L4; AM[0]=0 base + displacement.
 - LOAD/STORE erişim genişliği ve DA grup dağılımı: 8–512 bit; 1/2/4/8 ardışık DA kaydı.
 - Branch displacement: **signed 32 bit**.
