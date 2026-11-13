@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""NEXSUS CPU comparison simulator — native-profile model v0.3.1-dev (PX pool + dual-bank SPM0)
+"""NEXSUS CPU comparison simulator — native-profile model v0.3.2-dev (PX pool + dual-bank SPM0 + page metadata)
 
 This is an event/cycle-level teaching and design-space model, not RTL, gem5,
 or a vendor-certified replica. Unknown NEXSUS parameters are explicit inputs.
@@ -1276,7 +1276,7 @@ def main():
     if args.json:
         print(json.dumps(profiles, indent=2))
         return
-    print("NEXSUS CPU COMPOSITE WORKLOAD — NATIVE PROFILE MODEL v0.3.1-dev")
+    print("NEXSUS CPU COMPOSITE WORKLOAD — NATIVE PROFILE MODEL v0.3.2-dev")
     print("Native modeled cores: AMD 16, Intel Xeon 698X 86, Apple M6 12, NEXSUS 8; one hardware thread/core. Clock and memory parameters are explicit model assumptions.")
     print("Parallelism: lockstep cores; NEXSUS private L1 and shared L2/2-core, L3/4-core, L4/8-core groups; shared DRAM banks and aggregate bus; coherence remains unmodeled.")
     print(f"{'CPU profile':48} {'cycles':>12} {'ops':>10} {'IPC':>8} {'time ms*':>12}")
