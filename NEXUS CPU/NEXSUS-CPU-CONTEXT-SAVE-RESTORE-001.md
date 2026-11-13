@@ -14,20 +14,20 @@ This specification reuses the existing NEXSUS register banks and memory system. 
 ## 2. Register bank sizes
 | Bank | Registers | Width each | Full bank size |
 |---|---:|---:|---:|
-| RA | 32 | 64-bit | 256 B |
+| RA | 64 | 64-bit | 512 B |
 | FA | 32 | 64-bit | 256 B |
 | DA | 32 | 64-bit | 256 B |
-| MA | 32 | 256-bit | 1,024 B |
-| **Total** | **128** | — | **1,792 B** |
+| MA | 64 | 256-bit | 2,048 B |
+| **Total** | **256** | — | **3,584 B** |
 
 MA is the dominant save cost; saving it on every interrupt without need is prohibited by the baseline ABI.
 
 ## 3. Interrupt handler preservation contract
-The interrupt ABI defines a 32-bit save mask for each bank. Bit N indicates whether register N must be preserved by this handler invocation:
-- RA_MASK[31:0]
-- FA_MASK[31:0]
-- DA_MASK[31:0]
-- MA_MASK[31:0]
+The interrupt ABI defines a 64-bit save mask for each bank. Bit N indicates whether register N must be preserved by this handler invocation:
+- RA_MASK[63:0]
+- FA_MASK[63:0]
+- DA_MASK[63:0]
+- MA_MASK[63:0]
 
 A set bit means the interrupted value must be restored before IRET. A clear bit means the handler and its save/restore prologue are guaranteed not to alter that register. Masks are generated from handler code, the complete call graph, and the prologue's own staging-register clobbers, or supplied by handwritten assembly. If analysis is unavailable or unknown code can be called, the conservative mask includes every register the call path may modify.
 
@@ -94,7 +94,7 @@ Each ECS depth selects its own 1 KiB SPM7 slice. Each nested handler gets a dist
 A task context differs from an interrupt frame. When scheduler switches execution, it preserves all architectural state the task owns and may later observe.
 
 Baseline full context includes:
-- RA0–RA31, FA0–FA31, DA0–DA31, MA0–MA31.
+- RA0–RA63, FA0–FA63, DA0–DA63, MA0–MA63.
 - Required FP status/control and other task-visible execution state.
 - PC and STATUS/privilege through controlled scheduler context-switch path.
 - Memory-domain permissions, ownership/handle state and relevant address-space configuration.
@@ -102,7 +102,7 @@ Baseline full context includes:
 - SPM7 is reserved for active exception entry and is not task-owned.
 - P0 is refillable instruction prefetch state, not architectural task state.
 
-Full four-bank register payload is 1,792 bytes before metadata. Scheduler may optimize using bank ownership/dirty state but must restore exact architectural values before resuming a task.
+Full four-bank register payload is 3,584 bytes before metadata. Scheduler may optimize using bank ownership/dirty state but must restore exact architectural values before resuming a task.
 
 ## 8. SPM ownership and migration
 SPM banks are directly addressed local resources, not automatically coherent cache levels.
@@ -125,7 +125,7 @@ SPM banks are directly addressed local resources, not automatically coherent cac
 Compiler/assembler support:
 - Interrupt-handler attribute and distinct interrupt ABI.
 - Static or conservative transitive register-clobber analysis.
-- Emission of four per-bank 32-bit save masks.
+- Emission of four per-bank 64-bit save masks.
 - Native-width save/restore of selected registers.
 - 32-byte frame alignment and bounds checks.
 - Nested-handler prologue/epilogue generation.
@@ -134,7 +134,7 @@ Compiler/assembler support:
 If the compiler cannot prove a register untouched, it must preserve it. Correctness takes priority over frame-size optimization.
 
 ## 11. Baseline decisions
-**Selected:** SPM7 for temporary exception workspace; privileged Data RAM for persistent software frames; four 32-bit bank masks; selective per-register save/restore; full 1,792-byte register payload for complete task context; P0 excluded; SPM0–SPM6 preserved only when live.
+**Selected:** SPM7 for temporary exception workspace; privileged Data RAM for persistent software frames; four 64-bit bank masks; selective per-register save/restore; full 3,584-byte register payload for complete task context; P0 excluded; SPM0–SPM6 preserved only when live.
 
 **Not introduced:** new memory type, new register bank, new transfer mechanism, or automatic cache-like SPM migration.
 
@@ -173,7 +173,7 @@ This ordering is mandatory for correctness. The compiler may optimize transfers 
 
 ## 13. Save-frame size and SPM7 capacity
 
-The full architectural RA/FA/DA/MA payload is 1,792 bytes. A selective interrupt frame is smaller according to its masks, plus a 64-byte header and alignment. SPM7 remains 8 KiB total, partitioned into eight 1 KiB depth slices for temporary entry state; it is not the storage capacity for all nested full-register frames. Persistent frames use the protected Data RAM region. If the Data RAM frame stack reaches KELIMIT, the CPU enters the defined double-fault path; it must never silently truncate a save frame.
+The full architectural RA/FA/DA/MA payload is 3,584 bytes. A selective interrupt frame is smaller according to its masks, plus a 64-byte header and alignment. SPM7 remains 8 KiB total, partitioned into eight 1 KiB depth slices for temporary entry state; it is not the storage capacity for all nested full-register frames. Persistent frames use the protected Data RAM region. If the Data RAM frame stack reaches KELIMIT, the CPU enters the defined double-fault path; it must never silently truncate a save frame.
 
 
 ## 14. SPM-resident task-context slots
@@ -190,7 +190,7 @@ The four architectural register banks contain 1,792 bytes:
 
 A full task-context slot is allocated as **2 KiB**, aligned to a 2 KiB boundary. It contains the 1,792-byte register payload, context/control metadata, and alignment reserve. The exact internal metadata layout is an ABI detail to be finalized with the scheduler implementation.
 
-Five resident contexts therefore require **10 KiB**. SPM1–SPM6 provide 48 KiB in total, so five slots fit when that capacity is available. If all six banks were dedicated to this purpose, the theoretical ceiling would be 24 slots of 2 KiB each. This is a capacity calculation, not a promise that all 24 are always available: active workloads may already own SPM space.
+Five resident contexts therefore require **10 KiB**. SPM1–SPM6 provide 48 KiB in total, so five slots fit when that capacity is available. If all six banks were dedicated to this purpose, the theoretical ceiling would be 24 slots of 4 KiB each. This is a capacity calculation, not a promise that all 24 are always available: active workloads may already own SPM space.
 
 ### 14.2 Allocation policy
 
@@ -219,7 +219,7 @@ The scheduler must use the existing DA staging-order rules when transferring RA/
 
 ### 14.4 Five-task ready set
 
-A core can keep five task contexts resident simultaneously using five 2 KiB slots (10 KiB total). This means five saved contexts can be restored without first reading their register payloads from Data RAM. It does **not** mean five tasks execute simultaneously on one core: one task owns the architectural execution pipeline at a time, while the other four remain saved and ready.
+A core can keep five task contexts resident simultaneously using five 4 KiB slots (10 KiB total). This means five saved contexts can be restored without first reading their register payloads from Data RAM. It does **not** mean five tasks execute simultaneously on one core: one task owns the architectural execution pipeline at a time, while the other four remain saved and ready.
 
 The OS may choose which five tasks receive resident slots based on scheduling priority, wake frequency and expected reuse. Slot replacement is an OS policy decision; no hardware task-cache behavior is implied.
 
@@ -279,9 +279,9 @@ SPM2 has one physical 8 KiB capacity per core. Its contents are owned by the cur
 
 Four banks are dedicated to the OS-managed fast task-context pool: SPM3, SPM4, SPM5, and SPM6. Their combined capacity is 32 KiB.
 
-A full RA/FA/DA/MA payload is 1,792 bytes. The existing 64-byte save-frame header brings the base frame to 1,856 bytes, which fits in a 2 KiB slot with 32-byte alignment. Therefore each 8 KiB bank contains four 2 KiB slots:
+A full RA/FA/DA/MA payload is 1,792 bytes. The existing 64-byte save-frame header brings the base frame to 3,648 bytes, which fits in a 2 KiB slot with 32-byte alignment. Therefore each 8 KiB bank contains four 4 KiB slots:
 
-- 4 banks × 4 slots = **16 resident task-context slots per core**.
+- 4 banks × 4 slots = **8 resident task-context slots per core**.
 - Each slot holds one full register-bank image and its save-frame header.
 - Task control metadata (PC, STATUS, FP control/status, address-space and memory-domain descriptors, SPM ownership metadata, and scheduling state) remains in the task control block in protected Data RAM; the slot does not duplicate ECS state.
 - A slot is assigned to exactly one task at a time. The OS tracks valid/invalid state, task identity, generation, and ownership. It must complete the save before publishing a slot as valid and complete restore before resuming the task.
