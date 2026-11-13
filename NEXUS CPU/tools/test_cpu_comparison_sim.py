@@ -378,6 +378,51 @@ class ME512WorkloadTests(unittest.TestCase):
                 self.assertEqual(result["kernels"]["me512"]["cycles"] > 0, True)
         self.assertIn("ME512", sim.PROFILES["nexus_balanced_128"]["units"])
 
+
+class PXMetadataTests(unittest.TestCase):
+    def test_full_pages_auto_continue_and_partial_final_uses_px_end(self):
+        pages = [
+            {"logical_page_id": 0, "valid_bytes": 2048},
+            {"logical_page_id": 1, "valid_bytes": 2048},
+            {"logical_page_id": 2, "valid_bytes": 704, "marker": "PX_END"},
+        ]
+        self.assertTrue(sim.validate_px_page_descriptors(pages))
+
+    def test_partial_intermediate_page_uses_px_next_without_instruction_slot(self):
+        pages = [
+            {"logical_page_id": 0, "valid_bytes": 1536, "marker": "PX_NEXT",
+             "next_logical_page_id": 1},
+            {"logical_page_id": 1, "valid_bytes": 512, "marker": "PX_END"},
+        ]
+        self.assertTrue(sim.validate_px_page_descriptors(pages))
+        ops = [sim.Op(0, "INT"), sim.Op(1, "INT")]
+        self.assertEqual(len(ops), 2)
+
+    def test_partial_page_without_marker_is_rejected(self):
+        with self.assertRaises(ValueError):
+            sim.validate_px_page_descriptors([
+                {"logical_page_id": 0, "valid_bytes": 1024},
+            ])
+
+    def test_px_end_cannot_have_a_following_page(self):
+        with self.assertRaises(ValueError):
+            sim.validate_px_page_descriptors([
+                {"logical_page_id": 0, "valid_bytes": 1024, "marker": "PX_END"},
+                {"logical_page_id": 1, "valid_bytes": 8, "marker": "PX_END"},
+            ])
+
+    def test_px_next_requires_valid_next_page_and_alignment(self):
+        with self.assertRaises(ValueError):
+            sim.validate_px_page_descriptors([
+                {"logical_page_id": 0, "valid_bytes": 1024, "marker": "PX_NEXT",
+                 "next_logical_page_id": 2},
+                {"logical_page_id": 1, "valid_bytes": 8, "marker": "PX_END"},
+            ])
+        with self.assertRaises(ValueError):
+            sim.validate_px_page_descriptors([
+                {"logical_page_id": 0, "valid_bytes": 1025, "marker": "PX_END"},
+            ])
+
 class WorkloadPartitionTests(unittest.TestCase):
     def test_partition_preserves_operation_count_and_dependencies(self):
         workloads = sim.build_composite_workload(scale=1)
