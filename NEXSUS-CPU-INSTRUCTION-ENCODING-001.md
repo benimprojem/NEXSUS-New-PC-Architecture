@@ -761,7 +761,7 @@ Matrix tile şekli, formatın M alanında; eleman genişliği W alanında kodlan
 - AUX alanı ilk sürümde sıfır olmalıdır. Ayrılmış M/W kodları, sıfır olmayan AUX veya ISA'daki MA grup sınır/alignment kurallarının ihlali illegal operand/encoding fault üretir.
 - Register grup uzunluğu `ceil(N × N × W / 256)` MA register'dır. Her başlangıç selector'ı bu grup uzunluğunun katı olmalı ve grup MA31'i aşmamalıdır.
 - Operandların aynı tile'ı kullanması tam alias olarak geçerlidir (ör. A=B veya D=A). Kısmi/örtüşen ama eşit olmayan tile grupları geçersizdir.
-- Numeric opcode değerleri henüz atanmadı; bu eşleme yalnızca format/operand kodlamasını tanımlar.
+- Numeric opcode değerleri 8.2 bölümünde atanmıştır; bu eşleme yalnızca format/operand kodlamasını tanımlar.
 
 Örnek sembolik gösterimler:
 
@@ -894,8 +894,8 @@ OP alanı 8-bit olduğundan 256 primary opcode değeri sunar. İlk aşamada opco
 | OP aralığı | Ayrılan aile | Durum |
 |---|---|---|
 | 0x00–0x0F | Control-flow / branch | Aile aralığı ayrıldı; bireysel atamalar açık |
-| 0x10–0x2F | Integer / scalar ALU | Aile aralığı ayrıldı; bireysel atamalar açık |
-| 0x30–0x3F | Bit / Boolean / shift | Aile aralığı ayrıldı; bireysel atamalar açık |
+| 0x10–0x2F | Integer / scalar ALU | 0x10–0x1F atandı; 0x20–0x2F ayrıldı |
+| 0x30–0x3F | Bit / Boolean / shift | 0x30–0x3A atandı; 0x3B–0x3F ayrıldı |
 | 0x40–0x4F | Load/store / address | Aile aralığı ayrıldı; bireysel atamalar açık |
 | 0x50–0x5F | Floating point / conversion | 0x50–0x5B atandı; 0x5C–0x5F ayrıldı |
 | 0x60–0x83 | Vector / Matrix / ME512 | Alt aile aralığı ayrıldı; aşağıda 0x60–0x82 atandı |
@@ -905,9 +905,75 @@ OP alanı 8-bit olduğundan 256 primary opcode değeri sunar. İlk aşamada opco
 | 0xC4–0xEF | Reserved / future extensions | Ayrılmış |
 | 0xF0–0xFF | Escape / EXT / implementation-defined | Ayrılmış; EXT için bireysel değer açık |
 
-Primary opcode, FMT ile birlikte komut tanımını seçer. Aşağıda Vector/Matrix ve Floating-point ailelerinin sayısal atamaları verilmiştir; diğer ailelerin aralıkları ayrılmış ancak bireysel opcode atamaları henüz yapılmamıştır.
+Primary opcode, FMT ile birlikte komut tanımını seçer. Aşağıda Scalar/Integer/Logic, Vector/Matrix ve Floating-point ailelerinin sayısal atamaları verilmiştir; diğer ailelerin aralıkları ayrılmış ancak bireysel opcode atamaları henüz yapılmamıştır.
 
-### 8.1 Vector ve Matrix primary opcode atamaları
+### 8.1 Scalar / Integer / Logic primary opcode atamaları
+
+Bu atama, scalar aritmetik ve temel bit/Boolean komutlarını kapsar. Aynı işlem ailesinin register ve immediate biçimleri, mümkün olduğunda aynı primary opcode'u farklı FMT değerleriyle kullanır. Signedness ve karşılaştırma koşulları da komuta ayrılmış alanlarla seçilir.
+
+**Scalar / Integer — 0x10–0x1F**
+
+| OP | Mnemonic / alias | Kabul edilen format | Kodlama ve açıklama |
+|---:|---|---|---|
+| 0x10 | MOV / MOVI | R2 / RI | MOV=R2 register kopyalama; MOVI=RI immediate yükleme. |
+| 0x11 | ADD / ADDI | R3 / RI | ADD=R3; ADDI aynı OP ile RI. |
+| 0x12 | SUB / SUBI | R3 / RI | SUB=R3; SUBI aynı OP ile RI. |
+| 0x13 | MUL | R3 | W-bit düşük çarpım sonucu. |
+| 0x14 | DIV.S / DIV.U | R3 | M[0]=0 signed, M[0]=1 unsigned. |
+| 0x15 | MOD.S / MOD.U | R3 | M[0]=0 signed, M[0]=1 unsigned. |
+| 0x16 | NEG | R2 | İki'nin tümleyeni unary işlem. |
+| 0x17 | INC | R2 | D register'ını W genişliğinde bir artırır. |
+| 0x18 | DEC | R2 | D register'ını W genişliğinde bir azaltır. |
+| 0x19 | CMP.* | R3 | Koşul AUX[3:0] alanında; sonuç RA[D]'ye 0/1 yazılır. |
+| 0x1A | MIN.S / MIN.U | R3 | M[0]=0 signed, M[0]=1 unsigned. |
+| 0x1B | MAX.S / MAX.U | R3 | M[0]=0 signed, M[0]=1 unsigned. |
+| 0x1C | ABS | R2 | Signed mutlak değer. |
+| 0x1D | AND / ANDI | R3 / RI | AND=R3; ANDI aynı OP ile RI. |
+| 0x1E | OR / ORI | R3 / RI | OR=R3; ORI aynı OP ile RI. |
+| 0x1F | XOR / XORI | R3 / RI | XOR=R3; XORI aynı OP ile RI. |
+
+CMP condition kodları (R3 AUX[3:0]):
+- 0000 EQ, 0001 NE
+- 0010 LT.S, 0011 LT.U
+- 0100 LE.S, 0101 LE.U
+- 0110 GT.S, 0111 GT.U
+- 1000 GE.S, 1001 GE.U
+- Diğer kodlar ayrılmıştır; illegal encoding üretir. AUX[31:4] ve M sıfır olmalıdır.
+
+Scalar format kısıtları:
+- MOV: R2; D hedef, A kaynak, W=000/001/010/011 (8/16/32/64), M=000, AUX=0.
+- MOVI: RI; D hedef, A=0, W=011 (64-bit), M=000. IMM signed 36-bit; EXT biçiminde IMM=0 ve literal 64-bit'tir.
+- ADD/SUB/AND/OR/XOR: R3; D/A/B RA selector'ları, W=8/16/32/64, M=000, AUX=0. Immediate alias'ları RI kullanır; D/A hedef/kaynak alanlarıdır, B=0, W=8/16/32/64.
+- MUL: R3; M=000, AUX=0.
+- DIV/MOD/MIN/MAX: R3; M[0] signedness'i seçer, M[1]=0 ve AUX=0.
+- NEG/ABS: R2; D hedef, A kaynak, M=000, AUX=0.
+- INC/DEC: R2; D hedef, A=0, M=000, AUX=0; işlem D'nin eski değeri üzerinde in-place yapılır.
+- CMP: R3; D=RA hedef, A/B=RA kaynak, W=8/16/32/64, M=000; koşul AUX[3:0], AUX[31:4]=0.
+- W<64 scalar write işlemlerinde RA üst bitleri mevcut register-view kuralına göre korunur.
+
+**Bit / Boolean / Shift — 0x30–0x3A**
+
+| OP | Mnemonic | Format | Açıklama |
+|---:|---|---|---|
+| 0x30 | NOT | R2 | W-bit bitwise NOT. |
+| 0x31 | SHL | R3 | Logical left shift. |
+| 0x32 | SHR | R3 | Logical right shift. |
+| 0x33 | SAR | R3 | Arithmetic right shift. |
+| 0x34 | ROL | R3 | Rotate left. |
+| 0x35 | ROR | R3 | Rotate right. |
+| 0x36 | BSET | R2 | AUX[5:0] bit indeksini 1 yapar. |
+| 0x37 | BCLR | R2 | AUX[5:0] bit indeksini 0 yapar. |
+| 0x38 | BTST | R2 | AUX[5:0] bit indeksini D hedefinde 0/1 üretir. |
+| 0x39 | BEXT | R2 | AUX alanındaki START/FIELD_WIDTH ile bit alanı çıkarır. |
+| 0x3A | BINS | R2 | AUX alanındaki START/FIELD_WIDTH ile bit alanı yerleştirir. |
+
+- NOT için D hedef, A kaynak; B=0, M=000, AUX=0.
+- SHL/SHR/SAR/ROL/ROR için R3 D/A/B alanları sırasıyla hedef, kaynak ve shift-count RA selector'larıdır; W=8/16/32/64, M=000, AUX=0.
+- BSET/BCLR/BTST için R2 D hedef, A kaynak; W=8/16/32/64, M=000, AUX[35:6]=0 ve AUX[5:0]=BIT_INDEX. BIT_INDEX < W olmalıdır.
+- BEXT/BINS, bu belgedeki R2 bit-field layout ve START/FIELD_WIDTH alanlarını aynen kullanır; numeric opcode'ları sırasıyla 0x39 ve 0x3A'dır.
+- 0x3B–0x3F ve 0x20–0x2F ilk sürümde reserved'dır.
+
+### 8.2 Vector ve Matrix primary opcode atamaları
 
 Aşağıdaki değerler bu revizyonla atanmıştır. Her mnemonic varyantı ayrı 8-bit primary opcode kullanır; operand formatı ve W/M alanları ilgili encoding kurallarına göre yorumlanır.
 
@@ -963,7 +1029,7 @@ Aşağıdaki değerler bu revizyonla atanmıştır. Her mnemonic varyantı ayrı
 - Numeric opcode tablosunda bulunmayan bir mnemonic alias yeni opcode oluşturmaz. Alias yalnızca aynı opcode ve operand alanlarına assembler düzeyinde çevrilebilir.
 - Bu tablo primary opcode atamasıdır; execution latency, issue portu veya ME512'nin çevrim başına tamamlayacağı iş miktarını belirlemez.
 
-### 8.2 Floating-point primary opcode atamaları
+### 8.3 Floating-point primary opcode atamaları
 
 Floating-point komutları için 0x50–0x5F aralığı ayrılmıştır. İlk sürümde 12 primary opcode atanmış, dört değer genişletme için boş bırakılmıştır.
 
@@ -1015,11 +1081,11 @@ Exception türleri, trap vector ve hata raporlama ayrıntıları ayrı system-co
 
 ## 11. Örnek alan eşlemeleri
 
-Aşağıdaki örnekler tam 64-bit hexadecimal makine kodu değildir; bazı primary opcode değerleri atanmış olsa da bit alanları sembolik gösterilmiştir.
+Aşağıdaki örnekler tam 64-bit hexadecimal makine kodu değildir; atanmış primary opcode değerleri sembolik veya sayısal olarak gösterilmiştir.
 
 | Assembly | Format | Alanların yorumu |
 |---|---|---|
-| `ADD RA3, RA1, RA2` | R3 | OP_ADD, FMT_R3, D=3, A=1, B=2, W=64 |
+| `ADD RA3, RA1, RA2` | R3 | OP=0x11, FMT_R3, D=3, A=1, B=2, W=64 |
 | `FADD FA4, FA1, FA2` | R3 | OP=0x50, FMT_R3, D=4, A=1, B=2, W=FP64 |
 | `FCMP.LT RA6, FA1, FA2` | R3 | OP=0x5A, FMT_R3, D=RA6, A=FA1, B=FA2, W=FP64, AUX[3:0]=0010 |
 | `VADD.W32 MA8, MA4, MA12` | R3 | OP_VADD, FMT_R3, D=8, A=4, B=12, W=32 |
