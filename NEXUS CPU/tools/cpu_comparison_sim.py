@@ -78,7 +78,7 @@ PROFILES = {
         "name": "Intel Core Ultra 9 285K / Skymont E-core",
         "core_count": 16, "core_type": "E", "frontend": 9,
         "dispatch": 8, "issue": 8, "retire": 16, "rob": 416,
-        "units": {"INT": 4, "FP": 2, "VEC": 2, "LOAD": 3, "STORE": 2, "BR": 1},
+        "units": {"INT": 4, "FP": 2, "VEC": 2, "LOAD": 3, "STORE": 2, "BR": 1, "CTX": 1, "ATOM": 1},
         "latency": {"INT": 1, "FP": 4, "VEC": 4, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 10, "CTX": 8},
         "l1_kb": 32, "l2_kb": 4096, "l3_kb": 36864, "l4_kb": 0,
         "l1_lat": 4, "l2_lat": 16, "l3_lat": 90, "l4_lat": 0, "dram_lat": 240,
