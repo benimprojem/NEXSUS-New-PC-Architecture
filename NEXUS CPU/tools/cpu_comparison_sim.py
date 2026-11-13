@@ -20,6 +20,7 @@ class Op:
     address: int = 0
     width: int = 8
     label: str = ""
+    command_address: int = -1
 
 @dataclass
 class CoreProfile:
@@ -99,9 +100,10 @@ PROFILES = {
     }
 }
 
-def add_op(ops: List[Op], kind: str, deps=(), address=0, width=8, label=""):
+def add_op(ops: List[Op], kind: str, deps=(), address=0, width=8, label="", command_address=None):
     seq = len(ops)
-    ops.append(Op(seq, kind, tuple(dict.fromkeys(deps)), address, width, label))
+    pc = seq * 8 if command_address is None else command_address
+    ops.append(Op(seq, kind, tuple(dict.fromkeys(deps)), address, width, label, pc))
     return seq
 
 def build_composite_workload(scale: int = 1) -> Dict[str, List[Op]]:
@@ -184,6 +186,44 @@ def build_composite_workload(scale: int = 1) -> Dict[str, List[Op]]:
         add_op(ops, "BR", label="independent branch stress")
     result["branch_stress"] = ops
 
+    # J) Explicit SPM2 hot set: same 4 KiB task-local working set is revisited.
+    ops = []
+    for i in range(2048*n):
+        add_op(ops, "LOAD" if i % 4 else "STORE", (),
+               address=(i % 64) * 64, width=64, label="SPM2: hot task working set")
+    result["spm_hot_workset"] = ops
+
+    # K) SPM2 capacity sweep: addresses cover 16 KiB, exceeding the 8 KiB SPM2.
+    ops = []
+    for i in range(2048*n):
+        add_op(ops, "LOAD", (), address=(i % 256) * 64, width=64,
+               label="SPM2: capacity sweep")
+    result["spm_capacity_sweep"] = ops
+
+    # L) Sequential command supply; one unique command address per operation.
+    ops = []
+    for i in range(2048*n):
+        add_op(ops, "INT", label="P0 sequential", command_address=i*8)
+    result["p0_sequential"] = ops
+
+    # M) Branch-heavy command stream; branch recovery remains independently modeled.
+    ops = []
+    for i in range(2048*n):
+        add_op(ops, "BR", label="P0 branch", command_address=i*8)
+    result["p0_branch"] = ops
+
+    # N) Repeated 2 KiB command loop (fits both P0 and conventional I-cache).
+    ops = []
+    for i in range(4096*n):
+        add_op(ops, "INT", label="P0 working set", command_address=(i % 256)*8)
+    result["p0_working_set"] = ops
+
+    # O) Repeated 16 KiB command loop (exceeds P0 and 32 KiB conventional I-cache).
+    ops = []
+    for i in range(8192*n):
+        add_op(ops, "INT", label="P0 starvation", command_address=(i % 2048)*8)
+    result["p0_starvation"] = ops
+
     return result
 
 class LRU:
@@ -262,6 +302,43 @@ def build_cache_hierarchies(p: CoreProfile, core_count: int) -> List[CacheHierar
                        l4_groups[i // 8] if l4_groups else None)
         for i in range(core_count)
     ]
+
+
+class CommandFetchModel:
+    """One outstanding 64-byte command-line refill; P0 vs conventional I-cache."""
+    def __init__(self, enabled: bool, p0_capacity_bytes: int = 8192,
+                 conventional_capacity_bytes: int = 32768,
+                 p0_refill_latency: int = 8, conventional_refill_latency: int = 32):
+        self.enabled = enabled
+        capacity = p0_capacity_bytes if enabled else conventional_capacity_bytes
+        self.lines = LRU(capacity, 64)
+        self.refill_latency = p0_refill_latency if enabled else conventional_refill_latency
+        self.pending = None
+        self.hits = 0
+        self.refills = 0
+        self.refill_bytes = 0
+        self.wait_cycles = 0
+
+    def complete(self, cycle: int):
+        if self.pending is not None and self.pending[1] <= cycle:
+            line, _ = self.pending
+            self.lines.insert(line)
+            self.pending = None
+
+    def can_fetch(self, command_address: int, cycle: int) -> bool:
+        self.complete(cycle)
+        line = command_address // 64
+        if self.lines.lookup(line):
+            self.hits += 1
+            return True
+        if self.pending is not None:
+            self.wait_cycles += 1
+            return False
+        self.pending = (line, cycle + self.refill_latency)
+        self.refills += 1
+        self.refill_bytes += 64
+        self.wait_cycles += 1
+        return False
 
 def profile_from_dict(d: dict) -> CoreProfile:
     return CoreProfile(**d)
@@ -499,22 +576,27 @@ def partition_dependency_components(ops: List[Op], core_count: int) -> List[List
             op = ops[old_seq]
             shard.append(Op(new_seq, op.kind,
                             tuple(remap[d] for d in op.deps if d in remap),
-                            op.address, op.width, op.label))
+                            op.address, op.width, op.label, op.command_address))
         if shard:
             shards.append(shard)
     return shards
 
 def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
-                               aggregate_dram_bandwidth: int) -> dict:
+                               aggregate_dram_bandwidth: int,
+                               nexus_features=None) -> dict:
     """Lockstep cores sharing one DRAM bank/bus controller.
 
     Per-core pipelines, ROBs and caches remain private approximations. All
     cores advance on one global cycle and submit DRAM misses as a same-cycle batch.
     """
+    features = {"spm": True, "p0": True}
+    if nexus_features:
+        features.update(nexus_features)
+    is_nexus = p.name.startswith("NEXSUS CPU")
     states = []
     for shard in shards:
         states.append({
-            "ops": shard, "cache": None,
+            "ops": shard, "cache": None, "fetch": None,\n            "spm_busy_until": 0,\n            "spm": {"accesses": 0, "bytes": 0, "port_conflicts": 0, "overflow": 0, "fallback_bytes": 0},
             "ready_at": [0] * len(shard), "done": [False] * len(shard),
             "issued": [False] * len(shard), "dispatched": [False] * len(shard),
             "rob": deque(), "unit_busy": {k: [0] * v for k, v in p.units.items()},
@@ -531,6 +613,8 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
     cache_hierarchies = build_cache_hierarchies(p, len(states))
     for core_id, st in enumerate(states):
         st["cache"] = cache_hierarchies[core_id]
+        if is_nexus:
+            st["fetch"] = CommandFetchModel(bool(features["p0"]))
     pending_fills = []
     controller = SharedMemoryController(
         bank_count=p.bank_count, beat_bytes=p.bank_beat_bytes,
@@ -538,6 +622,9 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
     cycle = 0
     limit = max(10000, sum(len(x) for x in shards) * 1000)
     while any(st["retired"] < len(st["ops"]) for st in states) and cycle < limit:
+        for st in states:
+            if st["fetch"] is not None:
+                st["fetch"].complete(cycle)
         completed_fills = [x for x in pending_fills if x[0] <= cycle]
         pending_fills = [x for x in pending_fills if x[0] > cycle]
         for _, core_id, address, level in completed_fills:
@@ -568,6 +655,10 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                    dispatched_now < p.frontend and len(st["rob"]) < p.rob and
                    cycle >= st["frontend_blocked_until"]):
                 op = ops[st["next_frontend"]]
+                if st["fetch"] is not None:
+                    pc = op.command_address if op.command_address >= 0 else op.seq * 8
+                    if not st["fetch"].can_fetch(pc, cycle):
+                        break
                 st["dispatched"][op.seq] = True
                 st["rob"].append(op.seq)
                 st["next_frontend"] += 1
@@ -602,8 +693,25 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 mem_lat = 0
                 level = None
                 if op.kind in ("LOAD", "STORE"):
-                    mem_lat, level = st["cache"].probe(op.address)
-                    st["hits"][level] += 1
+                    is_spm2 = op.label.startswith("SPM2:")
+                    in_spm = 0 <= op.address and op.address + op.width <= 8192
+                    if is_nexus and features["spm"] and is_spm2 and in_spm:
+                        if st["spm_busy_until"] > cycle:
+                            st["spm"]["port_conflicts"] += 1
+                            mem_lat = (st["spm_busy_until"] - cycle) + 2
+                        else:
+                            mem_lat = 2
+                        st["spm_busy_until"] = max(st["spm_busy_until"], cycle) + 1
+                        st["spm"]["accesses"] += 1
+                        st["spm"]["bytes"] += op.width
+                        level = "SPM2"
+                    else:
+                        if is_nexus and is_spm2:
+                            if features["spm"] and not in_spm:
+                                st["spm"]["overflow"] += 1
+                            st["spm"]["fallback_bytes"] += op.width
+                        mem_lat, level = st["cache"].probe(op.address)
+                        st["hits"][level] += 1
                 item = {"core": core_id, "seq": seq, "slot": slot,
                         "latency": max(p.latency.get(op.kind, 1), mem_lat),
                         "level": level}
@@ -665,7 +773,8 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                            "bus_next_cycle": controller.bus_next_cycle}}
 
 
-def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=None) -> dict:
+def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=None,
+                 nexus_features=None) -> dict:
     cores = core_count or profile_dict.get("core_count", 1)
     core_profile_dict = dict(profile_dict)
     aggregate_dram_bandwidth = int(profile_dict.get("dram_bytes_per_cycle", 32))
@@ -673,7 +782,7 @@ def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=N
     results = {}
     for name, ops in workloads.items():
         shards = partition_dependency_components(ops, cores)
-        simulation = simulate_multicore_streams(shards, p, aggregate_dram_bandwidth)
+        simulation = simulate_multicore_streams(shards, p, aggregate_dram_bandwidth, nexus_features)
         per_core = simulation["cores"]
         elapsed_cycles = simulation["cycles"]
         total_ops = sum(x["retired"] for x in per_core)
@@ -692,11 +801,21 @@ def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=N
             "stall_counters": {k: sum(x["stalls"][k] for x in per_core)
                                for k in stall_keys},
             "memory_controller": simulation["controller"],
+            "spm_counters": {k: sum(x["spm"][k] for x in per_core)
+                             for k in ("accesses", "bytes", "port_conflicts", "overflow", "fallback_bytes")},
+            "p0_counters": {
+                "hits": sum(x["fetch"].hits for x in per_core if x["fetch"] is not None),
+                "refills": sum(x["fetch"].refills for x in per_core if x["fetch"] is not None),
+                "refill_bytes": sum(x["fetch"].refill_bytes for x in per_core if x["fetch"] is not None),
+                "wait_cycles": sum(x["fetch"].wait_cycles for x in per_core if x["fetch"] is not None),
+                "mode": ("P0" if nexus_features is None or nexus_features.get("p0", True) else "conventional I-cache") if p.name.startswith("NEXSUS CPU") else "reference profile"
+            },
             "parallel_model": "lockstep multicore; private L1; NEXSUS L2 shared per 2 cores, L3 per 4 and L4 per 8; reference CPU caches remain per-core approximations; shared DRAM banks and work-conserving aggregate bus; coherence not modeled"
         }
     total_cycles = sum(v["cycles"] for v in results.values())
     total_ops = sum(v["ops"] for v in results.values())
     return {"cpu": p.name, "cores_configured": cores, "clock_ghz": p.frequency_ghz,
+            "nexus_features": ({"spm": True, "p0": True} if nexus_features is None else nexus_features) if p.name.startswith("NEXSUS CPU") else None,
             "cpu_ram_reference_clock_ghz": p.frequency_ghz,
             "aggregate_dram_bytes_per_cycle": aggregate_dram_bandwidth,
             "per_core_dram_bytes_per_cycle": None,
