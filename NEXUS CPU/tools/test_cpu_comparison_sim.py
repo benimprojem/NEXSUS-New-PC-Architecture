@@ -26,6 +26,52 @@ class BandwidthPolicyTests(unittest.TestCase):
                 self.assertEqual(sim.PROFILES[key]["dram_bytes_per_cycle"], 32)
 
 
+class SharedMemoryControllerTests(unittest.TestCase):
+    def test_same_bank_requests_serialize_but_different_banks_overlap(self):
+        same = sim.SharedMemoryController(bank_count=8, beat_bytes=8,
+                                          aggregate_bytes_per_cycle=32)
+        same_result = same.reserve_batch(0, [
+            {"id": "a", "core": 0, "address": 0, "width": 8},
+            {"id": "b", "core": 1, "address": 64, "width": 8},
+        ], bank_hash="low")
+        self.assertEqual(same_result["a"]["bank_wait"], 0)
+        self.assertEqual(same_result["b"]["bank_wait"], 1)
+
+        separate = sim.SharedMemoryController(bank_count=8, beat_bytes=8,
+                                              aggregate_bytes_per_cycle=32)
+        separate_result = separate.reserve_batch(0, [
+            {"id": "a", "core": 0, "address": 0, "width": 8},
+            {"id": "b", "core": 1, "address": 8, "width": 8},
+        ], bank_hash="low")
+        self.assertEqual(separate_result["a"]["bank_wait"], 0)
+        self.assertEqual(separate_result["b"]["bank_wait"], 0)
+
+    def test_bus_enforces_chip_wide_bandwidth_without_static_core_quotas(self):
+        controller = sim.SharedMemoryController(
+            bank_count=8, beat_bytes=8, aggregate_bytes_per_cycle=32
+        )
+        result = controller.reserve_batch(0, [
+            {"id": "single-core-a", "core": 3, "address": 0, "width": 32},
+            {"id": "single-core-b", "core": 3, "address": 8, "width": 32},
+        ])
+        self.assertEqual(result["single-core-a"]["bus_wait"], 0)
+        self.assertEqual(result["single-core-b"]["bus_wait"], 1)
+        self.assertEqual(controller.bus_next_cycle, 2)
+
+    def test_rotating_priority_changes_first_core_between_batches(self):
+        controller = sim.SharedMemoryController()
+        first = controller.reserve_batch(0, [
+            {"id": "c0", "core": 0, "address": 0, "width": 32},
+            {"id": "c1", "core": 1, "address": 8, "width": 32},
+        ])
+        second = controller.reserve_batch(2, [
+            {"id": "c0", "core": 0, "address": 16, "width": 32},
+            {"id": "c1", "core": 1, "address": 24, "width": 32},
+        ])
+        self.assertEqual(first["c0"]["bus_wait"], 0)
+        self.assertEqual(second["c1"]["bus_wait"], 0)
+
+
 class CandidateProfileTests(unittest.TestCase):
     def test_balanced_128_matches_experimental_target(self):
         p = sim.PROFILES["nexus_balanced_128"]
