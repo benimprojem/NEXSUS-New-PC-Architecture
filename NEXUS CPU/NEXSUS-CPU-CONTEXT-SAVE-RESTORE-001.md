@@ -54,7 +54,7 @@ Frames are stored in a privileged, bounded Data RAM region addressed by KESP/KEL
 | 0x30 | 8 | SAVE_MASK_MA |
 | 0x38 | 8 | FLAGS / BANK_STATE_VALID |
 
-Each mask uses its low 32 bits; upper bits must be zero. Payload follows in ascending bank order RA, FA, DA, MA, and ascending register index. Each register retains native width. MA payloads are 32-byte aligned. Frame size is rounded up to 32 bytes.
+Each mask uses all 64 bits; bit N corresponds to register N (0–63). Payload follows in ascending bank order RA, FA, DA, MA, and ascending register index. Each register retains native width. MA payloads are 32-byte aligned. Frame size is rounded up to 32 bytes.
 
 The header does not duplicate EPC/CAUSE/IRQ claim state; those remain in ECS.
 
