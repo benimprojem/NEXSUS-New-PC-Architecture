@@ -566,3 +566,15 @@ P0 ile SPM0 farklı aşamalara hizmet eder ve birbirinin yerine geçmez:
 - P0'dan SPM0'a geçiş, komut akışının fetch'ten yürütme tarafına aktarılmasıdır; App RAM'den P0'a yapılan refill işleminden farklıdır.
 
 Fetch genişliği, branch davranışı, miss oranı ve komut besleme bant genişliği ölçüldükten sonra P0'ın bank sayısı, line size, refill genişliği ve portları mikro-mimari aşamasında belirlenecektir.
+
+
+### 22.14 P0 fetch bant genişliği ve komut besleme hedefi
+
+Komut kaydı genişliği ile P0'ın fetch veri yolu genişliği birbirinden ayrıdır:
+
+- Tek komut kaydı 64 bit olarak kalır.
+- İlk mikro-mimari hedefi P0 ile fetch/decode tarafı arasında **512-bit (8 komut sözcüğü) tepe okuma genişliği** sağlamaktır.
+- Bu genişlik her çevrimde sekiz komutun yürütüleceği anlamına gelmez. Issue scheduler, ilk hedefte en fazla 2 ALU + 2 FPU + 1 ME512 olmak üzere beş bağımsız execution komutunu aynı çevrimde dağıtabilir; gerçek sayı bağımlılık ve kaynak uygunluğuna bağlıdır.
+- Fetch tarafındaki fazla komutlar decode/dispatch akışında sıraya alınır; SPM0 yürütme tarafındaki geçici komut kayıtlarını tutar.
+- 512-bit hedef, P0'ın her çevrim mutlaka tam dolu okunacağı garantisi değildir. Branch, P0 miss, hizalama, port ve App RAM gecikmesi gerçek besleme hızını etkiler.
+- 512-bit fetch genişliği ilk tasarım hedefidir; güç/alan/performans analizleriyle daraltılabilir veya artırılabilir. P0 kapasitesi ve 64-bit kayıt biçimi bundan bağımsızdır.
