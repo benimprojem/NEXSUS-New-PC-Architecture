@@ -717,6 +717,23 @@ Bu eşleme, FENCE SCOPE alanındaki L1–L4 sıralamasının iki bitlik karşıl
 - RESERVED alanı ileride genişletme için korunur; v1 decoder bu bitlerden herhangi biri 1 ise komutu reddeder.
 - Alan eşlemesi **adaydır ve henüz encoding freeze değildir**; alan bitleri ve opcode'lar belgelenmiştir, fakat maksimum transfer boyutu, aynı çekirdekte eşzamanlı token kapasitesi ve runtime fault alt türlerinin ayrıntıları mikro-mimari/exception sözleşmesinde tamamlanacaktır.
 
+**MEMXFER decoder/architectural conformance cases**
+
+| Case | Input / condition | Required architectural result |
+|---|---|---|
+| MEMXFER format mismatch | OP=0x86–0x88, FMT≠1101 | Illegal instruction; no transfer and no RA write |
+| Reserved bits | Any used MEMXFER opcode with RESERVED≠0 | Illegal instruction; no transfer and no RA write |
+| Zero-length synchronous | XFER.MEM, LRA value=0 | Successful no-op; no memory range/permission lookup |
+| Zero-length asynchronous | XFER.START, LRA value=0 | Completed token written to TRA; no memory range/permission lookup |
+| START source/token alias | TRA selector equals DRA, SRA, or LRA | Valid; all source values snapshotted before token write |
+| START validation failure | Nonzero transfer, either endpoint denied/invalid | Synchronous fault at START; no transfer accepted; TRA unchanged |
+| WAIT success | Valid pending or already-completed token | Wait until completion, consume token, write zero to TRA |
+| WAIT reuse | Token already consumed or invalid | Illegal-token fault; no memory effect |
+| Async runtime failure | Accepted transfer fails before completion | WAIT raises transfer fault; token retired; faulting TRA write does not commit; target invalid |
+| Sync runtime failure | XFER.MEM fails during transfer | Fault reported at XFER.MEM; incomplete target is invalid |
+
+These are specification-level conformance expectations, not a claim that a hardware simulator or RTL test suite has already executed them.
+
 ## 5. Width alanı
 
 W alanı 3 bit olduğundan sekiz kod sunar:
