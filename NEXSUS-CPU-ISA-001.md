@@ -367,3 +367,78 @@ SPM0 ve SPM1, RA/DA/MA register banklarından ayrı erişim kaynaklarıdır. SPM
 4. SPM0/SPM1 bank sayısı ve interleave/hash adresleme henüz kesin değildir. Page sayısı ile fiziksel bank sayısı aynı kavram kabul edilmez.
 
 Bu bölüm port hedeflerini tanımlar; kesin timing ve bank mapping sonraki mikro-mimari revizyonda sabitlenecektir.
+
+
+## 22. Cache-level preload / residency komutları (taslak)
+
+NEXSUS CPU, programın veriyi yalnızca demand-load ile getirmesine bağlı kalmamalıdır. Programcı belirli bir veri aralığının cache hiyerarşisinde önceden hazırlanmasını isteyebilmelidir. Bunun için L1–L4 hedefli komut ailesi önerilir.
+
+### 22.1 Komut ailesi
+
+| Mnemonic | Amaç | Semantik hedef |
+|---|---|---|
+| LOAD.L1 | Veri aralığını L1'e almayı iste | Hedef seviye L1 |
+| LOAD.L2 | Veri aralığını L2'ye almayı iste | Hedef seviye L2 |
+| LOAD.L3 | Veri aralığını L3'e almayı iste | Hedef seviye L3 |
+| LOAD.L4 | Veri aralığını L4'e almayı iste | Hedef seviye L4 |
+| PREFETCH.L1–L4 | Yakında kullanılacak veri için düşük öncelikli hazırlık | Hint; register sonucu üretmez |
+| EVICT.L1–L4 | Belirtilen seviyeden çıkarılmasını iste | Policy/koherens kurallarına tabi |
+| CACHE.WAIT | Önceki preload transaction'larının tamamlanmasını bekle | Fence/token ile kapsamlandırılır |
+
+LOAD.Lx, normal LOAD komutunun register'a veri getiren davranışından ayrı bir **cache residency/preload** ailesi olarak ele alınmalıdır. Normal LOAD dst,[addr] ise register'a veri döndürür. Bu isim çakışmasını önlemek için nihai mnemonic'de LOAD.Lx yerine CACHE.LOAD.Lx veya CLLOAD.Lx seçeneği de değerlendirilmelidir; şimdilik LOAD.Lx taslak adıdır.
+
+### 22.2 Operand biçimi
+
+Önerilen soyut biçim:
+
+`LOAD.Lx [base + offset], length, policy`
+
+- base + offset: başlangıç adresi.
+- length: hazırlanacak byte aralığı.
+- policy: normal, retain, streaming, read-mostly gibi allocation/eviction davranışı.
+- Hedef seviye komut suffix'iyle seçilir.
+
+İşlem bir register'a veri döndürmez; cache controller'a bir range transaction gönderir. Tamamlanma durumu CACHE.WAIT veya transaction token üzerinden gözlenir.
+
+### 22.3 Kurallar ve güvenlik
+
+1. İstek cache line granularity'sine yuvarlanır; sınır taşması ve adres overflow kontrol edilir.
+2. Range uzunluğu, outstanding transaction sayısı ve aynı anda preload edilebilecek byte miktarı donanım limitlerine tabidir.
+3. Cache hierarchy'de istenen seviye bulunmuyorsa implementation-defined fallback uygulanır veya capability/status ile bildirilir; sessizce yanlış seviye garantisi verilmez.
+4. L1/L2 çoğunlukla core-private, L3/L4 shared/system-level olabilir; gerçek yerleşim ürün konfigürasyonunda bildirilir.
+5. Cache coherence korunur. Preload komutu dirty data'yı kaybetmez ve normal memory ordering kurallarını atlatamaz.
+6. Yazılabilir data için başka core/device ile yarış varsa coherence ve ownership protokolü geçerlidir.
+7. Preload işlemi normal load gibi architecturally visible register değerini değiştirmez; yalnızca veri hazırlama/placement isteğidir.
+8. Bir range'in hedef seviyede kalacağına dair süre garantisi verilmez; kapasite baskısı, coherence, başka erişimler veya replacement policy veriyi çıkarabilir.
+9. `CACHE.WAIT` yalnızca belirtilen token/önceki kapsam dahilindeki isteklerin tamamlandığını bildirir; tek başına memory fence yerine geçmez.
+10. L4'ün fiziksel olarak hangi kaynağa karşılık geldiği (son seviye cache, shared cache veya başka hızlı bellek katmanı) sistem mimarisinde tanımlanmalıdır; M-SSD gibi kalıcı depolama cache seviyesi olarak varsayılmaz.
+
+### 22.4 Area / Zone ile ilişki
+
+NEXUS Flow'daki `area` ve `zone` tanımları, bu mekanizmanın compiler tarafındaki doğal karşılığı olabilir:
+
+- `area`: verinin mantıksal/ömrü tanımlı bölgesi ve allocation kapsamı.
+- `zone`: verinin yerleşim/erişim hedefi veya kullanım politikası (ör. L1/L2/L3/L4, SPM, memory domain).
+- Compiler, scope/lifetime ve erişim örüntüsünden güvenli preload noktaları çıkarabilir.
+- Programcı açıkça zone seçtiğinde compiler bunu uygun CACHE.LOAD/PREFETCH komutlarına dönüştürebilir; CPU runtime range ve cache seviyesini kontrol eder.
+- `area`/`zone` bildirimi tek başına veri cache'e yüklenmiş demek değildir; gerçek preload, açık komut veya compiler'ın ürettiği operasyonla gerçekleşir.
+- Cache seviyesine kalıcı pinning varsayılan davranış olmamalıdır. Gerekirse ayrı, kapasite sınırı olan ve açıkça serbest bırakılan pin/residency mekanizması tasarlanır.
+
+Örnek ISA taslağı:
+
+```asm
+LOAD.L2 [RA10 + 0], 4096, RETAIN
+CACHE.WAIT
+```
+
+Bu örnek 4 KiB aralığı L2'ye hazırlama isteğidir; RA10 base register örnektir. Komut encoding'i, token modeli, line size, maximum range ve policy kodları henüz kesinleşmemiştir.
+
+### 22.5 Açık kararlar
+
+- L1–L4 seviyelerinin NEXSUS platformlarında kesin fiziksel karşılığı.
+- Komutun isimlendirmesi: LOAD.Lx mı CACHE.LOAD.Lx mı.
+- Synchronous/asynchronous completion ve token sayısı.
+- RETAIN/pin davranışı, quota ve release komutları.
+- Cache line size, range limit, alignment ve fault reporting.
+- Coherence domain ve DMA/device interaction.
+- Compiler'ın area/zone bilgisini hangi durumlarda otomatik preload'a çevireceği.
