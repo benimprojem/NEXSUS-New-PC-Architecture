@@ -1159,6 +1159,22 @@ Bellek paylaşım kapsamı çekirdek gruplarına göre kademelendirilir:
 - L2, L3 ve L4'ün paylaşım grupları iç içe kademelenebilir: çekirdek çiftleri L2, dört çekirdekli kümeler L3, sekiz ve üzeri kapsam ise L4 domain'i oluşturur.
 - Örneğin 8 çekirdekte 8 özel L1, 4 adet iki çekirdekli L2 grubu, 2 adet dört çekirdekli L3 grubu ve 8 çekirdeğin eriştiği bir L4 domain'i bulunabilir.
 - Bu sayılar paylaşım kapsamını belirtir; bellek kapasitesi, bant genişliği, gecikme ve fiziksel bank sayısı henüz sabitlenmemiştir.
+
+### 26.1 L1–L4 domain tutarlılığı ve görünürlük sözleşmesi
+
+NEXSUS Lx bellekleri için ISA düzeyindeki consistency modeli **NEXSUS Domain Consistency (NDC)**'dir. Her seviye bağımsız bir domain'dir; aynı sayısal adres farklı domain'lerde aynı nesne anlamına gelmez.
+
+- **L1:** Private domain'dir; yalnızca sahibi çekirdek doğrudan erişir. Başka çekirdeğe L1 adresi paylaşmak erişim hakkı vermez.
+- **L2/L3/L4:** İlgili paylaşım grubunun ortak domain'leridir. Aynı domain içindeki normal STORE işlemleri bütün katılımcılar için tek bir mantıksal görünürlük noktasına sahiptir (multi-copy atomic visibility).
+- Aynı adres ve genişlikteki yazmalar domain içinde tek bir coherence order'a yerleşir. Normal LOAD/STORE varsayılan RELAXED'tir; farklı adreslerdeki işlemlerin program sırası otomatik korunmaz.
+- Gerekli ordering, ATOM'un ACQUIRE/RELEASE/ACQ_REL/SEQ_CST seçenekleri veya FENCE ile kurulur. Release/acquire synchronization, acquire işlemi uygun release değerini gözlemlediğinde oluşur; yalnızca iki tarafın bariyer çalıştırması yeterli değildir.
+- FENCE yalnızca seçilen Lx scope'unu sıralar. SYSTEM scope issuing core'un erişebildiği L1–L4 alanlarını kapsar; ancak domain'leri birleştirmez.
+- Aynı shared konuma kontrolsüz eşzamanlı normal read/write veya write/write erişimi data race'tir. Ortak yazma için ownership, atomic veya uygun synchronization gerekir.
+- SPM ve P0, NDC kapsamı dışındadır. MMIO/device ordering de ayrı bir I/O mekanizması gerektirir.
+- Donanımın fiziksel olarak cache, directory, snoop, bank veya buffer kullanması serbesttir; ancak yazılımın gördüğü sonuç bu mimari sözleşmeye uymalıdır.
+
+Bu sözleşme, NEXSUS'un L2/L3/L4 shared-memory tasarımının zorunlu davranışıdır; fiziksel coherence protokolü mikro-mimari aşamasında seçilir.
+
 - `area` yalnızca çekirdeğin kendi L1 alanına tahsis yapar. `zone` ise seçilen L2/L3/L4 paylaşım domain'inde ortak alan ayırır.
 - Zone içindeki veri bir kez yazılır; diğer çekirdekler aynı adres/handle üzerinden erişir. Böylece çekirdekler arasında payload kopyalama yerine adres/descriptor paylaşımı yapılır.
 - Bir handle yalnızca ilgili zone domain'ine erişim yetkisi olan çekirdeklerde geçerlidir. Publish/acquire, ownership, lifetime ve cache visibility/synchronization kuralları korunur.
