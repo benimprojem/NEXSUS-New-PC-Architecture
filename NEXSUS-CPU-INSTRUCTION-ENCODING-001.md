@@ -583,17 +583,18 @@ Normal MOV.* XFER komutlarında M/AUX alanları ilgili transfer opcode tanımın
 ### 4.13 BR — PC-relative branch
 
 ```text
-63       56 55    52 51   48 47                         16 15          0
-+----------+--------+-------+-----------------------------+--------------+
-| OP (8)   |FMT (4) |COND(4)| DISP (32)                   | RESERVED(16) |
-+----------+--------+-------+-----------------------------+--------------+
+63       56 55    52 51   48 47   43 42                 32 31          0
++----------+--------+-------+-------+---------------------+--------------+
+| OP (8)   |FMT (4) |COND(4)| TEST(5)| RESERVED(11)       | DISP (32)    |
++----------+--------+-------+-------+---------------------+--------------+
 ```
 
-- DISP signed 32-bit PC-relative displacement'tır.
-- İlk taslakta displacement byte cinsindendir ve instruction boundary/alignment doğrulaması yapılır.
-- COND, branch koşulunu belirler; koşul kodları ayrı tabloda tanımlanacaktır.
-- Reserved alan sıfır olmalıdır.
-
+- TEST, koşullu branch'in okuduğu RA register selector'ıdır. JMP / koşulsuz biçimde TEST alanı ve COND ile ilgili kullanılmayan alanlar sıfır olmalıdır.
+- DISP signed 32-bit PC-relative displacement'tır; byte cinsindendir ve komut paketinin ilk word adresine göre yorumlanır. Hedef adres hesaplaması taşma kontrolüne tabidir.
+- İlk branch koşulları: ALWAYS, ZERO, NONZERO, SIGNED_LT_ZERO, SIGNED_GE_ZERO. Ayrılmış COND kodları illegal encoding üretir.
+- BR.Z ve BR.NZ, TEST register'ının tüm 64-bit değerini sıfırla karşılaştırır. Signed/unsigned zero koşulları aynı bit deseninde eşdeğerdir; ayrı kodlara gerek yoktur.
+- Karşılaştırma komutları global flags/condition-code register'ı değiştirmez. CMP.* sonucu hedef RA register'ına 64-bit 0 veya 1 yazar; branch bu register'ı açık operand olarak okur. Bu tasarım multi-issue sırasında global flag write/read çakışmalarını önler.
+- TEST selector'ı RA0–RA31 aralığındadır. JMP için TEST=0 ve COND=ALWAYS zorunludur.
 ### 4.14 SYS — System ve kontrol komutları
 
 SYS formatı privilege, system state, interrupt, synchronization ve özel kontrol komutları için ayrılmıştır. Alt alan yerleşimi her komut sınıfı için ayrı tabloda tanımlanacaktır. Henüz system register bankı veya CSR sayısı kesinleştirilmemiştir.
