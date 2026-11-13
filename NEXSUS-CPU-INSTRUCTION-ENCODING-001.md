@@ -403,7 +403,7 @@ W alanının yorumu opcode ailesine bağlıdır. Örneğin FADD için W=010 FP32
 - XFER formatında DA selector, grubun ilk kaydını gösterir.
 - Bu grup hizalaması ilk encoding önerisidir; son ISA doğrulamasında kesinleştirilecektir.
 
-Daha geniş LOAD/STORE ve SPM transferlerinde birden çok DA kaydının nasıl seçileceği, opcode başına transfer genişliği ve alignment kuralıyla ayrıca tanımlanacaktır.
+LOAD/STORE için çoklu DA kayıt dağılımı bu bölümde tanımlanmıştır. Açık kalan konu, effective address için doğal hizalama ve misaligned erişimlerin desteklenme/exception davranışıdır; SPM hizalama kuralları kendi bölümünde ele alınır.
 
 ## 7. Immediate ve 64-bit literal genişletme
 
@@ -420,7 +420,7 @@ Daha geniş LOAD/STORE ve SPM transferlerinde birden çok DA kaydının nasıl s
 
 ```asm
 MOVI64 RA4, 0x123456789ABCDEF0
-LOAD   DA2, [RA4 + 0]
+LOAD.L1 DA2, [RA4 + 0]
 ```
 
 İlk word'ün EXT alt format kodu ve ikinci word'ün byte sıralaması, opcode tablosu dondurulurken kesinleştirilecektir. Literal word, branch hedefi veya komut akışına atlanan normal bir instruction gibi yürütülmemelidir.
@@ -481,7 +481,7 @@ Aşağıdaki örnekler gerçek hexadecimal makine kodu değildir; opcode değerl
 | `VADD.W32 MA8, MA4, MA12` | R3 | OP_VADD, FMT_R3, D=8, A=4, B=12, W=32 |
 | `FMA FA4, FA1, FA2, FA3` | R4 | OP_FMA, FMT_R4, D=4, A=1, B=2, C=3, W=FP64 |
 | `VMACC.W32 MA8, MA4, MA12, MA16` | R4 | OP_VMACC, FMT_R4, D=8, A=4, B=12, C=16, W=32 |
-| `LOAD DA12, [RA20+16]` | MEM | D=12, BASE=20, W=64, DISP=16 |
+| `LOAD.L1 DA12, [RA20+16]` | MEM | D=12, BASE=20, W=64, AM=000 (L1), DISP=16 |
 | `MOV.FA.DA FA3, DA12` | XFER | DB=FA, DI=3, SB=DA, SI=12, W=64 |
 | `MOV.MA.DA MA4, DA0:DA3` | XFER | DB=MA, DI=4, SB=DA, SI=0, W=256 |
 
@@ -510,6 +510,8 @@ Aşağıdaki örnekler gerçek hexadecimal makine kodu değildir; opcode değerl
 - Register bank kodu: **2 bit** (yalnızca genel XFER formatında).
 - Immediate: temel RI formatında **signed 36 bit**.
 - Memory displacement: **signed 32 bit**, 64-bit RA base ile.
+- MEM domain seçimi: AM[2:1] ile L1/L2/L3/L4; AM[0]=0 base + displacement.
+- LOAD/STORE erişim genişliği ve DA grup dağılımı: 8–512 bit; 1/2/4/8 ardışık DA kaydı.
 - Branch displacement: **signed 32 bit**.
 - Geniş literal: takip eden ek **64-bit word**.
 - P0: 64-bit word kayıtları; iki word'lü komutlar iki P0 kaydı tüketir.
