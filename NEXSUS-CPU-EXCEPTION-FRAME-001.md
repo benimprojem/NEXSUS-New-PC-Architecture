@@ -83,13 +83,13 @@ Save only the banks/register ranges the handler can touch:
 The software spill frame records a bank-valid/save mask and register payloads. Frame layout is ABI-defined, not hardwired into the ECS.
 
 ## 6. Privileged exception stack
-Each core has a privileged **KESP** (Kernel Exception Stack Pointer) and **KELIMIT** bound. On transition from PL0 to PL1/PL2, hardware switches to the configured per-core exception stack before the first handler instruction.
+Each core has a privileged **KESP** (Kernel Exception Stack Pointer) and **KELIMIT** bound. KESP addresses a protected, bounded region in the existing Data RAM domain; it is not a new memory type. On transition from PL0 to PL1/PL2, hardware switches to the configured per-core exception stack before the first handler instruction.
 
 - The interrupted application stack pointer is preserved in the software-visible exception frame metadata or a dedicated saved-stack field.
 - Same-privilege interrupts use the current privileged exception stack, with a new software frame; nested handlers must not overwrite prior frames.
 - Stack bounds/alignment are checked before entry. Invalid KESP or insufficient emergency space causes double-fault handling.
 - The exception stack is per-core and must not be shared by concurrent cores.
-- The stack is ordinary protected memory, not SPM0 (which remains execution workspace, not a LIFO stack).
+- The stack is protected Data RAM, not SPM0 (which remains execution workspace, not a LIFO stack). SPM7 is reserved for the temporary exception workspace described in this document.
 
 ## 7. Precise exception behavior
 - Faulting instruction side effects are not architecturally committed unless the instruction explicitly defines partial completion.
@@ -156,3 +156,8 @@ SPM7 is the exception-entry temporary workspace. No additional ESCR register ban
 - The 1 KiB per-level slice is sufficient for initial scratch preservation and small prologue metadata. Larger RA/FA/DA/MA save sets use the bounded privileged exception stack.
 
 This reuses existing SPM capacity, avoids extra architectural registers and keeps nested exception scratch state isolated by depth.
+
+
+## 14. Register save/restore integration
+
+The exact interrupt save masks, variable-size Data RAM software frame, SPM7 use, and full task-context contract are defined in **NEXSUS-CPU-CONTEXT-SAVE-RESTORE-001.md**. ECS remains control metadata only; it does not duplicate RA/FA/DA/MA payload. KESP/KELIMIT delimit the protected Data RAM save-frame stack. SPM7 supplies a depth-selected temporary slice and is not the persistent save area.
