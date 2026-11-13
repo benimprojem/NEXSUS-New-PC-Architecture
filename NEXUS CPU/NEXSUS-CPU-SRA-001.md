@@ -130,6 +130,8 @@ Kesin ağırlıklar, servis quantum boyutu, URGENT bütçesi ve cycle cinsinden 
 
 ## 8. İlişkili belgeler
 
+- [CPU memory bank topology](NEXSUS-CPU-MEMORY-BANK-TOPOLOGY-001.md) — önerilen 8×64-bit bank group ve interleaving modeli
+
 - [CPU ISA-001](NEXSUS-CPU-ISA-001.md)
 - [CPU ana mimarisi](Yeni%20Nesil%20Ayr%C4%B1%C5%9Ft%C4%B1r%C4%B1lm%C4%B1%C5%9F%20Register%20Tabanl%C4%B1%20CPU%20Mimarisi.md)
 - [SPM ve register views](NEXSUS%20CPU%20%E2%80%94%20SPM,%20Register%20G%C3%B6r%C3%BCn%C3%BCmleri%20ve%20Do%C4%9Frudan%20Alan%20Eri%C5%9Fimi.md)
