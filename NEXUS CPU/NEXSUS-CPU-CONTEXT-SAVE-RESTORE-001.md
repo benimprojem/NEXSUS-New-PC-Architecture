@@ -232,7 +232,7 @@ This allows command prefetch and context restoration to overlap without treating
 
 ## 16. Updated baseline decisions
 
-**Selected:** OS-managed, explicitly allocated 2 KiB task-context slots in available SPM1–SPM6; five simultaneous resident contexts as a practical target (10 KiB); Data RAM backing for nonresident/evicted contexts; P0 refill for the incoming task overlapped with context restoration when possible.
+**Selected:** OS-managed 4 KiB task-context slots in SPM3–SPM6; eight simultaneous resident full-register contexts/core (32 KiB pool); Data RAM backing for nonresident/evicted contexts; P0 refill for the incoming task overlapped with context restoration when possible.
 
 **Unchanged:** SPM0 execution workspace; SPM7 exception workspace; P0 refillable command prefetch; full task context remains 1,792 bytes of register payload plus metadata; SPM is directly addressed local memory, not a coherent cache.
 
@@ -276,11 +276,11 @@ Four banks are dedicated to the OS-managed fast task-context pool: SPM3, SPM4, S
 A full RA/FA/DA/MA payload is 1,792 bytes. The existing 64-byte save-frame header brings the base frame to 3,648 bytes, which fits in a 4 KiB slot with 32-byte alignment. Therefore each 8 KiB bank contains two 4 KiB slots:
 
 - 4 banks × 2 slots = **8 resident task-context slots per core**.
-- Each slot holds one full register-bank image and its save-frame header.
+- Each 4-KiB slot holds one full register-bank image and its save-frame header.
 - Task control metadata (PC, STATUS, FP control/status, address-space and memory-domain descriptors, SPM ownership metadata, and scheduling state) remains in the task control block in protected Data RAM; the slot does not duplicate ECS state.
 - A slot is assigned to exactly one task at a time. The OS tracks valid/invalid state, task identity, generation, and ownership. It must complete the save before publishing a slot as valid and complete restore before resuming the task.
-- If more than 8 tasks are runnable/retained on a core, the excess contexts remain in protected Data RAM and can be loaded into a slot when scheduled. **16 is the resident fast-slot maximum, not the system-wide task-count limit.**
-- If the implementation changes slot header size or adds context payload fields, the 2 KiB fit must be revalidated; it must not silently overlap adjacent slots.
+- If more than 8 tasks are runnable/retained on a core, the excess contexts remain in protected Data RAM and can be loaded into a slot when scheduled. **8 is the resident fast-slot maximum, not the system-wide task-count limit.**
+- If the implementation changes slot header size or adds context payload fields, the 4 KiB fit must be revalidated; it must not silently overlap adjacent slots.
 
 The OS may choose any slot ordering and eviction policy, but it must preserve explicit ownership and cannot overwrite a live context. Task-context slots are OS-owned storage; they are not simultaneously available as arbitrary application scratch space.
 
@@ -317,7 +317,7 @@ The fixed allocation is SPM1=OS, SPM2=user workspace, SPM3–SPM6=resident task-
 
 1. Enter the privileged scheduler path using the existing exception/context-switch mechanism. SPM7 remains reserved for exception entry; SPM1 is available for OS scheduler bookkeeping and syscall exchange.
 2. Quiesce the outgoing task at a defined architectural boundary and prevent its state from being modified while it is being saved.
-3. Save the outgoing RA/FA/DA/MA architectural state to its assigned 2 KiB slot in SPM3–SPM6 if resident capacity is available; otherwise save it to the protected Data RAM context backing. The DA staging ordering rules in Section 12.1 remain mandatory.
+3. Save the outgoing RA/FA/DA/MA architectural state to its assigned 4 KiB slot in SPM3–SPM6 if resident capacity is available; otherwise save it to the protected Data RAM context backing. The DA staging ordering rules in Section 12.1 remain mandatory.
 4. Preserve the outgoing task's live SPM2 user-workspace contents. The baseline safe path copies the live 8 KiB SPM2 image to that task's protected Data RAM context backing using existing SPM copy/read-write and Data RAM transfer paths. If the OS has a documented proof that the task does not need the contents after yield, it may mark the workspace non-live and omit the copy.
 5. Select the incoming task, validate its control block, address-space and memory-domain permissions, and locate its resident context slot or Data RAM backing.
 6. Restore the incoming RA/FA/DA/MA state from its SPM3–SPM6 slot or Data RAM backing. Restore its SPM2 user-workspace image before allowing user execution if that image is live.
