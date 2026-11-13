@@ -23,11 +23,13 @@ Temel ilke:
 
 SPM, NEXSUS CPU içerisinde bulunan, doğrudan adreslenebilir ve sayfalara ayrılmış çalışma belleğidir.
 
-SPM'nin amacı yalnızca işletim sistemi verilerini taşımak değildir. İşletim sistemi çalışma alanları, ara hesaplama değerleri ve registerlarda tutulması uygun olmayan geçici veriler için de kullanılabilir.
+SPM0 ve SPM1'in görevleri birbirinden ayrıdır. SPM0, yürütme akışına alınmış komutların geçici kayıt/çalışma alanı olarak kullanılır. SPM1 ise değişken genişlikli geçici veri ve ara hesaplama değerleri için kullanılabilir.
 
 SPM, geleneksel yığının bire bir karşılığı değildir. Veriler zorunlu bir LIFO sırasına göre değil, tanımlı adresleri ve alanları üzerinden yönetilir.
 
 ### 2.1 SPM0 — 64 bitlik temel kayıt alanı
+
+SPM0, P0'dan fetch edilerek dispatch/yürütme akışına alınan komutların geçici kayıt alanıdır. Komutların yürütme birimlerine dağıtılması ve yürütme sırasında gereken geçici komut kayıtlarının tutulması için kullanılır. P0'ın yerini almaz: P0 sıradaki komutları App RAM'den getirirken SPM0 yürütme tarafındaki komut kayıtlarını tutar.
 
 SPM0 için başlangıç kapasitesi 32 KiB olarak belirlenir.
 
@@ -45,6 +47,8 @@ SPM0'ın sekiz sayfası PAGE 0–PAGE 7 olarak tanımlanır.
 Her sayfa 4096 bayt fiziksel kapasiteye sahiptir ve 512 adet 64 bitlik kayıt eşdeğerine karşılık gelir.
 
 SPM0'da 64 bitlik kayıt temel adreslenebilir birimdir. Daha küçük alanların kullanılması, kaydın fiziksel olarak ayrı belleklere bölünmesini gerektirmez.
+
+SPM0'ın birincil mimari görevi yürütülmekte olan komutlar için geçici kayıt alanı sağlamaktır. SPM0'ın genel amaçlı veri spill alanı olarak kullanılması zorunlu değildir; genel geçici veri ve ara hesaplama alanları için SPM1 veya diğer uygun bellek/register kaynakları değerlendirilir.
 
 ### 2.2 SPM1 — Değişken genişlikli veri alanı
 
