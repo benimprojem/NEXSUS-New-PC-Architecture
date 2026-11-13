@@ -226,3 +226,8 @@ Add/confirm these descriptor fields:
 
 The metadata and page contents must be validated and atomically published together before READY.
 
+
+
+### Full-page stream end metadata
+
+PX_END is only required for a partial final page. If a task ends exactly at a full 2 KiB boundary, the code-region/page descriptor marks the final page with `stream_end=true` (or equivalent explicit region-length metadata). This prevents an unnecessary next-page prefetch without inserting a marker into executable bytes.
