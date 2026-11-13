@@ -136,7 +136,10 @@ These are diagnostic counters, not mutually exclusive wall-clock durations. Some
 | Version | Scope | Acceptance condition |
 |---|---|---|
 | v0.1 | Deterministic kernels, dependency scheduling, basic cache and bank approximation | Initial scaffold |
-| v0.2 | Controlled 8-core scheduling with equal reference clocks; dependency-component parallelism | Per-core partition and clock-normalization checks pass |\n| v0.2.1 | Experimental 8L4S and wide-balanced NEXSUS profiles; initial stall diagnostics | Compare candidate outputs and inspect dominant resource stalls |\n| v0.2.2 | Balanced-128 candidate; distinguish blocked-operation-cycle events from cycle counters and latency exposure | Run the 128-vs-192 window comparison and verify counter semantics |\n| v0.2.3 | Enforce 32 B/cycle chip-wide DRAM cap through a static 4 B/cycle/core share | Verify bandwidth is not multiplied by core count; replace static split with global controller next |
+| v0.2 | Controlled 8-core scheduling with equal reference clocks; dependency-component parallelism | Per-core partition and clock-normalization checks pass |
+| v0.2.1 | Experimental 8L4S and wide-balanced NEXSUS profiles; initial stall diagnostics | Compare candidate outputs and inspect dominant resource stalls |
+| v0.2.2 | Balanced-128 candidate; distinguish blocked-operation-cycle events from cycle counters and latency exposure | Run the 128-vs-192 window comparison and verify counter semantics |
+| v0.2.3 | Enforce 32 B/cycle chip-wide DRAM cap through a static 4 B/cycle/core share | Verify bandwidth is not multiplied by core count; replace static split with global controller next |
 | v0.3 | Shared LLC/memory-controller contention, coherence, true P/E placement, SMT and NEXSUS P0/SPM/App RAM/L1–L4/8-bank/MEMXFER | Existing NEXSUS contracts represented without invented ISA |
 | v0.4 | Interrupts, exceptions, context save/restore, atomic operations and memory ordering | Architectural conformance scenarios pass |
 | v0.5 | Calibration against actual Ryzen 9 9950X and Core Ultra 9 285K measurements | Error bounds reported per kernel |
