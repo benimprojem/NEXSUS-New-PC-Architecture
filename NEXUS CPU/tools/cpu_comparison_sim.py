@@ -898,7 +898,7 @@ def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=N
     total_ops = sum(v["ops"] for v in results.values())
     return {"cpu": p.name, "cores_configured": cores, "clock_ghz": p.frequency_ghz,
             "nexus_features": ({"spm": True, "p0": True, "p0_capacity_kb": 16, "p0_buffer_kb": 8, "p0_refill_latency": 128} if nexus_features is None else nexus_features) if p.name.startswith("NEXSUS CPU") else None,
-            "register_architecture": ({"RA": {"count": 64, "width_bits": 64}, "FA": {"count": 64, "width_bits": 64}, "DA": {"count": 64, "width_bits": 64}, "MA": {"count": 64, "width_bits": 256}, "selector_bits": 6, "total_physical_bytes": 3584} if p.name.startswith("NEXSUS CPU") else None),
+            "register_architecture": ({"RA": {"count": 32, "width_bits": 64}, "FA": {"count": 32, "width_bits": 64}, "DA": {"count": 32, "width_bits": 64}, "MA": {"count": 32, "width_bits": 256}, "selector_bits": 5, "total_physical_bytes": 1792} if p.name.startswith("NEXSUS CPU") else None),
             "cpu_ram_reference_clock_ghz": p.frequency_ghz,
             "aggregate_dram_bytes_per_cycle": aggregate_dram_bandwidth,
             "per_core_dram_bytes_per_cycle": None,
