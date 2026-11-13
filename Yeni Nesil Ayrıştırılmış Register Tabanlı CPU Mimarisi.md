@@ -1211,7 +1211,8 @@ NEXSUS CPU'da program komutları ile uygulama verileri farklı RAM alanlarında 
 | L2 | İki çekirdek için paylaşılan veri belleği | Veri erişim genişliklerine bağlı | 1 MiB / ikili grup |
 | L3 | Dört çekirdek için paylaşılan veri belleği | Veri erişim genişliklerine bağlı | 8 MiB / dörtlü grup |
 | L4 | Sekiz veya daha geniş çekirdek grubu için paylaşılan veri belleği | Veri erişim genişliklerine bağlı | 64 MiB / sekizli grup |
-| SPM0 | Dispatch edilmiş/yürütülmekte olan komutlar için geçici kayıt alanı | 64 bit kayıt | 32 KiB / çekirdek |
+| SPM0 | Yürütme sırasında oluşan geçici komutsal durum, ara değerler ve sonuçlar | 64 bit kayıt | 32 KiB / çekirdek |
+| SPM1–SPM7 | Geçici veri ve ara hesaplama alanları | Byte-addressed; değişken genişlik | Kapasite/bölümlendirme sonraki tasarım aşamasında |
 
 ### 28.1 Kod ve veri ayrımı
 
@@ -1231,15 +1232,15 @@ NEXSUS CPU'da program komutları ile uygulama verileri farklı RAM alanlarında 
 - Fetch miss durumunda gerekli komut veya komut bloğu App RAM'den P0'a getirilir. Fetch line/block boyutu, refill genişliği, bank sayısı ve portlar mikro-mimari aşamasında belirlenecektir.
 - Dallanma ve kontrol akışı değişiminde fetch yeni adrese yönelir. Yanlış yoldan getirilmiş, henüz yürütülmemiş komutlar iptal edilir; P0'ın tüm geçerli içeriğinin silinmesi gerekmez.
 
-### 28.3 SPM0 ile görev ayrımı
+### 28.3 P0 ve SPM çalışma alanlarının görev ayrımı
 
-P0 komutları fetch aşamasında hazır tutar; SPM0 ise dispatch edilmiş ve yürütülmekte olan komutların geçici kayıt/çalışma alanıdır.
+P0 komut fetch ön belleğidir. SPM alanları CPU'nun yürütme sırasında ihtiyaç duyduğu geçici çalışma durumunu ve verileri doğrudan adreslenebilir biçimde saklar.
 
-- SPM0'ın 8 × 4 KiB sayfa düzeni korunur; toplam kapasite 32 KiB olur.
-- SPM0 kayıtları 64 bit genişliğindedir; her 4 KiB sayfada 512 kayıt bulunur.
-- P0'dan alınan komutlar yürütme akışına aktarılırken SPM0, yürütme tarafının geçici komut kayıtlarını tutar.
-- SPM0 komut ön belleği değildir; App RAM'den komut fetch etmez ve P0'ın yerini almaz.
-- P0 fetch, SPM0 dispatch/yürütme aşamasına hizmet eder.
+- **SPM0:** Yürütme sırasında oluşan geçici komutsal durum, ara değerler ve sonuçlar için kullanılır. Stack benzeri geçici saklama işlevi görür; fakat LIFO zorunluluğu yoktur ve doğrudan adreslenir.
+- SPM0 toplam 32 KiB'tır; 8 × 4 KiB sayfadan oluşur. Her sayfada 512 adet 64-bit kayıt bulunur.
+- **SPM1–SPM7:** Aynı doğrudan adreslenebilir modeli veri tarafında uygular; geçici veriler ve ara hesaplama değerleri burada tutulur. Byte adresleme ve 8/16/32/64/128-bit erişim genişlikleri desteklenir.
+- SPM0–SPM7, P0'dan komut kopyalamak için kullanılmaz. P0'ın görevi komutları App RAM'den fetch etmektir; SPM alanlarının görevi yürütme sırasında oluşan çalışma durumunu saklamaktır.
+- SPM0–SPM7'nin fiziksel bank/port düzeni ve SPM1–SPM7 kapasiteleri sonraki mikro-mimari aşamasında belirlenecektir.
 
 ### 28.5 P0 fetch bant genişliği ve yürütme beslemesi
 
