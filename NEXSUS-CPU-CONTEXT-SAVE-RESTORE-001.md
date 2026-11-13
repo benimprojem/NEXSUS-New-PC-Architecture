@@ -332,3 +332,48 @@ The fixed allocation is SPM1=OS, SPM2=user workspace, SPM3–SPM6=resident task-
 9. Publish the handoff with the required release/acquire ordering. An IRQ or scheduler notification alone does not imply memory visibility.
 
 The OS must never treat SPM2 as an extra task-context slot. SPM2 is user-owned workspace while a task executes; SPM3–SPM6 are the OS-owned resident context pool. On task migration to another core, the outgoing SPM2 image and any live SPM-owned data must be explicitly transferred through supported mechanisms or reconstructed before the task resumes. No implicit SPM coherence or migration is assumed.
+
+## 17. Authoritative SPM role map — supersedes earlier allocation drafts
+
+This section is the final authoritative allocation. If an earlier section in this document describes a different SPM owner, capacity pool, or slot count, Section 17 takes precedence.
+
+| Bank | Capacity | Exclusive baseline role |
+|---|---:|---|
+| SPM0 | 2 KiB | CPU execution workspace |
+| SPM1 | 8 KiB | OS workspace and OS-defined syscall/I/O exchange |
+| SPM2 | 8 KiB | User/programmer workspace |
+| SPM3 | 8 KiB | OS-managed resident task-context slots |
+| SPM4 | 8 KiB | OS-managed resident task-context slots |
+| SPM5 | 8 KiB | OS-managed resident task-context slots |
+| SPM6 | 8 KiB | OS-managed resident task-context slots |
+| SPM7 | 8 KiB | Exception-entry workspace; eight 1 KiB depth slices |
+| **Total** | **58 KiB** | Per core |
+
+### 17.1 Resident task-context capacity
+
+Only SPM3–SPM6 are in the resident task-context pool: 4 × 8 KiB = 32 KiB. Each full register context uses a 2 KiB slot, so each bank holds four slots and the per-core resident maximum is **16 task contexts**. This is a resident fast-context limit, not a system-wide task limit. Additional task contexts stay in protected Data RAM.
+
+SPM1 and SPM2 are never counted as task-context slots. SPM1 belongs to the OS; SPM2 belongs to the currently executing user task and its live contents must be preserved across a switch when required.
+
+### 17.2 User workspace lifecycle
+
+SPM2 is a single physical 8 KiB user workspace per core. At a task switch, if the outgoing task's SPM2 contents are live, the OS saves them to that task's protected Data RAM context backing before another task receives SPM2. The incoming task's saved SPM2 image is restored before user execution. The OS may omit save/restore only when the task explicitly relinquished the workspace or its ABI proves the contents dead. No implicit per-task duplicate SPM2 bank exists.
+
+### 17.3 OS exchange area
+
+SPM1 is reserved to privileged OS code. The OS defines the syscall exchange ABI and assigns offsets for arguments, return values, status, and bounded staging buffers used by services such as print/input. These are OS-defined conventions, not fixed hardware addresses or hardwired syscall semantics. Large or persistent payloads remain in App RAM/Data RAM and are passed by validated address or handle.
+
+### 17.4 Canonical task-switch order
+
+1. Enter the privileged scheduler path; SPM7 handles exception-entry temporaries and SPM1 handles OS bookkeeping.
+2. Quiesce the outgoing task at an architectural boundary.
+3. Save the outgoing RA/FA/DA/MA register state into its SPM3–SPM6 resident slot, or protected Data RAM if it has no resident slot. Preserve DA before using DA as a staging bank and restore DA last, as specified in Section 12.1.
+4. If outgoing SPM2 contents are live, copy the full 8 KiB image to its protected Data RAM backing before SPM2 is reassigned.
+5. Select and validate the incoming task's control block, privilege state, address-space mapping, and memory-domain permissions.
+6. Restore incoming RA/FA/DA/MA state from its resident slot or Data RAM backing.
+7. Restore incoming SPM2 workspace from protected Data RAM if live.
+8. In parallel with steps 3–7 where independent paths permit, invalidate/refill P0 from the incoming task's App RAM instruction stream at its saved PC. P0 is per-core refillable prefetch state and is not saved in the task context.
+9. Resume only when architectural state, SPM2 workspace, permissions, and the required first P0 instruction(s) are valid. Publish the handoff with the required release/acquire ordering.
+
+P0 refill and context transfer may overlap, but the scheduler must wait for both dependencies; neither completion order is assumed. SPM contents never migrate between cores implicitly. A migrated task's live SPM2 data must be explicitly transferred through supported mechanisms or reconstructed before it resumes.
+
