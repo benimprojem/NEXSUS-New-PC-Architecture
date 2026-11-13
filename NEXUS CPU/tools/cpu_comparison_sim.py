@@ -63,7 +63,7 @@ PROFILES = {
         "latency": {"INT": 1, "FP": 3, "VEC": 3, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 8},
         "l1_kb": 48, "l2_kb": 1024, "l3_kb": 196608, "l4_kb": 0,
         "l1_lat": 4, "l2_lat": 14, "l3_lat": 48, "l4_lat": 0, "dram_lat": 120,
-        "branch_penalty": 15, "frequency_ghz": 4.3, "dram_bytes_per_cycle": 32
+        "branch_penalty": 15, "frequency_ghz": 4.3, "dram_bytes_per_cycle": 21
     },
     "intel_xeon_698x": {
         "name": "Intel Xeon 698X / Redwood Cove+",
@@ -89,8 +89,8 @@ PROFILES = {
         "name": "NEXSUS CPU / 8-core proposed architecture",
         "core_count": 8, "core_type": "uniform", "frontend": 8,
         "dispatch": 8, "issue": 10, "retire": 8, "rob": 128,
-        "units": {"INT": 4, "FP": 4, "VEC": 2, "LOAD": 8, "STORE": 4, "BR": 2, "CTX": 1, "ATOM": 1},
-        "latency": {"INT": 1, "FP": 3, "VEC": 2, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 4},
+        "units": {"INT": 4, "FP": 4, "VEC": 2, "LOAD": 8, "STORE": 4, "BR": 2, "CTX": 1, "ATOM": 1, "ME512": 1},
+        "latency": {"INT": 1, "FP": 3, "VEC": 2, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 4, "ME512": 4},
         "l1_kb": 128, "l2_kb": 1024, "l3_kb": 8192, "l4_kb": 65536,
         "l1_lat": 2, "l2_lat": 8, "l3_lat": 24, "l4_lat": 64, "dram_lat": 120,
         "branch_penalty": 10, "frequency_ghz": 3.0, "bank_hash": "folded", "dram_bytes_per_cycle": 64,
@@ -177,6 +177,15 @@ def build_composite_workload(scale: int = 1) -> Dict[str, List[Op]]:
     for i in range(256*n):
         add_op(ops, "VEC", label="independent vector throughput")
     result["vector_throughput"] = ops
+
+    # H2) ME512 matrix/vector accelerator path; reference CPUs map to VEC.
+    ops = []
+    for tile in range(64*n):
+        a = add_op(ops, "LOAD", (), 0x5000000 + tile*128, 64, "ME512 input A")
+        b = add_op(ops, "LOAD", (), 0x6000000 + tile*128, 64, "ME512 input B")
+        m = add_op(ops, "ME512", (a,b), label="ME512 512-bit tile operation")
+        add_op(ops, "STORE", (m,), 0x7000000 + tile*128, 64, "ME512 output")
+    result["me512_matrix"] = ops
 
     # I) Branch-heavy independent control flow to expose recovery penalties.
     ops = []
@@ -579,13 +588,14 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
                 stalls["issue_width_blocked_op_cycles"] += 1
                 continue
             kind = op.kind
-            resource = "LOAD" if kind == "LOAD" else ("STORE" if kind == "STORE" else kind)
+            exec_kind = "VEC" if kind == "ME512" and not p.name.startswith("NEXSUS CPU") else kind
+            resource = "LOAD" if exec_kind == "LOAD" else ("STORE" if exec_kind == "STORE" else exec_kind)
             slots = unit_busy.get(resource, [])
             slot = next((i for i,t in enumerate(slots) if t <= cycle), None)
             if slot is None:
                 stalls["execution_unit_blocked_op_cycles"] += 1
                 continue
-            latency = p.latency.get(kind, 1)
+            latency = p.latency.get(exec_kind, 1)
             if kind in ("LOAD", "STORE"):
                 mem_lat, level = cache.access(op.address)
                 hits[level] += 1
@@ -800,7 +810,8 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 if issued_now >= p.issue:
                     st["stalls"]["issue_width_blocked_op_cycles"] += 1
                     continue
-                resource = "LOAD" if op.kind == "LOAD" else ("STORE" if op.kind == "STORE" else op.kind)
+                exec_kind = "VEC" if op.kind == "ME512" and not is_nexus else op.kind
+                resource = "LOAD" if exec_kind == "LOAD" else ("STORE" if exec_kind == "STORE" else exec_kind)
                 slots = st["unit_busy"].get(resource, [])
                 slot = next((i for i, available in enumerate(slots) if available <= cycle), None)
                 if slot is None:
@@ -829,7 +840,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                         mem_lat, level = st["cache"].probe(op.address)
                         st["hits"][level] += 1
                 item = {"core": core_id, "seq": seq, "slot": slot,
-                        "latency": max(p.latency.get(op.kind, 1), mem_lat),
+                        "latency": max(p.latency.get(exec_kind, 1), mem_lat),
                         "level": level}
                 if level == "DRAM":
                     item["request_id"] = f"{core_id}:{seq}"
