@@ -89,6 +89,36 @@ Bunların sayısı, genişliği ve yerleşimi mikro-mimariye bırakılır.
 - Token kayıtlarının sayısı sonlu ve implementation-defined'dır; platform/OS capability bilgisiyle bildirilir. Kayıt bulunmuyorsa START bekletilmez: MEMORY_ACCESS_FAULT / TRANSFER_RESOURCE_UNAVAILABLE üretir, transferi kabul etmez ve TRA'yı değiştirmez. Bu retry edilebilir kaynak hatasıdır.
 - Token kayıtları ve transaction state'i Internal Microarchitectural Registers kapsamındadır; yeni bir mimari register bankı, CSR veya yazılıma açık token-slot adresi oluşturulmaz.
 
+
+### 6.2 Bellek arbitration ve adil servis politikası
+
+CPU'nun L1–L4 bellek istekleri, her domain'in kendi controller/bank kaynaklarında bağımsız arbitration görür. Tek bir global bellek kilidi veya tüm domain'leri durduran ortak FIFO kullanılmaz.
+
+**Servis sınıfları**
+
+- **URGENT:** CPU'nun exception/IRQ işleyicisi aktifken gerekli context-frame ve handler veri erişimleri. Bu sınıf CPU hardware tarafından işaretlenir; PL0 yazılımı doğrudan URGENT sınıfı talep üretemez.
+- **CPU-DEMAND:** Normal CPU LOAD/STORE ve ATOM istekleri. Kritik handler erişimleri URGENT, diğer tüm CPU erişimleri bu sınıftadır.
+- **LATENCY-SENSITIVE:** Gecikme hedefi olan yetkili Fabric/Node talepleri.
+- **BULK:** MEMXFER beat/chunk işlemleri ve büyük DMA/Fabric payload akışları.
+- **BACKGROUND:** Ertelenebilir düşük öncelikli bakım veya arka plan transferleri.
+
+**Arbitration algoritması**
+
+1. Her domain/bank, yalnızca kendisine ulaşan ve erişim doğrulamasını geçmiş istekler arasında kendi kuyruğunu/arbitration durumunu tutar.
+2. URGENT istekler için sınırlı bir servis bütçesi/slot rezervasyonu bulunur. Bütçe dolduğunda bekleyen diğer sınıflara servis verilir; URGENT sınıfı diğer trafiği sınırsız biçimde bloke edemez.
+3. Kalan servis ağırlıklı adil sıra (weighted round-robin veya eşdeğer deficit-based scheduler) ile dağıtılır. Ağırlıklar ürün konfigürasyonuna göre değişebilir; hiçbir aktif sınıf sıfır ağırlık alamaz.
+4. Bir isteğin bekleme yaşı arttıkça etkin önceliği yükselir. Bu aging mekanizması, düşük ağırlıklı veya uzun süredir bekleyen isteğin sürekli yeni gelen trafik tarafından geçilmesini engeller.
+5. Büyük istekler sınırlı beat/chunk quantum'larına bölünür. BULK/XFER transferi quantum sınırında duraklatılabilir ve daha sonra kaldığı yerden devam eder; tek bir uzun transfer arbitration'ı süresiz elinde tutamaz.
+6. Atomik RMW işlemi kendi atomic serialization noktasına kadar indivisible kalır; ancak bankaya girişte sınırsız öncelik kazanmaz. ATOM'un beklemesi, aynı granüldeki normal ve atomic erişimlerin tanımlı sıralamasını bozmaz.
+7. Aynı bankada çakışmayan adresler fiziksel bank/port imkânı elverdiği ölçüde paralel işlenebilir. Banka veya port çatışması varsa yalnızca çakışan kaynaklar sıraya girer.
+
+**IRQ/exception gecikmesi**
+
+- URGENT sınıfı yalnızca CPU'nun aktif exception/IRQ durumundan kaynaklanan, donanım tarafından tanınan handler/context erişimlerine uygulanır. IRQ'nun gelmesi tek başına bellek erişimi veya memory synchronization değildir.
+- URGENT servis bütçesi, handler'ın gerekli bellek erişimlerini gecikme açısından öne alır; ancak normal CPU, Fabric veya BULK trafiğini sonsuza kadar durdurmaz.
+- SPM7 exception-entry workspace doğrudan CPU-internal exception yolu olduğundan normal L1–L4 bank arbitration kuyruğuna sokulmaz. Protected Data RAM context-frame erişimleri ilgili Data RAM bankasının URGENT kuyruğuna girebilir.
+
+Kesin ağırlıklar, servis quantum boyutu, URGENT bütçesi ve cycle cinsinden gecikme garantileri saat, bank sayısı ve port genişlikleri belirlendikten sonra mikro-mimari/performans doğrulama aşamasında seçilir. Mimari zorunluluk; bounded burst, sınıf adaleti, aging ve bağımsız bank paralelliğidir.
 ## 7. Erişim ve koruma ilkeleri
 
 1. Genel amaçlı kodun değiştirmemesi gereken register'lar donanım tarafından salt okunur veya özel komutla erişilebilir yapılır.
