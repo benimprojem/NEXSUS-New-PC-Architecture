@@ -186,3 +186,40 @@ No exact opcode is assigned in this document. Encoding will follow after CSR/con
 - Timer architecture and inter-core interrupt mechanism.
 
 **Next design step:** define privileged CPU control/status registers (CSR), vector table layout, and minimum exception frame; then assign IRQ/IRET/wait/control opcodes.
+
+
+## 14. Source namespace and event classes (baseline allocation)
+
+IRQ source IDs use a 16-bit global namespace in the baseline. A source ID identifies a controller input/source class; it is not a CPU vector index. Per-core routing and source instance identity are carried by controller metadata where needed.
+
+| Source ID range | Reserved use |
+|---:|---|
+| 0x0000 | Invalid / no source |
+| 0x0001–0x00FF | Core-local architectural sources (timer, IPI, performance/debug); platform allocates exact instances |
+| 0x0100–0x0FFF | System Fabric, memory, coherence and system-service events |
+| 0x1000–0x7FFF | Node/peripheral sources; assigned by system enumeration/firmware |
+| 0x8000–0xEFFF | Platform/vendor sources |
+| 0xF000–0xFFFE | Reserved/future architectural sources |
+| 0xFFFF | Invalid/reserved sentinel |
+
+Source IDs are stable for the lifetime of a boot enumeration. Firmware exposes the source-to-device mapping and capabilities. Source ID alone does not encode priority, target core, or payload address.
+
+### 14.1 Architectural core source classes
+
+- **Timer:** per-core timer expiration. The timer source records expiration; IRQ Controller tracks pending/active delivery separately.
+- **IPI:** inter-core notification. Receiver mailbox sequence/slot is part of event metadata; message payload remains in shared memory.
+- **Performance/debug:** optional implementation-defined events; may be non-maskable only if explicitly specified by platform policy.
+
+### 14.2 Event class separation
+
+Controller metadata distinguishes at minimum: normal IRQ, timer, IPI, Fabric fault/error, Node completion, Node fault, and platform event. Event class is descriptive metadata; priority/masking/routing are independent controller attributes. Synchronous CPU exceptions never consume an asynchronous IRQ source ID.
+
+### 14.3 Claim and completion invariants
+
+- Claim returns a valid source plus a generation/claim token; invalid/no-pending is explicitly represented.
+- One active claim cannot be completed by a stale token or another core.
+- EOI releases controller active state; source-specific acknowledgement/queue consumption remains separate.
+- For level sources, the underlying condition must be cleared/deasserted before or as part of completion; otherwise the source may become pending again.
+- Edge sources retain queued edges or expose overflow; no silent loss.
+- Controller reports spurious claim, duplicate completion, stale token and queue overflow distinctly.
+
