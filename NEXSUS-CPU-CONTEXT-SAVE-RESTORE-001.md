@@ -377,3 +377,5 @@ SPM1 is reserved to privileged OS code. The OS defines the syscall exchange ABI 
 
 P0 refill and context transfer may overlap, but the scheduler must wait for both dependencies; neither completion order is assumed. SPM contents never migrate between cores implicitly. A migrated task's live SPM2 data must be explicitly transferred through supported mechanisms or reconstructed before it resumes.
 
+## 18. Task scheduler specification reference
+Task READY/RUNNING/BLOCKED/SLEEPING transitions, sixteen-slot residency pressure, SPM2 save/restore lifecycle, wake-up race handling, priority updates, and explicit cross-core migration are specified in `NEXSUS-CPU-TASK-SCHEDULING-SPM-RESIDENCY-001.md`. That document uses the authoritative SPM allocation in Section 17 of this file and does not change the register context format.
