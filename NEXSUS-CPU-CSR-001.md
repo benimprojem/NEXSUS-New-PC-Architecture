@@ -215,3 +215,115 @@ No numeric opcode is allocated here. Candidate placement is SYS opcode window `0
 - User-mode syscall/trap transition ABI.
 
 **Next design step:** freeze CSR bit layouts and vector-table scheme, then allocate SYS/IRQ/IRET opcodes and define timer + inter-core notification.
+
+
+## 14. CSR bit layouts — baseline v0.1
+
+All CSR registers are **64-bit** in the initial architecture. Narrow fields occupy low bits; unused bits are reserved and read as zero.
+
+### 14.1 STATUS
+
+| Bits | Field | Definition |
+|---:|---|---|
+| 1:0 | PL | 00=PL0, 01=PL1, 10=PL2, 11=reserved |
+| 2 | IE | Global asynchronous IRQ enable |
+| 3 | PIE | Previous IE captured at entry |
+| 5:4 | PPL | Previous privilege captured at entry |
+| 6 | EXL | Exception/handler level |
+| 7 | NEST | Permit eligible higher-priority IRQ nesting |
+| 63:8 | Reserved | Read zero; write zero |
+
+Software may modify IE/NEST only. PL/PIE/PPL/EXL are hardware-controlled on entry/IRET and cannot be forged by ordinary CSR writes.
+
+### 14.2 CAUSE
+
+| Bits | Field | Definition |
+|---:|---|---|
+| 0 | INT | 1=asynchronous interrupt, 0=synchronous exception |
+| 7:1 | CODE | Primary cause code |
+| 15:8 | SUBCODE | Cause-specific subtype |
+| 16 | BADADDR_VALID | BADADDR contains valid fault address |
+| 17 | EXCINFO_VALID | EXCINFO contains supplemental info |
+| 18 | RETRYABLE | Faulting instruction may be retried |
+| 19 | SKIP_ALLOWED | Handler may advance EPC for this cause |
+| 63:20 | Reserved | Read zero |
+
+### 14.3 EXCINFO
+
+| Bits | Field | Definition |
+|---:|---|---|
+| 7:0 | ACCESS | Fetch/load/store/atomic/CSR/other class |
+| 10:8 | DOMAIN | Memory domain selector when relevant |
+| 18:11 | WIDTH | Access-width encoding |
+| 26:19 | OPCLASS | Instruction/operation class |
+| 31:27 | FLAGS | Cause-specific detail flags |
+| 63:32 | IMPL | Platform supplemental code |
+
+Non-applicable fields are zero. Enumerations will be defined with the cause table.
+
+### 14.4 IRQ CSR rules
+
+- IRQTHRESH: low 8 bits; larger priority is higher; accept only priority **greater than** threshold.
+- IRQCAUSE: low 32 bits source/event ID; upper bits zero.
+- IRQPRIO: low 8 bits accepted priority; upper bits zero.
+- IRQMASK: indexed 64-source window; bit=1 masks source. Window selector encoding/source namespace width remain open.
+- IRQCLAIM: read/claim returns source/token and valid bit; claim side effect occurs once per transaction.
+- IRQEOI: write source ID + claim token; stale/invalid token cannot clear another active IRQ.
+- STATUS.IE is the canonical global interrupt-enable bit. IRQENABLE, if retained, is a read-only alias—not a second independent control.
+
+### 14.5 CSR ID map (12-bit, provisional)
+
+| ID | Name | Access |
+|---:|---|---|
+| 0x000 | STATUS | restricted R/W |
+| 0x001 | EPC | privileged R/W |
+| 0x002 | CAUSE | R/O |
+| 0x003 | BADADDR | R/O |
+| 0x004 | EXCINFO | R/O |
+| 0x005 | RETSTATE | privileged diagnostic; write restricted |
+| 0x006 | VECTORBASE | privileged R/W |
+| 0x010 | IRQTHRESH | privileged R/W |
+| 0x011 | IRQCAUSE | R/O |
+| 0x012 | IRQPRIO | R/O |
+| 0x013 | IRQMASK | privileged indexed R/W |
+| 0x014 | IRQCLAIM | claim/read side effect |
+| 0x015 | IRQEOI | write/EOI side effect |
+| 0x016 | IRQPENDING | R/O summary |
+| 0x017 | IRQACTIVE | R/O summary |
+| 0x020 | COREID | R/O |
+| 0x021 | CLUSTERID | R/O |
+| 0x022 | CONFIG | R/O |
+| 0x030 | CYCLE | optional R/O |
+| 0x031 | INSTRET | optional R/O |
+| 0x040 | FSTATUS | FP status (policy TBD) |
+| 0x041 | FCAUSE | R/O |
+| 0x050 | FABRICSTATUS | Fabric event/error summary |
+| 0x080–0x0FF | platform extension | privilege-gated |
+
+CSR IDs are operands, not primary instruction opcodes.
+
+## 15. Vector table baseline
+
+Use a **common IRQ entry** and a compact **cause-indexed exception table**:
+
+- VECTORBASE is 4 KiB aligned.
+- Each entry is one 64-bit handler address (8-byte aligned).
+- First 16 entries (0x000–0x078) are exception slots; code 0 is fallback/reserved.
+- Common asynchronous IRQ entry: offset **0x100**. Handler obtains source via IRQCLAIM/IRQCAUSE; no vector per system node is required.
+- Fatal/double-fault entry: offset **0x180**.
+- Remaining region reserved for NMI/fast/platform vectors.
+- VECTORBASE may be per-core or shared when permissions/handler validity allow.
+
+## 16. Return/context clarification
+
+- First ISA release uses **IRET** for both exception and IRQ return; CAUSE/RETSTATE identifies frame type. Separate ERET is not required initially.
+- RET only returns from a normal call through its RA link register.
+- EPC may be changed by privileged handler only for causes permitting skip/emulation; retryable faults default to unchanged EPC.
+- IRQEOI releases controller service state; IRET restores CPU context. They are distinct operations.
+- Nested handlers use separate frames. Frame storage/depth and double-fault policy remain open.
+
+## 17. Baseline frozen for next ISA pass
+
+**Frozen:** CSR width=64; CSR ID width=12; STATUS/CAUSE fields above; PL0/PL1/PL2; 8-bit IRQ priority; VECTORBASE 4 KiB alignment; exception slots + common IRQ + fatal vector; unified IRET; STATUS.IE canonical.
+
+**Open:** source/token widths; IRQMASK selector; IRQCLAIM/EOI payload layout; numeric cause table; reset PC; exception-frame implementation; CSR instruction encoding/opcodes; NMI/timer CSRs.
