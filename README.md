@@ -694,7 +694,7 @@ CPU ile ilgili teknik belgeler `NEXUS CPU/` klasöründe merkezi olarak tutulur.
 
 ### Bellek ve erişim denetimi
 - [Memory Protection Domains](NEXUS%20CPU/NEXSUS-CPU-MEMORY-PROTECTION-DOMAINS-001.md) — App RAM/Data RAM sahipliği, görev izolasyonu ve paylaşım izinleri.
-- [Memory Access Control](NEXUS%20CPU/NEXSUS-CPU-MEMORY-ACCESS-CONTROL-001.md) — Fetch, LOAD/STORE, ATOM ve XFER doğrulama/commit akışı.
+- [Memory Access Control](NEXUS%20CPU/NEXSUS-CPU-MEMORY-ACCESS-CONTROL-001.md) — Fetch, LOAD/STORE, ATOM ve XFER doğrulama/commit akışı.\n- [Memory Bank Topology](NEXUS%20CPU/NEXSUS-CPU-MEMORY-BANK-TOPOLOGY-001.md) — 8×64-bit bank grubu, adres dağıtımı ve bank eşzamanlılığı.\n- [Bank Controller Behavior](NEXUS%20CPU/NEXSUS-CPU-BANK-CONTROLLER-001.md) — Bank kuyruğu, çoklu-bank kabulü, arbitration ve geniş erişim tamamlama kuralları.
 
 ### Exception ve kesme sistemi
 - [Exception Frame](NEXUS%20CPU/NEXSUS-CPU-EXCEPTION-FRAME-001.md) — Exception giriş/çıkış bağlamı ve frame düzeni.
