@@ -467,6 +467,7 @@ FETCH_AND.ACQ_REL.L4.W64 DA9, [RA20], DA10
 ```
 
 Bu mnemonic'ler ATOM formatını ve ORDER alanını seçen assembly gösterimleridir; numeric opcode değerleri henüz atanmış değildir.
+
 ### 4.11 XFER — Register bankları arası açık aktarım
 
 ```text
@@ -797,6 +798,7 @@ Aşağıdaki örnekler gerçek hexadecimal makine kodu değildir; opcode değerl
 | `LOAD.L1 DA12, [RA20+16]` | MEM | D=12, BASE=20, W=64, AM=000 (L1), DISP=16 |
 | `MOV.FA.DA FA3, DA12` | XFER | DB=FA, DI=3, SB=DA, SI=12, W=64 |
 | `MOV.MA.DA MA4, DA0:DA3` | XFER | DB=MA, DI=4, SB=DA, SI=0, W=256 |
+| `CAS.ACQ_REL.L2.W64 DA2, [RA10], DA3, DA4` | ATOM | D=2, BASE=10, A=3, B=4, W=64, AM=L2, ORDER=ACQ_REL |
 
 ## 12. Henüz dondurulmamış kararlar
 
