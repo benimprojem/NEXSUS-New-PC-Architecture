@@ -163,7 +163,7 @@ Bu sıralama ISA düzeyinde sabittir; bellek denetleyicisi ve bus byte-lane eşl
 - MEM.AM[0]=0, base-register adreslemesidir. EXT olmadan signed DISP32; EXT (RAW_LITERAL, COUNT=1) ile signed 64-bit displacement kullanılır. EXT formunda MEM.DISP=0 zorunludur.
 - MEM.AM[0]=1, yalnızca EXT formunda absolute domain address biçimidir: BASE=0 ve DISP=0 zorunludur; literal unsigned 64-bit adres olarak doğrudan kullanılır. EXT olmadan AM[0]=1 illegal encoding'dir.
 - İndeksli adresleme MEMX formatını kullanır: `EA = RA[BASE] + (signed(RA[INDEX]) × SCALE) + sign_extend(DISP28)`. MEMX, MEM ile aynı domain, width, DA staging ve fault kurallarını kullanır.
-- MEMX SCALE kodları 000/001/010/011/100 için sırasıyla ×1/×2/×4/×8/×16'dır; 101–111 reserved'dır. INDEX signed 64-bit RA değeri olarak yorumlanır; displacement byte cinsindendir ve SCALE ile çarpılmaz.
+- MEMX SCALE kodları 000/001/010/011/100 için sırasıyla ×1/×2/×4/×8/×16'dır; 101–111 reserved'dır. INDEX signed 64-bit RA değeri olarak yorumlanır; displacement byte cinsindendir ve SCALE ile çarpılmaz. MEMX'te AM[0]=0 zorunludur; AM[2:1] yalnızca L1–L4 domain'ini seçer.
 - EXT+MEMX biçiminde MEMX.DISP=0 zorunludur; EXT literal signed 64-bit byte displacement olur. Adres hesabı 64-bit aralık dışına taşarsa `ADDRESS_OVERFLOW_FAULT` oluşur. MEMX absolute adresleme yapmaz; absolute adres için EXT+MEM AM[0]=1 kullanılır.
 - LOAD ham bitleri DA'ya getirir. 8/16/32-bit yüklemelerde DA kaydının kullanılmayan üst bitleri sıfırlanır; 64-bit ve daha geniş erişimler DA kayıtlarını tam doldurur.
 - STORE yalnızca W kadar bit yazar. Son DA kaydında erişim genişliğinin dışında kalan bitler belleğe aktarılmaz.
