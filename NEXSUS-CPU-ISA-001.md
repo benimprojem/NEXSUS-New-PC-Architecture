@@ -411,7 +411,7 @@ LOAD.Lx, normal LOAD komutunun register'a veri getiren davranışından ayrı bi
 7. Preload işlemi normal load gibi architecturally visible register değerini değiştirmez; yalnızca veri hazırlama/placement isteğidir.
 8. Bir range'in hedef seviyede kalacağına dair süre garantisi verilmez; kapasite baskısı, coherence, başka erişimler veya replacement policy veriyi çıkarabilir.
 9. `CACHE.WAIT` yalnızca belirtilen token/önceki kapsam dahilindeki isteklerin tamamlandığını bildirir; tek başına memory fence yerine geçmez.
-10. L4'ün fiziksel olarak hangi kaynağa karşılık geldiği (son seviye cache, shared cache veya başka hızlı bellek katmanı) sistem mimarisinde tanımlanmalıdır; M-SSD gibi kalıcı depolama cache seviyesi olarak varsayılmaz.
+10. L2/L3/L4'ün fiziksel bellek organizasyonu ve erişim gecikmeleri sistem konfigürasyonunda tanımlanmalıdır; bunlar otomatik olarak klasik cache seviyeleriyle bire bir aynı kabul edilmez.
 
 ### 22.4 Area / Zone ile ilişki
 
@@ -442,3 +442,53 @@ Bu örnek 4 KiB aralığı L2'ye hazırlama isteğidir; RA10 base register örne
 - Cache line size, range limit, alignment ve fault reporting.
 - Coherence domain ve DMA/device interaction.
 - Compiler'ın area/zone bilgisini hangi durumlarda otomatik preload'a çevireceği.
+
+
+### 22.6 Nexus Flow `area` ve `zone` için kesin görev ayrımı
+
+Önceki genel yorum güncellenmiştir. Nexus Flow'da bu iki yapı aynı işi yapmaz:
+
+| Yapı | Hedef | Kapsam | Temel amaç |
+|---|---|---|---|
+| `area` | L1 / core-local çalışma alanı | İlgili çekirdek | Çekirdeğin sık ve yakın kullanacağı veriyi yerel alanda tutmak |
+| `zone` | L2/L3/L4 shared memory alanları | Birden fazla çekirdek | Çekirdekler arası ortak veri alanı ayırmak ve adres üzerinden paylaşmak |
+
+- `area`, çekirdeğe ait L1 çalışma alanı için derleyiciye yerleşim/lifetime bilgisi verir. `area` başka çekirdeğin doğrudan sahip olduğu L1 alanına ortak bellek muamelesi yapmaz.
+- `zone`, paylaşılan bellek hiyerarşisinde bir bölge ayırır. Hangi zone seviyesinin (L2/L3/L4) kullanılacağı açıkça veya politika ile belirlenir.
+- Bir çekirdek zone içinde veriyi üretir/yazar; paylaşılabilir adresi diğer çekirdeğe iletir. Alıcı aynı adresi kullanarak veriye erişir. Her paylaşımda payload'ın çekirdek register'larından diğer çekirdeğe tekrar kopyalanması gerekmez.
+- Bu model **zero-copy paylaşım / address handoff** yaklaşımıdır. Veri ilk kez zone'a yazılırken elbette bellek yazımı gerçekleşir; ortadan kaldırılan şey çekirdekler arası her seferinde yapılan ayrı payload kopyasıdır.
+- Zone adresi, uzunluğu, hizalaması ve erişim hakları bir descriptor/handle ile taşınabilir. Descriptor'ın kendisi küçük bir metadata'dır; veri gövdesi ortak bölgede kalır.
+- Zone tahsisi, veri ömrü ve serbest bırakma açık olmalıdır. Son tüketici tamamlamadan alan yeniden kullanılamaz.
+- Üretici yazmayı bitirmeden tüketiciye hazır adres yayımlanmamalıdır. Publish/acquire veya eşdeğer release/acquire sıralama semantiği gerekir.
+- Birden fazla çekirdek aynı zone'a yazacaksa disjoint range, atomic operation veya açık ownership/lock kuralı gerekir. Aynı byte aralığında kontrolsüz yazma veri yarışı sayılır.
+- CPU cache'leri zone verisini cache'leyebilir; ancak çekirdekler arası görünürlük coherence veya açık cache-maintenance + memory-ordering protokolü ile sağlanmalıdır. Sadece adres paylaşmak tek başına yazma görünürlüğünü garanti etmez.
+- `zone` paylaşımı veri kopyalamayı gerektirmez; fakat paylaşım güvenliği, lifetime, synchronization ve cache visibility kuralları zorunludur.
+
+### 22.7 Örnek akış (temsili Nexus Flow fikri)
+
+```nexus
+area local_work {
+    // L1/core-local çalışma verisi
+}
+
+zone shared_frame at L3 {
+    // L2/L3/L4 paylaşılan bellek alanı; bu örnekte L3
+}
+
+// Producer: veriyi shared_frame içine yazar, sonra adres/handle yayımlar.
+// Consumer: handle'ı alır ve aynı zone adresinden okur; payload kopyası yoktur.
+```
+
+Bu kod yalnızca kavramsal gösterimdir; Nexus Flow'un kesin grammar'ı değildir. CPU ISA tarafında zone allocate/publish/acquire/release ve memory-ordering operasyonlarının opcode/semantiği ayrıca tasarlanacaktır.
+
+### 22.8 LOAD.Lx komut ailesinin yeniden yorumlanması
+
+`LOAD.L1` çekirdek-local L1 area'ya preload/placement isteği olarak kalabilir. `LOAD.L2`, `LOAD.L3`, `LOAD.L4` ise yalnızca klasik cache prefetch komutları olarak değil, hedef shared memory domain'e veri aralığı yerleştirme/tahsis etme komutları olarak ele alınmalıdır. Zone tahsisi ve zone içi veri üretimi birbirinden ayrılmalıdır:
+
+- `ZONE.ALLOC` / `ZONE.FREE`: shared zone alanı tahsis/serbest bırakma.
+- `ZONE.PUBLISH`: üreticinin yazmayı bitirdiği aralığı tüketicilere görünür kılma.
+- `ZONE.ACQUIRE`: tüketicinin yayımlanmış aralığı güvenli biçimde sahiplenmesi/okumaya hazır hale getirmesi.
+- `ZONE.RELEASE`: tüketicinin kullanımını bitirdiğini bildirme; alanın yeniden kullanılabilmesini sağlar.
+- `ZONE.ADDR`: descriptor/handle içinden ortak adres ve uzunluk bilgisini alma.
+
+Bunlar şimdilik komut ailesi önerileridir. Normal LOAD/STORE ortak alana gerçek veri okuma/yazma işlemini yapar; ZONE komutları yaşam süresi, sahiplik ve görünürlük yönetir. `LOAD.L2/L3/L4` adlarının tahsis mi, placement mı, yoksa cache residency hint'i mi ifade edeceği bu ayrımla birlikte netleştirilecektir.
