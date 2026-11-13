@@ -199,6 +199,39 @@ class SpmP0ModelTests(unittest.TestCase):
         self.assertEqual(p0.lines.capacity, 8192 // 64)
         self.assertEqual(conventional.lines.capacity, 32768 // 64)
         self.assertEqual((p0.refill_latency, conventional.refill_latency), (8, 32))
+    
+    def test_spm2_reduces_dependent_hot_chain_latency(self):
+        ops = []
+        previous = None
+        for i in range(256):
+            previous = sim.add_op(ops, "LOAD", () if previous is None else (previous,),
+                                  address=(i % 64)*64, width=64, label="SPM2: dependent")
+        p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        shards = sim.partition_dependency_components(ops, 8)
+        on = sim.simulate_multicore_streams(shards, p, 32, {"spm": True, "p0": True})
+        off = sim.simulate_multicore_streams(shards, p, 32, {"spm": False, "p0": True})
+        self.assertLess(on["cycles"], off["cycles"])
+        self.assertEqual(sum(x["retired"] for x in on["cores"]), 256)
+        self.assertEqual(sum(x["retired"] for x in off["cores"]), 256)
+
+    def test_p0_capacity_is_smaller_than_conventional_fetch_cache(self):
+        p0 = sim.CommandFetchModel(True)
+        conventional = sim.CommandFetchModel(False)
+        for line in range(256):
+            p0.lines.insert(line)
+            conventional.lines.insert(line)
+        self.assertFalse(p0.lines.lookup(0))
+        self.assertTrue(conventional.lines.lookup(0))
+
+    def test_partition_builds_local_sequential_command_streams(self):
+        ops = [sim.add_op([], "INT") for _ in range(0)]
+        workload = []
+        for _ in range(32):
+            sim.add_op(workload, "INT")
+        shards = sim.partition_dependency_components(workload, 8)
+        for shard in shards:
+            self.assertEqual([op.command_address for op in shard],
+                             [i*8 for i in range(len(shard))])
 
 class FourWayAblationTests(unittest.TestCase):
     def test_four_profiles_preserve_operation_count_and_report_interaction(self):
