@@ -190,6 +190,13 @@ def build_composite_workload(scale: int = 1) -> Dict[str, List[Op]]:
         add_op(ops, "STORE", (m,), 0x7000000 + tile*128, 64, "ME512 output")
     result["me512_matrix"] = ops
 
+    # H3) Atomic read-modify-write contention on a small shared address set.
+    ops = []
+    for i in range(256*n):
+        add_op(ops, "ATOM", address=0x7800000 + (i % 8)*8, width=8,
+               label="shared atomic counter contention")
+    result["atomic_contention"] = ops
+
     # I) Branch-heavy independent control flow to expose recovery penalties.
     ops = []
     for i in range(256*n):
@@ -676,7 +683,7 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
             vector_factor = (max(1, math.ceil(op.width * 8 / p.vector_bits))
                              if kind == "VEC" or (kind == "ME512" and exec_kind == "VEC") else 1)
             latency = p.latency.get(exec_kind, 1) * vector_factor
-            if kind in ("LOAD", "STORE"):
+            if kind in ("LOAD", "STORE", "ATOM"):
                 mem_lat, level = cache.access(op.address)
                 hits[level] += 1
                 latency = max(latency, mem_lat)
@@ -702,7 +709,7 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
             slots[slot] = cycle + 1
             issued[seq] = True
             ready_at[seq] = cycle + latency
-            if kind in ("LOAD", "STORE"):
+            if kind in ("LOAD", "STORE", "ATOM"):
                 stalls["memory_latency_exposure_cycles"] += max(0, latency - 1)
             issued_this_cycle += 1
             if kind == "BR":
@@ -900,8 +907,8 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                     continue
                 mem_lat = 0
                 level = None
-                if op.kind in ("LOAD", "STORE"):
-                    is_spm2 = op.label.startswith("SPM2:")
+                if op.kind in ("LOAD", "STORE", "ATOM"):
+                    is_spm2 = op.kind != "ATOM" and op.label.startswith("SPM2:")
                     in_spm = 0 <= op.address and op.address + op.width <= 8192
                     if is_nexus and features["spm"] and is_spm2 and in_spm:
                         if st["spm_busy_until"] > cycle:
@@ -937,7 +944,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 st["issued"][seq] = True
                 slots[slot] = cycle + 1
                 item["branch"] = op.kind == "BR"
-                item["memory"] = op.kind in ("LOAD", "STORE")
+                item["memory"] = op.kind in ("LOAD", "STORE", "ATOM")
                 pending_memory.append({"_issue": item})
                 issued_now += 1
 
