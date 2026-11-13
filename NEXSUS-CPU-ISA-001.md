@@ -138,7 +138,7 @@ MOVI RA1, -17
 MOVI64 RA4, 0x123456789ABCDEF0
 ```
 
-İkinci örnek üç 64-bit word tüketir: EXT prefix, MOVI instruction ve literal. LOAD/STORE numeric opcode atamaları henüz yapılmamıştır.
+İkinci örnek üç 64-bit word tüketir: EXT prefix, MOVI instruction ve literal. LOAD/STORE opcode'ları Encoding §8.5'te atanmıştır.
 
 ## 4. Bit ve Boolean komutları
 
@@ -214,6 +214,36 @@ LOAD ve STORE veri belleği ile DA bankı arasında çalışır. Bellek domain'i
 
 DAx:DAx+3 dört ardışık 64-bit DA kaydını, toplam 256-bit grubu ifade eder. XFER ile 256-bit MA aktarımında DA başlangıç selector'ı 4'ün katı olmalıdır (0,4,…,28). 512-bit MA pair aktarımında sekiz DA kaydı kullanılır; DA başlangıcı 8'in katı olmalıdır (0,8,16,24) ve MA pair başlangıcı çift selector olmalıdır. Bu hizalama yalnızca tam MA register/pair XFER işlemleri içindir. LOAD/STORE'da DA selector ilk kaydı gösterir; W=8/16/32/64 için 1, W=128 için 2, W=256 için 4, W=512 için 8 kayıt kullanılır. MEM erişimlerinde DA başlangıcı için ek selector hizalaması aranmaz; DA aralığının DA31'i aşmaması yeterlidir.
 
+### 5.4 Memory ve transfer primary opcode listesi
+
+Memory komutlarının numeric OP atamaları Encoding belgesi §8.5–§8.6 ile eşleşır:
+
+| OP | Mnemonic | Format |
+|---:|---|---|
+| 0x40 | LOAD | MEM |
+| 0x41 | STORE | MEM |
+| 0x42 | LOADX | MEMX |
+| 0x43 | STOREX | MEMX |
+| 0x44 | LOADUPD | MEMUPD |
+| 0x45 | STOREUPD | MEMUPD |
+| 0x46 | LOADXUPD | MEMXUPD |
+| 0x47 | STOREXUPD | MEMXUPD |
+| 0x48 | ATOM.LOAD | ATOM |
+| 0x49 | ATOM.STORE | ATOM |
+| 0x4A | CAS | ATOM |
+| 0x4B | SWAP | ATOM |
+| 0x4C | FETCH_ADD | ATOM |
+| 0x4D | FETCH_SUB | ATOM |
+| 0x4E | FETCH_AND | ATOM |
+| 0x4F | FETCH_OR | ATOM |
+| 0x84 | FETCH_XOR | ATOM |
+| 0x85 | XFER | XFER |
+
+- FETCH_* komutları D'ye eski bellek değerini döndürür; bellek güncellemesi ATOM §4.10 kurallarına göre tek atomic RMW commit'tir.
+- LOAD/STORE opcode'ları MEM; indexed ve update varyantları kendi FMT'leri ile kullanılır. Opcode ile FMT uyuşmazlığı illegal encoding'dir.
+- MOV.RA.DA, MOV.FA.DA, MOV.MA.DA, MOV.DA.RA, MOV.DA.FA ve MOV.DA.MA assembly adları 0x85 XFER opcode'sunun bank selector ve M alt türlerine çevrilen alias'lardır.
+- FCONV 0x5B olarak kalır; numeric conversion, ham XFER/BIT_COPY değildir.
+- LEA için primary opcode henüz atanmadı; scalar reserved 0x20–0x2F aralığından seçilecek ve RI/EXT adres hesaplama davranışı ayrıca tanımlanacaktır.
 ## 5.3 Little-endian bellek ve register-grup sıralaması
 
 NEXSUS CPU, veri belleği ve SPM byte erişimlerinde **little-endian** kullanır. En düşük bellek adresi, çok byte'lı değerin en düşük anlamlı byte'ını taşır.
