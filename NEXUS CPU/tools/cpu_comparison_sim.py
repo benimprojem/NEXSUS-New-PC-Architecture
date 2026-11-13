@@ -371,12 +371,13 @@ class CommandFetchModel:
     def __init__(self, enabled: bool, p0_capacity_bytes: int = 16384,
                  conventional_capacity_bytes: int = 32768,
                  p0_refill_latency: int = 48, conventional_refill_latency: int = 32,
-                 p0_buffer_bytes: int = 2048):
+                 p0_buffer_bytes: int = 2048, page_descriptors: dict | None = None):
         self.enabled = enabled
         self.capacity_bytes = p0_capacity_bytes if enabled else conventional_capacity_bytes
         self.lines = LRU(self.capacity_bytes, 64)
         self.refill_latency = p0_refill_latency if enabled else conventional_refill_latency
         self.p0_buffer_bytes = p0_buffer_bytes
+        self.page_descriptors = {int(k): v for k, v in (page_descriptors or {}).items()}
         self.p0_buffers = [None, None]  # SPM0-A/B, 2 KiB each
         self.p0_pending = None
         self.pending = None
@@ -399,6 +400,30 @@ class CommandFetchModel:
             line, _ = self.pending
             self.lines.insert(line)
             self.pending = None
+
+    def _next_logical_page(self, block: int):
+        descriptor = self.page_descriptors.get(block)
+        if descriptor is None:
+            return block + 1
+        valid_bytes = int(descriptor.get("valid_bytes", self.p0_buffer_bytes))
+        marker = descriptor.get("marker")
+        if valid_bytes == self.p0_buffer_bytes:
+            return block + 1
+        if marker == "PX_END":
+            return None
+        if marker == "PX_NEXT":
+            return int(descriptor.get("next_logical_page_id", block + 1))
+        raise ValueError(f"partial PX page {block} has no valid PX_NEXT/PX_END marker")
+
+    def _validate_fetch_address(self, block: int, offset: int):
+        descriptor = self.page_descriptors.get(block)
+        if descriptor is None:
+            return
+        valid_bytes = int(descriptor.get("valid_bytes", self.p0_buffer_bytes))
+        if offset < 0 or offset >= valid_bytes:
+            raise ValueError(f"fetch into invalid/padding bytes of PX page {block}")
+        if valid_bytes <= 0 or valid_bytes > self.p0_buffer_bytes or valid_bytes % 8:
+            raise ValueError(f"invalid valid_bytes/alignment for PX page {block}")
 
     def _pool_touch(self, block: int):
         if block in self.pool_pages:
@@ -430,6 +455,14 @@ class CommandFetchModel:
         self.complete(cycle)
         if self.enabled:
             block = max(0, command_address) // self.p0_buffer_bytes
+            offset = max(0, command_address) % self.p0_buffer_bytes
+            self._validate_fetch_address(block, offset)
+            if self.active_block is not None and block != self.active_block:
+                expected = self._next_logical_page(self.active_block)
+                if expected is None:
+                    raise ValueError(f"PX_END reached for page {self.active_block}; no sequential next page")
+                if block != expected:
+                    raise ValueError(f"PX sequential transition expected logical page {expected}, got {block}")
             if block in self.p0_buffers:
                 if self.active_block != block:
                     if self.active_block is not None:
@@ -438,7 +471,9 @@ class CommandFetchModel:
                     self.ready_boundaries += 1
                 self.hits += 1
                 self.buffer_hits += 1
-                self._start_p0_prefetch(block + 1, cycle)
+                next_block = self._next_logical_page(block)
+                if next_block is not None:
+                    self._start_p0_prefetch(next_block, cycle)
                 return True
             self.wait_cycles += 1
             self.boundary_waits += 1
@@ -769,6 +804,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 bool(features["p0"]),
                 p0_capacity_bytes=int(features.get("p0_capacity_kb", 16)) * 1024,
                 p0_refill_latency=int(features.get("p0_refill_latency", 48)),
+                page_descriptors=features.get("px_page_descriptors"),
                 conventional_capacity_bytes=int(features.get("conventional_icache_kb", 32)) * 1024,
                 conventional_refill_latency=int(features.get("conventional_refill_latency", 32)),
             )
