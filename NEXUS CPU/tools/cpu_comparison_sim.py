@@ -994,6 +994,35 @@ def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=N
             "aggregate_ipc": round(total_ops/max(1,total_cycles),3),
             "time_ms_at_configured_clock": round(total_cycles/(p.frequency_ghz*1e6),6)}
 
+def run_branch_predictor_sweep(workloads: Dict[str, List[Op]], profile_dict: dict) -> dict:
+    """Compare NEXSUS predictor-off and compact-predictor assumptions on identical traces."""
+    target = {name: workloads[name] for name in ("scalar_control", "pointer_graph", "branch_stress")}
+    runs = {}
+    for mode in ("none", "small_2bit"):
+        profile = dict(profile_dict)
+        profile["branch_predictor"] = mode
+        runs[mode] = simulate_cpu(target, profile, profile.get("core_count", 8),
+                                  {"spm": True, "p0": True, "p0_capacity_kb": 16,
+                                   "p0_refill_latency": 48, "spm0_kb": 4,
+                                   "spm0_bank_kb": 2})
+    rows = {}
+    for name in target:
+        off = runs["none"]["kernels"][name]
+        compact = runs["small_2bit"]["kernels"][name]
+        rows[name] = {
+            "ops_preserved": off["ops"] == compact["ops"],
+            "ops": off["ops"],
+            "cycles_predictor_off": off["cycles"],
+            "cycles_compact_predictor": compact["cycles"],
+            "mispredicts_predictor_off": off["branch_mispredicts"],
+            "mispredicts_compact_predictor": compact["branch_mispredicts"],
+            "cycles_saved": off["cycles"] - compact["cycles"],
+        }
+    return {"experiment": "NEXSUS compact branch predictor ablation",
+            "cores": profile_dict.get("core_count", 8), "kernels": rows,
+            "assumptions": "Deterministic workload-class misprediction rates; not a cycle-accurate 2-bit predictor or vendor predictor model."}
+
+
 def run_nexus_ablation(workloads: Dict[str, List[Op]], profile_dict: dict) -> dict:
     """Run the four controlled NEXSUS SPM/P0 combinations on identical work."""
     variants = {
@@ -1130,6 +1159,7 @@ def main():
     ap.add_argument("--nexus-cores", type=int, default=8)
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--ablation", action="store_true", help="run four-way NEXSUS SPM/P0 ablation")
+    ap.add_argument("--branch-sweep", action="store_true", help="compare NEXSUS predictor-off and compact predictor")
     ap.add_argument("--p0-capacity-kb", type=int, default=16, help="PX P0-P7 code pool capacity in KiB; SPM0 is 4 KiB (2x2 KiB)")
     ap.add_argument("--p0-refill-cycles", type=int, default=48, help="provisional 2-KiB PX-to-SPM0 refill latency")
     ap.add_argument("--p0-sweep", action="store_true", help="run 4/8/16/32 KiB P0 capacity sweep")
@@ -1155,6 +1185,15 @@ def main():
             print("NEXSUS P0 CAPACITY SENSITIVITY — PROVISIONAL MODEL")
             for row in result["results"].values():
                 print(f'{row["capacity_kb"]:>2} KiB: cycles={row["total_cycles"]} ops={row["total_ops"]}')
+        return
+    if args.branch_sweep:
+        result = run_branch_predictor_sweep(workloads, PROFILES["nexus_balanced_128"])
+        if args.json:
+            print(json.dumps(result, indent=2))
+        else:
+            print("NEXSUS BRANCH PREDICTOR ABLATION")
+            for name, row in result["kernels"].items():
+                print(f'{name}: off={row["cycles_predictor_off"]} compact={row["cycles_compact_predictor"]} saved={row["cycles_saved"]}')
         return
     if args.ablation:
         result = run_nexus_ablation(workloads, PROFILES["nexus_balanced_128"])
