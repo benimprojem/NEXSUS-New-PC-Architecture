@@ -229,3 +229,21 @@ A compact NEXSUS branch predictor is a candidate, not yet a frozen architectural
 ### 10.3 Validation status
 
 The GitHub Actions workflow compiles the simulator, runs regression tests, runs the cross-architecture smoke test, executes NEXSUS ablations and runs PX refill sensitivity sweeps. Results are accepted only from the latest run after all steps pass. Historical test counts and old P0/P1 results in earlier sections must not be interpreted as validation of v0.3.0-dev.
+
+
+## 11. v0.3.1-dev implementation notes
+
+The current executable workload now includes a dedicated ME512 tile kernel. NEXSUS routes it to its modeled ME512 unit; AMD, Intel Xeon and Apple reference profiles map the same logical operation to their generic vector execution resource. This provides comparable algorithmic work without pretending the different instruction sets are identical.
+
+PX metadata validation is now a separate function from the operation stream. It checks:
+- full 2 KiB pages continue automatically without an in-band marker;
+- partial intermediate pages require PX_NEXT and a valid next logical page;
+- partial final pages require PX_END;
+- marker placement, page length and 64-bit instruction alignment are valid;
+- PX_NEXT/PX_END do not create CPU operations or consume instruction bytes.
+
+The branch predictor experiment has two executable variants: predictor disabled and a compact-predictor assumption. The predictor-off/compact sweep uses the same operation graph for scalar control, pointer decisions and random branch stress. Current prediction rates are deterministic sensitivity inputs, not an RTL predictor.
+
+The CLI also supports a normalized eight-core run, in addition to native package core-count runs. Native results answer whole-chip throughput questions; normalized results help separate core-count scale from per-core design effects.
+
+FAPU and NPU are separate platform accelerators, not CPU execution units. Their DMA, queueing, synchronization and shared-memory arbitration need a separate system-level offload simulation; they are not included in CPU IPC or ME512 throughput.
