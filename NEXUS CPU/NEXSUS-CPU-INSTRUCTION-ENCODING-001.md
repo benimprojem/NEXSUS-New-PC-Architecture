@@ -1245,6 +1245,7 @@ Aşağıdaki örnekler tam 64-bit hexadecimal makine kodu değildir; atanmış p
 
 - MEMUPD/MEMXUPD ve ATOM opcode numaraları §8.5 ile atandı; assembler mnemonic alias tablosunun ayrıntılı canonical spelling listesi ayrıca tamamlanacaktır.
 - ATOM ordering, scalar 8/16/32/64-bit işlemler ve CAS/SWAP/FETCH_* operand semantiği taslak olarak tanımlandı; fiziksel coherence, arbitration ve bank locking mikro-mimari aşamasında belirlenecek.
+- MEMXFER için §4.15'te 52-bit payload alan eşlemesi ve 0x86–0x88 opcode davranışı aday olarak tanımlandı. Encoding freeze öncesinde zero-length davranışı, RA selector aliasing, token'ın tüketilme/serbest bırakılma ömrü ve async hata sonucunun raporlanması karara bağlanacaktır.
 
 1. OP ve FMT sayısal kodlarının nihai tablosu.
 3. EXT opcode'unun numeric değeri ve gelecekte COUNT>1 çoklu literal semantiği.
