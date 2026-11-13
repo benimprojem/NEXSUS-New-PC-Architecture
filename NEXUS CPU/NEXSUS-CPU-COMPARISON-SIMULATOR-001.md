@@ -247,3 +247,16 @@ The branch predictor experiment has two executable variants: predictor disabled 
 The CLI also supports a normalized eight-core run, in addition to native package core-count runs. Native results answer whole-chip throughput questions; normalized results help separate core-count scale from per-core design effects.
 
 FAPU and NPU are separate platform accelerators, not CPU execution units. Their DMA, queueing, synchronization and shared-memory arbitration need a separate system-level offload simulation; they are not included in CPU IPC or ME512 throughput.
+
+
+## 12. Native vector/matrix execution mapping
+
+The simulator now distinguishes 512-bit logical vector work from each backend's modeled native vector width. AMD Zen 5 and Intel Xeon 698X use 512-bit AVX-512 profile paths; Apple M6 uses a provisional 128-bit Advanced SIMD path; NEXSUS uses its proposed 512-bit vector path.
+
+The ME512-equivalent matrix workload maps to:
+- NEXSUS dedicated ME512 unit;
+- Intel Xeon AMX tile unit;
+- AMD vector/FMA path;
+- Apple vector path (provisional mapping).
+
+This mapping lets every architecture use its available modeled execution resources. It is still a design-space model: actual port counts, AMX tile setup, memory movement and sustained throughput require public data or independent measurement.
