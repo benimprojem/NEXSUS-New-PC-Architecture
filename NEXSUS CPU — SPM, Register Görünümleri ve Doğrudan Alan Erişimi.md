@@ -27,20 +27,20 @@ SPM0, CPU çalışırken yürütme aşamasında oluşan geçici komutsal durumun
 
 SPM, geleneksel yığının bire bir karşılığı değildir. Veriler zorunlu bir LIFO sırasına göre değil, tanımlı adresleri ve alanları üzerinden yönetilir.
 
-### 2.1 SPM0 — 64 bitlik temel kayıt alanı
+### 2.1 SPM0 — 256 adet 64-bit temel kayıt
 
 SPM0, komutların kendisini veya fetch/dispatch kuyruğunu saklamaz. CPU çalışırken komutların yürütülmesi sonucunda oluşan geçici komutsal durumu, ara değerleri ve sonuçları tutar. Stack benzeri bir çalışma alanıdır; ancak veriler LIFO sırasına bağlı olmadan doğrudan adreslenebilir.
 
-SPM0 için başlangıç kapasitesi 32 KiB olarak belirlenir.
+SPM0 kapasitesi 256 × 64 bit = 16.384 bit = 2 KiB olarak belirlenir.
 
 | Özellik | Değer |
 |---|---:|
-| Toplam kapasite | 32 KiB |
-| Sayfa sayısı | 8 |
-| Sayfa başına kapasite | 4 KiB |
+| Toplam kapasite | 2 KiB |
+| Temel kayıt sayısı | 256 |
 | Temel kayıt genişliği | 64 bit |
-| Sayfa başına 64 bitlik kayıt | 512 |
-| Toplam 64 bitlik kayıt eşdeğeri | 4096 |
+| Temel kayıt genişliği | 64 bit |
+| 8-bit byte erişimi | Desteklenir |
+| Desteklenen erişim genişlikleri | 8/16/32/64/128/256/512 bit |
 
 SPM0'ın sekiz sayfası PAGE 0–PAGE 7 olarak tanımlanır.
 
@@ -52,7 +52,7 @@ SPM0'ın birincil görevi yürütme sırasında oluşan geçici komutsal durum, 
 
 ### 2.2 SPM1–SPM7 — Değişken genişlikli veri alanları
 
-SPM1–SPM7, değişken boyutlu geçici veriler ve ara hesaplama değerleri için ayrılmış doğrudan adreslenebilir çalışma alanlarıdır. Her biri SPM sayfa/ofset modeliyle erişilir; yazılım ve derleyici ihtiyaç duyduğu alanı doğrudan adresleyebilir. Her alanın kesin kapasitesi ve fiziksel bank/port düzeni mikro-mimari aşamasında belirlenecektir.
+SPM1–SPM7, değişken boyutlu geçici veriler ve ara hesaplama değerleri için ayrılmış doğrudan adreslenebilir çalışma alanlarıdır. Her biri SPM sayfa/ofset modeliyle erişilir; yazılım ve derleyici ihtiyaç duyduğu alanı doğrudan adresleyebilir. Her alanın kapasitesi 8 KiB olarak belirlenmiştir; fiziksel bank/port düzeni mikro-mimari aşamasında belirlenecektir.
 
 Desteklenmesi hedeflenen veri genişlikleri:
 
@@ -61,10 +61,12 @@ Desteklenmesi hedeflenen veri genişlikleri:
 - 32 bit
 - 64 bit
 - 128 bit
+- 256 bit
+- 512 bit
 
-SPM1–SPM7'de 8 bitlik byte adresleme modeli kullanılabilir. Böylece veri türleri ve alanlar doğal boyutlarına göre tanımlanabilir.
+SPM1–SPM7'nin her biri 8 KiB kapasitelidir; toplam kapasiteleri 56 KiB'tır. Byte adresleme sayesinde veri alanları doğal boyutlarına göre tanımlanabilir. SPM0–SPM7'nin tamamı 8/16/32/64/128/256/512-bit erişim genişliklerini destekler.
 
-128 bitlik değerler, tek bir mantıksal veri türü olarak ele alınabilir; fiziksel olarak birden fazla kayıt veya erişim gerektirip gerektirmediği donanım tasarımına bağlıdır.
+128/256/512-bit değerler tek bir mantıksal veri veya erişim genişliği olarak ele alınır; 64-bit temel kayıt mimarisinde gerektiğinde ardışık kayıtlar üzerinden birleştirilir.
 
 SPM0–SPM7, mimaride ayrı işlevsel çalışma alanları olarak tanımlanır; fiziksel bellek dizileri, bank paylaşımı ve port düzeni donanım tasarımında kesinleştirilir. Bunların mutlaka ayrı fiziksel bellek dizileri olması gerekmez.
 
@@ -82,9 +84,9 @@ SPM0 için sekiz sayfa ve her sayfada 512 adet 64 bitlik kayıt bulunduğundan, 
 
 Bu iki alan toplam 12 bitlik mantıksal kayıt konumu oluşturur.
 
-SPM1–SPM7'de byte adresleme kullanıldığı için sayfa içi ofsetin yorumu farklıdır. 4 KiB sayfanın içindeki byte konumunu belirlemek için 12 bit gerekir.
+SPM1–SPM7'de byte adresleme kullanılır. 8 KiB alan içindeki byte konumunu belirlemek için 13 bitlik ofset yeterlidir.
 
-Dolayısıyla SPM0 ve SPM1 aynı sayfa boyutunu kullanırken farklı adresleme birimlerine sahip olabilir.
+SPM0 kayıt ofsetiyle, SPM1–SPM7 ise byte ofsetiyle adreslenir; tüm alanlarda geniş erişimler ardışık byte/kayıtları kapsayabilir.
 
 ## 4. Register Görünümleri
 
