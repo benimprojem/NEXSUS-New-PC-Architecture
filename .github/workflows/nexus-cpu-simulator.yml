@@ -72,7 +72,7 @@ jobs:
               assert row["ops_preserved"], name
               print(f'{name}: off={row["cycles_predictor_off"]} compact={row["cycles_compact_predictor"]} mispredicts={row["mispredicts_predictor_off"]}->{row["mispredicts_compact_predictor"]}')
           PY
-      - name: Run P0 capacity sensitivity sweep
+      - name: Run PX pool capacity sensitivity sweep
         run: |
           python "NEXUS CPU/tools/cpu_comparison_sim.py" --p0-sweep --scale 1 --json > /tmp/nexus-p0-sweep.json
           python - <<'PY'
@@ -81,6 +81,8 @@ jobs:
           rows = list(data["results"].values())
           assert len({row["total_ops"] for row in rows}) == 1
           assert len({row["total_cycles"] for row in rows}) > 1, "PX pool capacity must affect miss cost"
+          misses = {row["kernels"]["p0_starvation"]["p0"]["pool_misses"] for row in rows}
+          assert len(misses) > 1, misses
           print("PX POOL CAPACITY SENSITIVITY")
           for row in data["results"].values():
               starve = row["kernels"]["p0_starvation"]["cycles"]
