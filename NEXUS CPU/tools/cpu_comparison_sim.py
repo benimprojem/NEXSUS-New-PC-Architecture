@@ -323,28 +323,66 @@ def build_cache_hierarchies(p: CoreProfile, core_count: int) -> List[CacheHierar
 
 
 class CommandFetchModel:
-    """One outstanding 64-byte command-line refill; P0 vs conventional I-cache."""
-    def __init__(self, enabled: bool, p0_capacity_bytes: int = 8192,
+    """Conventional I-cache or NEXSUS P0/P1 ping-pong command buffers."""
+    def __init__(self, enabled: bool, p0_capacity_bytes: int = 16384,
                  conventional_capacity_bytes: int = 32768,
-                 p0_refill_latency: int = 8, conventional_refill_latency: int = 32):
+                 p0_refill_latency: int = 128, conventional_refill_latency: int = 32,
+                 p0_buffer_bytes: int = 8192):
         self.enabled = enabled
-        capacity = p0_capacity_bytes if enabled else conventional_capacity_bytes
-        self.lines = LRU(capacity, 64)
+        self.capacity_bytes = p0_capacity_bytes if enabled else conventional_capacity_bytes
+        self.lines = LRU(self.capacity_bytes, 64)
         self.refill_latency = p0_refill_latency if enabled else conventional_refill_latency
-        self.pending = None
+        self.p0_buffer_bytes = p0_buffer_bytes
+        self.p0_buffers = [None, None]  # P0/P1 each hold one 8-KiB command block
+        self.p0_pending = None           # (block_id, completion_cycle, buffer_index)
+        self.pending = None              # conventional I-cache line refill
         self.hits = 0
         self.refills = 0
         self.refill_bytes = 0
         self.wait_cycles = 0
+        self.prefetches = 0
+        self.buffer_hits = 0
+        self.prefetch_wait_cycles = 0
 
     def complete(self, cycle: int):
+        if self.enabled:
+            if self.p0_pending is not None and self.p0_pending[1] <= cycle:
+                block, _, bank = self.p0_pending
+                self.p0_buffers[bank] = block
+                self.p0_pending = None
+            return
         if self.pending is not None and self.pending[1] <= cycle:
             line, _ = self.pending
             self.lines.insert(line)
             self.pending = None
 
+    def _start_p0_prefetch(self, block: int, cycle: int):
+        if block in self.p0_buffers or (self.p0_pending and self.p0_pending[0] == block):
+            return
+        if self.p0_pending is not None:
+            return  # one refill engine; current transfer completes before another starts
+        bank = block & 1  # P0/P1 alternate on successive 8-KiB command blocks
+        self.p0_pending = (block, cycle + self.refill_latency, bank)
+        self.prefetches += 1
+        self.refills += 1
+        self.refill_bytes += self.p0_buffer_bytes
+
     def can_fetch(self, command_address: int, cycle: int) -> bool:
         self.complete(cycle)
+        if self.enabled:
+            block = max(0, command_address) // self.p0_buffer_bytes
+            if block in self.p0_buffers:
+                self.hits += 1
+                self.buffer_hits += 1
+                self._start_p0_prefetch(block + 1, cycle)
+                return True
+            if self.p0_pending is not None:
+                self.wait_cycles += 1
+                self.prefetch_wait_cycles += 1
+                return False
+            self._start_p0_prefetch(block, cycle)
+            self.wait_cycles += 1
+            return False
         line = command_address // 64
         if self.lines.lookup(line):
             self.hits += 1
@@ -911,7 +949,7 @@ def run_nexus_ablation(workloads: Dict[str, List[Op]], profile_dict: dict) -> di
         "kernels": comparison,
         "full_runs": runs,
         "assumptions": {
-            "p0_enabled": "8 KiB command store; 64-byte refill line; 8-cycle provisional refill; one outstanding refill per core",
+            "p0_enabled": "P0/P1 ping-pong: 2 x 8 KiB command buffers; 8-KiB block refill; 128-cycle provisional load at 512-bit/cycle; one refill engine/core",
             "p0_disabled": "32 KiB conventional instruction cache; 64-byte line; 32-cycle provisional refill",
             "spm2_enabled": "8 KiB task workspace; 2-cycle provisional access; one modeled port per core",
             "spm2_disabled": "Tagged SPM2 accesses use normal cache/Data RAM path",
@@ -1004,8 +1042,8 @@ def main():
     ap.add_argument("--nexus-cores", type=int, default=8)
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--ablation", action="store_true", help="run four-way NEXSUS SPM/P0 ablation")
-    ap.add_argument("--p0-capacity-kb", type=int, default=8, help="NEXSUS P0 capacity in KiB")
-    ap.add_argument("--p0-refill-cycles", type=int, default=8, help="provisional P0 refill latency")
+    ap.add_argument("--p0-capacity-kb", type=int, default=16, help="NEXSUS P0+P1 total capacity in KiB")
+    ap.add_argument("--p0-refill-cycles", type=int, default=128, help="provisional 8-KiB P0/P1 refill latency")
     ap.add_argument("--p0-sweep", action="store_true", help="run 4/8/16/32 KiB P0 capacity sweep")
     ap.add_argument("--fetch-sweep", action="store_true", help="compare conventional I-cache and P0 refill latency sensitivity")
     args = ap.parse_args()
