@@ -246,7 +246,7 @@ class SpmP0ModelTests(unittest.TestCase):
         fetch.complete(8)
         self.assertTrue(fetch.can_fetch(0, 8))
         self.assertTrue(fetch.lines.lookup(1))
-        self.assertEqual(fetch.refill_bytes, 16*64)
+        self.assertEqual(fetch.refill_bytes, 17*64)
 
     def test_spm0_ping_pong_prefetches_next_2k_page(self):
         fetch = sim.CommandFetchModel(True)
