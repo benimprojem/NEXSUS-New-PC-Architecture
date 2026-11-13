@@ -262,6 +262,70 @@ class CacheHierarchy:
 def profile_from_dict(d: dict) -> CoreProfile:
     return CoreProfile(**d)
 
+class SharedMemoryController:
+    """Global DRAM bank/bus reservation primitive for lockstep multicore scheduling.
+
+    Requests must be submitted as a same-cycle batch. The caller is responsible
+    for collecting all cores' eligible misses before calling reserve_batch().
+    """
+    def __init__(self, bank_count: int = 8, beat_bytes: int = 8,
+                 aggregate_bytes_per_cycle: int = 32):
+        self.bank_count = bank_count
+        self.beat_bytes = beat_bytes
+        self.aggregate_bytes_per_cycle = aggregate_bytes_per_cycle
+        self.bank_busy = [0] * bank_count
+        self.bus_next_cycle = 0
+        self.rr_cursor = 0
+
+    def _bank(self, address: int, bank_hash: str) -> int:
+        if bank_hash == "folded":
+            return (((address >> 3) & 7) ^ ((address >> 6) & 7) ^
+                    ((address >> 9) & 7)) % self.bank_count
+        return (address // self.beat_bytes) % self.bank_count
+
+    def reserve_batch(self, cycle: int, requests: List[dict],
+                      bank_hash: str = "low") -> dict:
+        """Reserve one cycle's requests in rotating core order.
+
+        Each request: {id, core, address, width}. Returns per-request bank
+        wait, bus wait, and service completion cycle. The bus is work-conserving:
+        idle cores do not own a reserved bandwidth share.
+        """
+        if not requests:
+            return {}
+        core_ids = sorted({int(r["core"]) for r in requests})
+        start = self.rr_cursor % len(core_ids)
+        rotated = core_ids[start:] + core_ids[:start]
+        rank = {core: i for i, core in enumerate(rotated)}
+        ordered = sorted(requests, key=lambda r: (rank[int(r["core"])], str(r["id"])))
+        result = {}
+        for req in ordered:
+            req_id = req["id"]
+            address = int(req["address"])
+            width = max(1, int(req["width"]))
+            beats = max(1, math.ceil(width / self.beat_bytes))
+            bank_wait = 0
+            for beat in range(beats):
+                bank = self._bank(address + beat * self.beat_bytes, bank_hash)
+                bank_start = max(cycle, self.bank_busy[bank])
+                bank_wait = max(bank_wait, bank_start - cycle)
+                self.bank_busy[bank] = bank_start + 1
+            bus_start = max(cycle, self.bus_next_cycle)
+            bus_wait = bus_start - cycle
+            bus_cycles = max(1, math.ceil(width / self.aggregate_bytes_per_cycle))
+            self.bus_next_cycle = bus_start + bus_cycles
+            result[req_id] = {
+                "bank_wait": bank_wait,
+                "bus_wait": bus_wait,
+                "service_complete_cycle": max(
+                    max(self.bank_busy), self.bus_next_cycle
+                ),
+            }
+        last_core = int(ordered[-1]["core"])
+        self.rr_cursor = (core_ids.index(last_core) + 1) % len(core_ids)
+        return result
+
+
 def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
     """Single hardware thread, OoO window, in-order retirement, shared unit limits."""
     cache = CacheHierarchy(p)
