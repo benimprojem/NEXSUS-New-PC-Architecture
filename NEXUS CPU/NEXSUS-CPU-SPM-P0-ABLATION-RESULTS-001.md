@@ -61,7 +61,7 @@ Interaction is calculated as combined cycles saved minus the sum of the two isol
 ## 4. What this run tells us
 
 1. **SPM2 is most visible on dependent memory chains.** The 4 KiB hot working set falls from 9,545 to 2,057 cycles with SPM2 enabled. The 16 KiB capacity sweep falls from 32,009 to 17,033 cycles because the in-range portion can use SPM2 while overflow follows the normal Data RAM/cache path.
-2. **P0 improves command supply in this model.** Sequential, branch, repeated-working-set and starvation kernels all show lower cycle counts with P0 enabled. The 16 KiB command-loop test deliberately exceeds the 8 KiB P0 while fitting the 32 KiB conventional I-cache, so capacity pressure is represented rather than assuming P0 always wins.
+2. **P0 improves command supply in this model.** Sequential, branch, repeated-working-set and starvation kernels all show lower cycle counts with P0 enabled. The 16 KiB command-loop test fits the two-buffer P0/P1 total while fitting the 32 KiB conventional I-cache, so capacity pressure is represented rather than assuming P0 always wins.
 3. **The features affect different bottlenecks.** P0 has no visible effect on the SPM-only on/off comparison; SPM2 has no visible effect on the P0-only command kernels. The combined result is therefore close to the sum of isolated gains.
 4. **Pointer chasing remains mostly latency-bound.** P0 changes only a small part of the total because the dependent Data RAM/DRAM chain dominates.
 
@@ -69,7 +69,7 @@ Interaction is calculated as combined cycles saved minus the sum of the two isol
 
 These are behavioral-model results, not measured silicon performance:
 
-- P0: 8 KiB capacity, 64-byte refill line (eight 64-bit command records), one outstanding refill per core, assumed 8-cycle refill.
+- P0/P1: 16 KiB total, two 8-KiB ping-pong buffers (1,024 64-bit command words each), one 8-KiB block refill engine/core; 128-cycle transfer assumption at 512-bit/cycle.
 - P0-off: 32 KiB conventional instruction cache, 64-byte line, assumed 32-cycle refill.
 - SPM2: 8 KiB addressable workspace, assumed 2-cycle access, one modeled port per core.
 - Per-core command streams are rebased after dependency partitioning. The P0 starvation trace performs two passes over a 16 KiB command working set.
