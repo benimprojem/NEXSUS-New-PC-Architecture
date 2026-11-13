@@ -770,7 +770,7 @@ MMAC.S.N8.W32 MA24, MA0, MA8, MA16
 
 ### 6.6 Vector reduction ve matrix transpose encoding
 
-- `VSUM.S/U.W` ve `VDOT.S/U.W` R3 kullanır. D/A/B MA selector'larıdır; W normal vector lane genişliğini seçer; M=000 ve AUX=0 zorunludur. Signedness opcode varyantıyla belirlenir.
+- `VSUM.S/U.W` ve `VDOT.S/U.W` R3 kullanır. D/A/B MA selector'larıdır; W lane genişliğini seçer; M=000 ve AUX=0 zorunludur. VSUM W=8/16/32/64/128/256, VDOT W=8/16/32/64 kabul eder. Signedness opcode varyantıyla belirlenir.
 - VSUM ve VDOT sonucu D MA'nın tamamına 256-bit accumulator sonucu olarak yazılır. Signed sonuç sign-extend, unsigned sonuç zero-extend edilir.
 - `MTRANS.N2/N4/N8.W` R2 kullanır. D/A tile başlangıç selector'larıdır; W eleman genişliğini, M tile şeklini seçer; AUX=0 zorunludur.
 - MTRANS için M=000/001/010 sırasıyla 2×2/4×4/8×8 anlamına gelir. W=000/001/010/011 sırasıyla 8/16/32/64-bit eleman genişliğidir; 8×8 için W=011 geçersizdir.
