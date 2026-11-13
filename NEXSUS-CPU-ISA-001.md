@@ -672,6 +672,27 @@ Son örnekte dört tile grubu MA0–MA31 aralığını tam olarak kullanır. Bu 
 - MTRANS R2 kullanır: D/A tile başlangıç selector'larıdır, W eleman genişliğini, M tile şeklini seçer; AUX=0 olmalıdır.
 - Desteklenmeyen N/W, hizasız selector veya MA31 sınır aşımı `ILLEGAL_OPERAND_CONFIGURATION_FAULT` üretir ve hedef tile değişmez.
 
+### 8.8 Matrix reduction
+
+- `MREDUCE.S/U.ROWS` ve `MREDUCE.S/U.COLS`, bir N×N tile'ın her satırındaki veya sütunundaki N elemanı toplar. ROWS sonucu N satır toplamı; COLS sonucu N sütun toplamıdır.
+- Signedness S/U varyantıyla seçilir. Her toplamın tam sonucu için çıktı eleman genişliği `AW = W + ceil(log2(N))` bittir. Böylece signed veya unsigned toplama sonucu kayıpsız korunur.
+- Çıktı elemanları D tile grubuna ardışık, düşük bitlerden başlayarak paketlenir: D[0] ilk satır/sütun toplamıdır. Her çıktı AW bit kullanır; kullanılmayan son register bitleri sıfırlanır.
+- Çıktı register sayısı `ceil(N × AW / 256)` olarak hesaplanır. D grubu kendi register sayısına göre hizalanmalı ve MA31'i aşmamalıdır. A kaynak grubu, giriş tile'ının `ceil(N × N × W / 256)` register'ını kapsar ve aynı şekilde hizalanır.
+- D ve A register aralıkları çakışamaz. Kaynak A komut başında snapshot edilir; sonuç bütün D grubu için tek mimari commit olarak yazılır.
+- N ve W kombinasyonları MMUL/MMAC ile aynıdır. Herhangi bir desteklenmeyen şekil/genişlik, selector hizalama hatası veya register sınırı aşımı `ILLEGAL_OPERAND_CONFIGURATION_FAULT` üretir; hedef değişmez.
+- MREDUCE R2 kullanır. M alanı tile şeklini, W eleman genişliğini seçer. AUX[35] axis seçer: 0=ROWS, 1=COLS; AUX[34:0] sıfır olmalıdır.
+- Matris çarpımındaki her çıktı elemanının iç çarpımı zaten MMUL/MMAC tanımının parçasıdır. Ayrı `VDOT.S/U.W` ise iki MA vector register'ının karşılık gelen lane çarpımlarını toplayarak tek 256-bit sonuç üretir; bu komut matrix tile çarpımının alternatifi değildir.
+
+Örnekler:
+
+```asm
+; 4×4 signed 16-bit tile'ın satır toplamları: AW=18, çıktı 4×18=72 bit
+MREDUCE.S.ROWS.N4.W16 MA12, MA0
+
+; 8×8 unsigned 32-bit tile'ın sütun toplamları: AW=35, çıktı 8×35=280 bit
+MREDUCE.U.COLS.N8.W32 MA16, MA0
+```
+
 ## 9. Control-flow komutları
 
 | Mnemonic | Operand | İşlev |
