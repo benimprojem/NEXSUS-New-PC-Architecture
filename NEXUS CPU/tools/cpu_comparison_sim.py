@@ -332,7 +332,7 @@ class CommandFetchModel:
         self.capacity_bytes = p0_capacity_bytes if enabled else conventional_capacity_bytes
         self.lines = LRU(self.capacity_bytes, 64)
         self.refill_latency = p0_refill_latency if enabled else conventional_refill_latency
-        self.p0_buffer_bytes = p0_buffer_bytes
+        self.p0_buffer_bytes = p0_buffer_bytes or max(1024, p0_capacity_bytes // 2)
         self.p0_buffers = [None, None]  # P0/P1 each hold one 8-KiB command block
         self.p0_pending = None           # (block_id, completion_cycle, buffer_index)
         self.pending = None              # conventional I-cache line refill
@@ -958,7 +958,7 @@ def run_nexus_ablation(workloads: Dict[str, List[Op]], profile_dict: dict) -> di
     }
 
 
-def run_p0_capacity_sweep(workloads, profile_dict, capacities_kb=(4, 8, 16, 32), refill_latency=8):
+def run_p0_capacity_sweep(workloads, profile_dict, capacities_kb=(4, 8, 16, 32), refill_latency=128):
     """Sweep only P0 capacity; preserve the same operation graph and all other settings."""
     rows = {}
     for capacity_kb in capacities_kb:
@@ -986,7 +986,7 @@ def run_p0_capacity_sweep(workloads, profile_dict, capacities_kb=(4, 8, 16, 32),
 
 
 def run_fetch_latency_sweep(workloads, conventional_latencies=(8, 16, 24, 32),
-                            p0_latencies=(4, 8, 12, 16), p0_capacity_kb=16):
+                            p0_latencies=(64, 96, 128, 160), p0_capacity_kb=16):
     """Compare reference I-cache refill assumptions with NEXSUS P0 refill assumptions."""
     target = {"p0_starvation": workloads["p0_starvation"]}
     rows = {"amd_9950x": {}, "intel_285k_p": {}, "intel_285k_e": {},
