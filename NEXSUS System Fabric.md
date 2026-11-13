@@ -1229,6 +1229,25 @@ Bu, Fabric'in toplam paralelliğini önemli ölçüde artırır.
 
 ---
 
+# 39.1 Bank, controller ve port ayrımı
+
+Fabric'in gördüğü **bellek domain'i**, fiziksel bankanın kendisi değildir. Domain erişim kapsamını ve paylaşım kurallarını tanımlar; fiziksel bank belirli bir bellek kaynağıdır. Controller o bankanın isteklerini yönetir. Port, bankanın aynı anda kabul edebildiği işlem yoludur. Fabric lane ise düğümler arasındaki veri taşıma kapasitesidir. Bu kaynaklar birbirine eşit veya birbirinin yerine kullanılabilir değildir.
+
+- Bir domain bir veya daha fazla fiziksel bankaya eşlenebilir.
+- Bank interleaving, adresleri seçilen granül üzerinden bankalara dağıtarak bağımsız bankaların paralel çalışmasını sağlar. Bank seçimi için kesin adres bitleri/hash fonksiyonu ve granül, fiziksel bellek kapasitesi ile bank sayısı belirlendiğinde seçilir.
+- Aynı bankanın tek-port veya meşgul portuna gelen istekler yerel olarak sıraya girer. Farklı bankalar ve bağımsız portlar kendi kaynakları elverdiği ölçüde eşzamanlı çalışır.
+- Her bankanın dual-port olması zorunlu değildir. Aynı bankada READ ve WRITE'ın aynı anda kabul edilmesi, fiziksel hücre ve port tasarımına bağlıdır.
+
+## 39.2 Read/write turnaround ve adalet
+
+Paylaşılan/tek yönlü port kullanan bankalarda READ↔WRITE geçişi için controller gerekli turnaround süresini uygular. Controller, geçiş maliyetini azaltmak için sınırlı read veya write grupları oluşturabilir; ancak karşı yöndeki istekleri süresiz bekletemez. Bekleme yaşı yükselen istek öncelik kazanır ve bounded batch/aging politikasıyla hem READ hem WRITE tarafına servis garantisi verilir.
+
+STORE ardından aynı domain coherence order içinde gelen LOAD, önceki STORE'un görünür olması gereken sonucunu görmelidir. Controller bunu store forwarding veya sıralı bank servisiyle sağlayabilir. Bank içi arbitration, NEXSUS CPU'nun MEMXFER range reservation, ATOM serialization ve domain ordering kurallarını değiştirmez.
+
+## 39.3 App RAM ve Data RAM bağımsız yolları
+
+NEXSUS CPU'nun App RAM'i komut kaynağıdır ve P0/fetch yoluna hizmet eder. Data RAM ise uygulama verisi, LOAD/STORE ve korumalı task-context erişimlerine hizmet eder. İki bellek fiziksel olarak ayrı ve bağımsız controller/erişim yollarına sahip olacak şekilde tasarlanır. Dolayısıyla App RAM'den instruction fetch ile Data RAM'den data read/write, kendi bank/port kaynakları elverdiği sürece aynı anda ilerleyebilir. Bu bağımsızlık, her bankanın çift portlu olduğu anlamına gelmez; her bellek kendi yerel bank arbitration'ını yürütür.
+
 # 40. Flow Control
 
 Bir düğüm veya bellek birimi geçici olarak veri kabul edemiyorsa Flow Control devreye girer.
