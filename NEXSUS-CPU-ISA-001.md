@@ -1365,3 +1365,16 @@ System-control primary opcodes are assigned in `NEXSUS-CPU-INSTRUCTION-ENCODING-
 | 0x9B | IRET | Privileged exception/IRQ return |
 
 CSR IDs and privilege, exception, vector and IRQ state are defined in `NEXSUS-CPU-CSR-001.md`. IRQCLAIM and IRQEOI are side-effecting CSR interface operations; they are not payload transfers. WFI wakeup is distinct from IRQ acceptance and handler entry. RET remains the ordinary call return instruction.
+
+
+## Exception context save/restore ABI
+
+The interrupt/context save protocol is specified in **NEXSUS-CPU-CONTEXT-SAVE-RESTORE-001.md**. It uses existing instructions only; no dedicated SAVECTX/RESTORECTX opcode is introduced in the baseline.
+
+- SPM.RD/SPM.WR provide direct SPM↔RA/FA/DA/MA transfers and are used with the depth-selected SPM7 exception workspace.
+- MOV.DA.RA / MOV.RA.DA, MOV.DA.FA / MOV.FA.DA, and MOV.DA.MA / MOV.MA.DA provide the existing bank-transfer paths.
+- LOAD/STORE move DA staging groups to/from the protected Data RAM software frame.
+- Since DA is the memory staging bank, the handler must save DA values before using DA to stage RA/FA/MA. Restore DA last, after all other banks have been restored.
+- Save masks are compiler/ABI metadata, not architectural registers or new opcodes.
+
+The exact ordering, variable-size frame format, nesting and overflow behavior are normative in the context save/restore document.
