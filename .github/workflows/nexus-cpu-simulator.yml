@@ -1,0 +1,34 @@
+name: NEXSUS CPU simulator checks
+
+on:
+  push:
+    paths:
+      - "NEXUS CPU/tools/**"
+      - "NEXUS CPU/NEXSUS-CPU-COMPARISON-SIMULATOR-001.md"
+      - ".github/workflows/nexus-cpu-simulator.yml"
+  pull_request:
+    paths:
+      - "NEXUS CPU/tools/**"
+      - "NEXUS CPU/NEXSUS-CPU-COMPARISON-SIMULATOR-001.md"
+      - ".github/workflows/nexus-cpu-simulator.yml"
+  workflow_dispatch:
+
+jobs:
+  simulator:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile simulator and tests
+        run: |
+          python -m py_compile "NEXUS CPU/tools/cpu_comparison_sim.py"
+          python -m py_compile "NEXUS CPU/tools/test_cpu_comparison_sim.py"
+      - name: Run regression tests
+        working-directory: "NEXUS CPU/tools"
+        run: python test_cpu_comparison_sim.py
+      - name: Run comparison smoke test
+        run: python "NEXUS CPU/tools/cpu_comparison_sim.py" --scale 1 --json > /tmp/nexus-cpu-results.json
