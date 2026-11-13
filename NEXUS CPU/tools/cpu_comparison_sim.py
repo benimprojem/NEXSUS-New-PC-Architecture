@@ -1208,6 +1208,8 @@ def run_fetch_latency_sweep(workloads, conventional_latencies=(8, 16, 24, 32),
                             p0_latencies=(32, 34, 48, 64, 96), p0_capacity_kb=16):
     """Compare reference I-cache refill assumptions with NEXSUS P0 refill assumptions."""
     target = {"p0_starvation": workloads["p0_starvation"]}
+    last_page = (len(target["p0_starvation"]) * 8 - 1) // 2048
+    page_descriptors = {last_page: {"valid_bytes": 2048, "stream_end": True}}
     rows = {"amd_9950x3d2": {}, "intel_xeon_698x": {}, "apple_m6": {},
             "nexus_conventional": {}, "nexus_p0": {}}
     for key in ("amd_9950x3d2", "intel_xeon_698x", "apple_m6"):
