@@ -307,10 +307,12 @@ class SharedMemoryController:
             req_id = req["id"]
             address = int(req["address"])
             width = max(1, int(req["width"]))
-            beats = max(1, math.ceil(width / self.beat_bytes))
+            first_beat_address = (address // self.beat_bytes) * self.beat_bytes
+            beat_offset = address - first_beat_address
+            beats = max(1, math.ceil((beat_offset + width) / self.beat_bytes))
             bank_wait = 0
             for beat in range(beats):
-                bank = self._bank(address + beat * self.beat_bytes, bank_hash)
+                bank = self._bank(first_beat_address + beat * self.beat_bytes, bank_hash)
                 bank_start = max(cycle, self.bank_busy[bank])
                 bank_wait = max(bank_wait, bank_start - cycle)
                 self.bank_busy[bank] = bank_start + 1
