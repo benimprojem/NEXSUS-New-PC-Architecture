@@ -390,7 +390,7 @@ class CommandFetchModel:
     """Conventional I-cache or PX P0-P7 pool feeding two 2-KiB SPM0 banks."""
     def __init__(self, enabled: bool, p0_capacity_bytes: int = 16384,
                  conventional_capacity_bytes: int = 32768,
-                 p0_refill_latency: int = 48, conventional_refill_latency: int = 32,
+                 p0_refill_latency: int = 48, conventional_refill_latency: int = 8,
                  p0_buffer_bytes: int = 2048, page_descriptors: dict | None = None):
         self.enabled = enabled
         self.capacity_bytes = p0_capacity_bytes if enabled else conventional_capacity_bytes
@@ -400,7 +400,9 @@ class CommandFetchModel:
         self.page_descriptors = {int(k): v for k, v in (page_descriptors or {}).items()}
         self.p0_buffers = [None, None]  # SPM0-A/B, 2 KiB each
         self.p0_pending = None
-        self.pending = None
+        self.pending = {}
+        self.max_i_mshrs = 32
+        self.i_prefetch_lines = 16
         self.active_block = None
         self.hits = self.refills = self.refill_bytes = self.wait_cycles = 0
         self.prefetches = self.buffer_hits = self.prefetch_wait_cycles = 0
@@ -416,10 +418,10 @@ class CommandFetchModel:
                 self.p0_buffers[bank] = block
                 self.p0_pending = None
             return
-        if self.pending is not None and self.pending[1] <= cycle:
-            line, _ = self.pending
+        ready_lines = [line for line, ready in self.pending.items() if ready <= cycle]
+        for line in ready_lines:
             self.lines.insert(line)
-            self.pending = None
+            del self.pending[line]
 
     def _next_logical_page(self, block: int):
         descriptor = self.page_descriptors.get(block)
@@ -473,6 +475,19 @@ class CommandFetchModel:
         self.refill_bytes += self.p0_buffer_bytes
         self.useful_bytes += self.p0_buffer_bytes
 
+    def _start_i_prefetch(self, first_line: int, cycle: int):
+        """Issue a bounded stream of conventional I-cache line fills."""
+        for offset in range(self.i_prefetch_lines):
+            line = first_line + offset
+            if self.lines.lookup(line) or line in self.pending:
+                continue
+            if len(self.pending) >= self.max_i_mshrs:
+                break
+            self.pending[line] = cycle + self.refill_latency
+            self.refills += 1
+            self.refill_bytes += 64
+            self.useful_bytes += 64
+
     def can_fetch(self, command_address: int, cycle: int, sequential: bool = True) -> bool:
         self.complete(cycle)
         if self.enabled:
@@ -507,14 +522,10 @@ class CommandFetchModel:
         line = command_address // 64
         if self.lines.lookup(line):
             self.hits += 1
+            self._start_i_prefetch(line + 1, cycle)
             return True
-        if self.pending is not None:
-            self.wait_cycles += 1
-            return False
-        self.pending = (line, cycle + self.refill_latency)
-        self.refills += 1
-        self.refill_bytes += 64
-        self.useful_bytes += 64
+        if line not in self.pending:
+            self._start_i_prefetch(line, cycle)
         self.wait_cycles += 1
         return False
 
@@ -828,7 +839,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 p0_refill_latency=int(features.get("p0_refill_latency", 48)),
                 page_descriptors=features.get("px_page_descriptors"),
                 conventional_capacity_bytes=int(features.get("conventional_icache_kb", 32)) * 1024,
-                conventional_refill_latency=int(features.get("conventional_refill_latency", 32)),
+                conventional_refill_latency=int(features.get("conventional_refill_latency", 8)),
             )
         else:
             # Give reference CPUs an explicit conventional instruction-fetch
