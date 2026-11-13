@@ -338,6 +338,16 @@ class CrossArchitectureComparisonTests(unittest.TestCase):
         self.assertTrue(all(workload[i].command_address + 8 == workload[i+1].command_address
                             for i in range(len(workload)-1)))
 
+    def test_p0_starvation_partition_keeps_sequential_local_code_addresses(self):
+        workload = sim.build_composite_workload(scale=1)["p0_starvation"]
+        shards = sim.partition_dependency_components(workload, 1)
+        addresses = [op.command_address for op in shards[0]]
+        self.assertEqual(len(addresses), 8192)
+        self.assertEqual(addresses[0], 0)
+        self.assertEqual(addresses[-1], 8191*8)
+        self.assertTrue(all(addresses[i] + 8 == addresses[i+1]
+                            for i in range(len(addresses)-1)))
+
     def test_p0_capacity_is_configurable_and_sweep_preserves_work(self):
         workloads = {"p0_starvation": [sim.Op(i, "INT", command_address=i*8)
                                        for i in range(2048)]}
