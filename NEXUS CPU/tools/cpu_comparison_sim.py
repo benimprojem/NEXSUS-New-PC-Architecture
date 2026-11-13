@@ -61,8 +61,8 @@ PROFILES = {
         "name": "AMD Ryzen 9 9950X3D2 Dual Edition / Zen 5",
         "core_count": 16, "core_type": "uniform", "frontend": 4,
         "dispatch": 8, "issue": 8, "retire": 8, "rob": 448,
-        "units": {"INT": 6, "FP": 4, "VEC": 2, "LOAD": 4, "STORE": 2, "BR": 1, "CTX": 1, "ATOM": 1},
-        "latency": {"INT": 1, "FP": 3, "VEC": 3, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 8},
+        "units": {"INT": 6, "FP": 4, "VEC": 2, "LOAD": 4, "STORE": 2, "BR": 1, "CTX": 1, "ATOM": 1, "IRQ": 1},
+        "latency": {"INT": 1, "FP": 3, "VEC": 3, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 8, "IRQ": 12},
         "l1_kb": 48, "l2_kb": 1024, "l3_kb": 196608, "l4_kb": 0,
         "l1_lat": 4, "l2_lat": 14, "l3_lat": 48, "l4_lat": 0, "dram_lat": 120,
         "branch_penalty": 15, "frequency_ghz": 4.3, "dram_bytes_per_cycle": 21, "vector_bits": 512, "matrix_unit": "VEC"
@@ -72,7 +72,7 @@ PROFILES = {
         "core_count": 86, "core_type": "uniform", "frontend": 6,
         "dispatch": 8, "issue": 8, "retire": 8, "rob": 512,
         "units": {"INT": 6, "FP": 4, "VEC": 2, "AMX": 1, "LOAD": 4, "STORE": 2, "BR": 1, "CTX": 1, "ATOM": 1},
-        "latency": {"INT": 1, "FP": 4, "VEC": 3, "AMX": 2, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 10, "CTX": 8},
+        "latency": {"INT": 1, "FP": 4, "VEC": 3, "AMX": 2, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 10, "CTX": 8, "IRQ": 14},
         "l1_kb": 48, "l2_kb": 2048, "l3_kb": 344064, "l4_kb": 0,
         "l1_lat": 4, "l2_lat": 16, "l3_lat": 60, "l4_lat": 0, "dram_lat": 150,
         "branch_penalty": 16, "frequency_ghz": 2.0, "dram_bytes_per_cycle": 160, "vector_bits": 512, "matrix_unit": "AMX",
@@ -83,7 +83,7 @@ PROFILES = {
         "core_count": 12, "core_type": "uniform", "frontend": 6,
         "dispatch": 8, "issue": 8, "retire": 8, "rob": 384,
         "units": {"INT": 6, "FP": 4, "VEC": 2, "LOAD": 4, "STORE": 2, "BR": 1, "CTX": 1, "ATOM": 1},
-        "latency": {"INT": 1, "FP": 3, "VEC": 2, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 6},
+        "latency": {"INT": 1, "FP": 3, "VEC": 2, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 6, "IRQ": 10},
         "l1_kb": 64, "l2_kb": 4096, "l3_kb": 24576, "l4_kb": 0,
         "l1_lat": 3, "l2_lat": 12, "l3_lat": 36, "l4_lat": 0, "dram_lat": 100,
         "branch_penalty": 12, "frequency_ghz": 3.0, "dram_bytes_per_cycle": 48, "vector_bits": 128, "matrix_unit": "VEC"
@@ -93,7 +93,7 @@ PROFILES = {
         "core_count": 8, "core_type": "uniform", "frontend": 8,
         "dispatch": 8, "issue": 10, "retire": 8, "rob": 128,
         "units": {"INT": 2, "FP": 2, "VEC": 2, "LOAD": 8, "STORE": 4, "BR": 2, "CTX": 1, "ATOM": 1, "ME512": 1},
-        "latency": {"INT": 1, "FP": 3, "VEC": 2, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 4, "ME512": 4},
+        "latency": {"INT": 1, "FP": 3, "VEC": 2, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 4, "ME512": 4, "IRQ": 6},
         "l1_kb": 128, "l2_kb": 1024, "l3_kb": 8192, "l4_kb": 65536,
         "l1_lat": 2, "l2_lat": 8, "l3_lat": 24, "l4_lat": 64, "dram_lat": 120,
         "branch_penalty": 10, "frequency_ghz": 3.0, "bank_hash": "folded", "dram_bytes_per_cycle": 64,
@@ -196,6 +196,15 @@ def build_composite_workload(scale: int = 1) -> Dict[str, List[Op]]:
         add_op(ops, "ATOM", address=0x7800000 + (i % 8)*8, width=8,
                label="shared atomic counter contention")
     result["atomic_contention"] = ops
+
+    # H4) Deterministic IRQ/exception service proxy with context entry/exit.
+    ops = []
+    for event in range(64*n):
+        work = add_op(ops, "INT", label="pre-interrupt work")
+        irq = add_op(ops, "IRQ", (work,), label="IRQ/exception entry service")
+        ctx = add_op(ops, "CTX", (irq,), label="interrupt context frame")
+        add_op(ops, "INT", (ctx,), label="post-interrupt return work")
+    result["irq_exception_stress"] = ops
 
     # I) Branch-heavy independent control flow to expose recovery penalties.
     ops = []
