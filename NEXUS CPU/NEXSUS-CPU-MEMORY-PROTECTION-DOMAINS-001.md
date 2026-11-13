@@ -93,6 +93,14 @@ The full byte range and requested operation must be authorized before an operati
 6. Revoked, stale, malformed, or out-of-bounds descriptors are rejected and reported through the established task/Fabric error path.
 7. No node-to-node or node-to-memory bypass is assumed. Any direct Fabric path must enforce the same grant and lifetime rules.
 
+
+## 7.1 Eşzamanlı erişim ve aktif transfer sahipliği
+
+- Bir memory grant veya allocation, yalnızca izin verilen byte aralığı ve işlem yönü için yetki verir; eşzamanlı erişim tutarlılığı NDC ve domain-controller arbitration kurallarına tabidir.
+- Kabul edilmiş MEMXFER işlemi boyunca kaynak aralığı read-reserved, hedef aralık write-reserved/unpublished kabul edilir. Kaynak üzerinde okuma izni devam eder; çakışan yazma/ATOM işlemleri reddedilir. Hedefe yönelik her türlü normal LOAD/STORE/ATOM erişimi transfer tamamlanana kadar reddedilir.
+- Bu rezervasyon, grant'in iptal edilmesi veya allocation'ın serbest bırakılmasıyla ortadan kaldırılamaz. Revocation/reclaim, ilgili transfer başarıyla veya hatayla terminal duruma ulaşana ve rezervasyon kaldırılana kadar ertelenir.
+- Başka bir transferin hedefi aktif transferin kaynak/hedef aralığıyla çakışamaz. Kaynak-kaynak örtüşmesi read-only olduğundan serbesttir. Çakışma yalnızca aynı domain içindeki kesişen byte aralıklarında değerlendirilir.
+- Rezervasyon, tüm domain'i veya çekirdeği kilitlemez; ilgisiz aralıklar, farklı domain'ler ve izinli kaynak okumaları paralel kalır.
 ## 8. Task switch and migration
 
 Before returning to PL0 for an incoming task, the scheduler must ensure:
