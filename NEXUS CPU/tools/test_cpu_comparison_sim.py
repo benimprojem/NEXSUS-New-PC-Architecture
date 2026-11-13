@@ -331,13 +331,14 @@ class CrossArchitectureComparisonTests(unittest.TestCase):
         self.assertEqual({r["total_ops"] for r in results.values()}, {8})
 
     def test_p0_capacity_is_configurable_and_sweep_preserves_work(self):
-        workloads = {"p0_small": [sim.Op(i, "INT", command_address=(i % 1024)*8)
-                                  for i in range(256)]}
+        workloads = {"p0_starvation": [sim.Op(i, "INT", command_address=i*8)
+                                       for i in range(2048)]}
         sweep = sim.run_p0_capacity_sweep(workloads, sim.PROFILES["nexus_balanced_128"])
         self.assertEqual(set(sweep["results"]), {"4", "8", "16", "32"})
-        self.assertEqual({r["total_ops"] for r in sweep["results"].values()}, {256})
-        self.assertEqual({r["kernels"]["p0_small"]["ops"]
-                          for r in sweep["results"].values()}, {256})
+        self.assertEqual({r["total_ops"] for r in sweep["results"].values()}, {2048})
+        self.assertEqual({r["kernels"]["p0_starvation"]["ops"]
+                          for r in sweep["results"].values()}, {2048})
+        self.assertGreater(len({r["total_cycles"] for r in sweep["results"].values()}), 1)
 
     def test_fetch_latency_sweep_preserves_same_command_workload(self):
         workloads = {"p0_starvation": [
@@ -351,7 +352,7 @@ class CrossArchitectureComparisonTests(unittest.TestCase):
             "nexus_conventional", "nexus_p0",
         })
         self.assertEqual(set(sweep["results"]["nexus_conventional"]), {"8", "16", "24", "32"})
-        self.assertEqual(set(sweep["results"]["nexus_p0"]), {"64", "96", "128", "160"})
+        self.assertEqual(set(sweep["results"]["nexus_p0"]), {"32", "34", "48", "64", "96"})
         self.assertTrue(all(row["ops"] == 128
                             for group in sweep["results"].values()
                             for row in group.values()))
