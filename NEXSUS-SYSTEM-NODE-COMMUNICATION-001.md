@@ -88,3 +88,8 @@ The notification mechanism's physical implementation—dedicated notification wi
 - Node task notification is a control-plane operation; it is not a LOAD/STORE, register XFER, or Lx memory copy.
 - System Fabric owns node request routing and payload movement.
 - A future CPU instruction or privileged interface may publish/notify a task, but its opcode and exact interface must be designed only after the Fabric control protocol is specified.
+
+
+## 9. Memory authorization reference
+
+Node payload access is governed by `NEXSUS-CPU-MEMORY-PROTECTION-DOMAINS-001.md`. A task descriptor is a reference, not an access grant. Fabric authorization must validate task identity/generation, target, memory domain, range, operation, length, and grant lifetime before moving payload. IRQ/event notification does not grant memory access or provide memory visibility.
