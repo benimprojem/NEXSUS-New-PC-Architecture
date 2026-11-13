@@ -1,7 +1,7 @@
 # NEXSUS CPU — Cross-Architecture Comparison Simulator
 
 **Document ID:** NEXSUS-CPU-COMPARISON-SIMULATOR-001  
-**Status:** Simulator v0.2.1; controlled 8-core model with experimental NEXSUS width profiles and stall counters (shared-memory contention still pending)  
+**Status:** Simulator v0.2.2; controlled 8-core model with Balanced-128 candidate and clarified stall diagnostics (shared-memory contention still pending)  
 **Purpose:** Compare one deterministic mixed workload across AMD Zen 5, Intel Arrow Lake P/E cores, and configurable NEXSUS CPU candidates.
 
 ## 1. Comparison targets
@@ -100,23 +100,23 @@ The Intel E-core profile is reported separately as an 8-core E-core reference, n
 
 The original NEXSUS profile is retained unchanged as the baseline. Two additional design-space candidates are reported separately; neither is an architectural freeze.
 
-| Parameter | Existing baseline | 8L4S memory-focused | Wide balanced |
+| Parameter | Existing baseline | 8L4S memory-focused | Wide balanced | Balanced-128 |
 |---|---:|---:|---:|
-| Front-end | 4 | 6 | 8 |
-| Dispatch | 4 | 6 | 8 |
-| Issue | 5 | 8 | 10 |
-| Retire | 4 | 6 | 8 |
-| ROB-like window | 64 | 128 | 192 |
-| INT units | 2 | 3 | 4 |
-| FP units | 2 | 3 | 4 |
-| VEC units | 1 | 1 | 2 |
-| LOAD units | 2 | **8** | **8** |
-| STORE units | 1 | **4** | **4** |
-| BR units | 1 | 1 | 2 |
+| Front-end | 4 | 6 | 8 | 8 |
+| Dispatch | 4 | 6 | 8 | 8 |
+| Issue | 5 | 8 | 10 | 10 |
+| Retire | 4 | 6 | 8 | 8 |
+| ROB-like window | 64 | 128 | 192 | 128 |
+| INT units | 2 | 3 | 4 | 4 |
+| FP units | 2 | 3 | 4 | 4 |
+| VEC units | 1 | 1 | 2 | 2 |
+| LOAD units | 2 | **8** | **8** | **8** |
+| STORE units | 1 | **4** | **4** | **4** |
+| BR units | 1 | 1 | 2 | 2 |
 
 All three candidates retain the same provisional cache capacities/latencies, 8-bank folded mapping, 32-byte/reference-cycle DRAM bandwidth, operation latencies and 3.0 GHz reference clock. This isolates the effect of execution and pipeline width in the current simplified model. The candidates are not yet constrained by physical area, power, wiring, queue implementation, bank-port availability or clock closure.
 
-The 8L4S profile tests whether a wider memory issue subsystem improves streaming and mixed workloads while keeping compute resources moderately sized. The wide-balanced profile additionally expands integer, FP, vector, branch and pipeline capacity. The 8 LOAD + 4 STORE figures represent modeled concurrent issue slots, not a guarantee that every access completes in the same cycle: dependencies, memory latency, bank conflicts and later shared-controller arbitration still constrain throughput.
+The 8L4S profile tests whether a wider memory issue subsystem improves streaming and mixed workloads while keeping compute resources moderately sized. The wide-balanced profile additionally expands integer, FP, vector, branch and pipeline capacity. Balanced-128 keeps the wide-balanced execution/front-end widths but reduces the ROB-like window from 192 to 128 to test whether the larger window is necessary. The 8 LOAD + 4 STORE figures represent modeled concurrent issue slots, not a guarantee that every access completes in the same cycle: dependencies, memory latency, bank conflicts and later shared-controller arbitration still constrain throughput.
 
 ### Stall counters
 
@@ -127,16 +127,16 @@ The report now includes:
 - front-end bandwidth-limited cycles;
 - ROB-full cycles;
 - branch-recovery cycles;
-- cumulative modeled LOAD/STORE operation wait cycles.
+- cumulative modeled memory-latency exposure (`latency - 1` summed per issued LOAD/STORE); this is not measured stall time.
 
-These are diagnostic counters, not mutually exclusive wall-clock durations. Some count per-operation events and others count cycles; they must not be added together as elapsed time. The current per-core memory model can also understate contention because each simulated core still has private bank and DRAM scheduling state. Shared memory arbitration must be implemented before treating 8L4S throughput as a realistic whole-chip prediction.
+These are diagnostic counters, not mutually exclusive wall-clock durations. Some count per-operation events and others count cycles; they must not be added together as elapsed time. The current per-core memory model can also understate contention because each simulated core still has private bank and DRAM scheduling state. The memory-latency exposure counter is descriptive latency accounting, not a count of cycles during which the pipeline was actually stalled. Shared memory arbitration must be implemented before treating 8L4S throughput as a realistic whole-chip prediction.
 
 ## 7. Roadmap
 
 | Version | Scope | Acceptance condition |
 |---|---|---|
 | v0.1 | Deterministic kernels, dependency scheduling, basic cache and bank approximation | Initial scaffold |
-| v0.2 | Controlled 8-core scheduling with equal reference clocks; dependency-component parallelism | Per-core partition and clock-normalization checks pass |\n| v0.2.1 | Experimental 8L4S and wide-balanced NEXSUS profiles; stall diagnostics | Compare candidate outputs and inspect dominant resource stalls |
+| v0.2 | Controlled 8-core scheduling with equal reference clocks; dependency-component parallelism | Per-core partition and clock-normalization checks pass |\n| v0.2.1 | Experimental 8L4S and wide-balanced NEXSUS profiles; initial stall diagnostics | Compare candidate outputs and inspect dominant resource stalls |\n| v0.2.2 | Balanced-128 candidate; distinguish blocked-operation-cycle events from cycle counters and latency exposure | Run the 128-vs-192 window comparison and verify counter semantics |
 | v0.3 | Shared LLC/memory-controller contention, coherence, true P/E placement, SMT and NEXSUS P0/SPM/App RAM/L1–L4/8-bank/MEMXFER | Existing NEXSUS contracts represented without invented ISA |
 | v0.4 | Interrupts, exceptions, context save/restore, atomic operations and memory ordering | Architectural conformance scenarios pass |
 | v0.5 | Calibration against actual Ryzen 9 9950X and Core Ultra 9 285K measurements | Error bounds reported per kernel |
