@@ -113,9 +113,9 @@ def run_self_tests() -> None:
         assert result["unique"] == expected_banks
         assert result["rounds"] == 1
 
-    # A 512-bit request shifted by one 64-bit slice touches nine words;
+    # A 512-bit request shifted by one byte touches nine 64-bit words;
     # one bank is demanded twice in this simple striping model.
-    misaligned = analyze_batch([Request(8, 512)], "low")
+    misaligned = analyze_batch([Request(1, 512)], "low")
     assert misaligned["total_bank_beats"] == 9
     assert misaligned["rounds"] == 2
 
@@ -144,7 +144,7 @@ def run_width_table(base: int, widths: tuple[int, ...]) -> None:
     print(f"\nSingle request width sweep, base=0x{base:x}")
     print("width | alignment offset | mapping | bank beats | unique | min rounds")
     for width in widths:
-        for offset in (0, 8):
+        for offset in (0, 1):
             request = Request(base + offset, width, f"w{width}")
             for mapping in ("low", "folded"):
                 result = analyze_batch([request], mapping)
