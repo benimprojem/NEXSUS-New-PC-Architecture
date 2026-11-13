@@ -140,7 +140,7 @@ STORE.L3.W256 [RA22 + 0], DA12:DA15
 Örnek bank akışı:
 
 ```asm
-LOAD DA12, [RA20]
+LOAD.L1 DA12, [RA20 + 0]
 MOV.RA.DA RA05, DA12
 ADD RA06, RA05, RA02
 
@@ -151,7 +151,7 @@ FCONV RA07, FA04, i64
 MOV.MA.DA MA04, DA00:DA03
 VADD.W32 MA08, MA04, MA12
 MOV.DA.MA DA04:DA07, MA08
-STORE [RA21], DA04
+STORE.L1 [RA21 + 0], DA04
 ```
 
 Bu örnek operand banklarını ve açık transferleri gösterir; kesin opcode encoding'i, erişim genişlikleri ve alignment kuralları ayrı ISA aşamasında sabitlenecektir.
@@ -508,9 +508,9 @@ NEXUS Flow'daki `area` ve `zone` tanımları, bu mekanizmanın compiler tarafın
 
 - `area`: yalnızca ilgili çekirdeğin özel L1 alanını hedefler; çekirdek-local çalışma alanı ve lifetime kapsamıdır.
 - `zone`: yalnızca çekirdekler arası paylaşılan L2/L3/L4 bellek alanlarını hedefler. SPM veya L1, zone seviyesi olarak kabul edilmez.
-- Compiler, scope/lifetime ve erişim örüntüsünden güvenli preload noktaları çıkarabilir.
-- Programcı açıkça zone seçtiğinde compiler bunu uygun CACHE.LOAD/PREFETCH komutlarına dönüştürebilir; CPU runtime range ve cache seviyesini kontrol eder.
-- `area`/`zone` bildirimi tek başına veri cache'e yüklenmiş demek değildir; gerçek preload, açık komut veya compiler'ın ürettiği operasyonla gerçekleşir.
+- Compiler, scope/lifetime ve erişim örüntülerini yerleşim ve kod optimizasyonu için kullanabilir; bu bilgi tek başına bellek aktarımı başlatmaz.
+- `area`/`zone` bildirimi veriyi otomatik olarak L1–L4'e taşımaz veya LOAD işlemi üretmez.
+- Programın açıkça istediği veri okuma/yazma işlemi LOAD/STORE ile; farklı domain'e gerçek kopyalama ise XFER ile gerçekleştirilir. Compiler yalnızca bu açık semantiği koruyan komutlar üretir.
 - Cache seviyesine kalıcı pinning varsayılan davranış olmamalıdır. Gerekirse ayrı, kapasite sınırı olan ve açıkça serbest bırakılan pin/residency mekanizması tasarlanır.
 
 Örnek ISA taslağı:
@@ -525,7 +525,6 @@ Bu örnek 4 KiB aralığı L2'ye hazırlama isteğidir; RA10 base register örne
 ### 22.5 Açık kararlar
 
 - L1–L4 seviyelerinin NEXSUS platformlarında kesin fiziksel karşılığı.
-- Komutun isimlendirmesi: LOAD.Lx mı CACHE.LOAD.Lx mı.
 - Synchronous/asynchronous completion ve token sayısı.
 - RETAIN/pin davranışı, quota ve release komutları.
 - Cache line size, range limit, alignment ve fault reporting.
@@ -572,7 +571,7 @@ Bu kod yalnızca kavramsal gösterimdir; Nexus Flow'un kesin grammar'ı değildi
 
 ### 22.8 Eski preload komutlarının durumu
 
-Önceki taslakta yer alan `LOAD.L1–L4`, `PREFETCH.L1–L4` ve `EVICT.L1–L4` komutları otomatik cache residency yönetimi olarak ISA kapsamından çıkarılmıştır. Ayrık bellek modelinde veri, yalnızca açıkça hedeflenen domain'de okunur veya yazılır. Başka bir domain'e kopyalanması gerekiyorsa `XFER` kullanılır.
+Önceki taslaktaki `LOAD.Lx [addr], length, RETAIN` biçimindeki range-preload işlemi ile `PREFETCH.Lx` ve `EVICT.Lx` residency komutları ISA kapsamından çıkarılmıştır. Bunlar, burada tanımlanan `LOAD.L1–L4 DA, [addr]` gerçek veri okuma komutlarıyla aynı işlem değildir. Gerçek LOAD/STORE yalnızca seçilen domain'e erişir; başka bir domain'e kopyalama gerekiyorsa açık `XFER` kullanılır.
 
 ### 22.9 Çekirdek sayısına göre paylaşılan bellek topolojisi
 
