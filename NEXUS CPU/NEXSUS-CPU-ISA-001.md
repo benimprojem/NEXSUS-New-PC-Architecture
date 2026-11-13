@@ -252,7 +252,7 @@ Memory komutlarının numeric OP atamaları Encoding belgesi §8.5–§8.6 ile e
 | 0x87 | XFER.START | MEMXFER |
 | 0x88 | XFER.WAIT | MEMXFER |
 
-MEMXFER, register bank XFER (0x85) ile aynı komut değildir. Kaynak/hedef L1–L4 domain'leri, RA içindeki byte adresleri ve RA içindeki byte uzunluğu ile CPU kontrollü kopyalama yapar. Synchronous XFER.MEM tamamlanana kadar bekler; XFER.START token üretir; XFER.WAIT token'ın tamamlanmasını bekler. Her iki uç için erişim izni, aralık ve sahiplik kontrolleri `NEXSUS-CPU-MEMORY-ACCESS-CONTROL-001.md` belgesindeki kurallara tabidir. MEMXFER'ın alan yerleşimi ve tam field-level encoding semantiği Instruction Encoding belgesinde henüz tamamlanmamıştır; bu nedenle SYS/FENCE olan §4.14 bu komut için referans değildir.
+MEMXFER, register bank XFER (0x85) ile aynı komut değildir. Kaynak/hedef L1–L4 domain'leri, RA içindeki byte adresleri ve RA içindeki byte uzunluğu ile CPU kontrollü kopyalama yapar. Synchronous XFER.MEM tamamlanana kadar bekler; XFER.START token üretir; XFER.WAIT token'ın tamamlanmasını bekler. Her iki uç için erişim izni, aralık ve sahiplik kontrolleri `NEXUS CPU/NEXSUS-CPU-MEMORY-ACCESS-CONTROL-001.md` belgesindeki kurallara tabidir. MEMXFER için aday 52-bit payload alan eşlemesi Instruction Encoding §4.15'te tanımlıdır. Bu eşleme henüz freeze edilmemiştir; §4.14 ise yalnızca SYS/FENCE formatıdır.
 
 ## 5.3 Little-endian bellek ve register-grup sıralaması
 
@@ -1261,12 +1261,15 @@ Bu değerler ilk mimari hedeflerdir; nihai silikon kapasitesi değildir. Her bas
 Örnek taslak:
 
 ```asm
-XFER L3:[RA20], L1:[RA10], 4096
-; RA10 kaynak adresini, RA20 hedef adresini tutar.
-; 4 KiB veri L1'den L3'e CPU kontrollü olarak aktarılır.
+XFER.MEM L3:[RA20], L1:[RA10], length=RA5
+; RA10 kaynak byte adresini, RA20 hedef byte adresini tutar.
+; RA5 aktarılacak byte uzunluğunu tutar.
+
+XFER.START token=RA6, L3:[RA20], L1:[RA10], length=RA5
+XFER.WAIT RA6
 ```
 
-Buradaki register gösterimleri yalnızca adres operandı örneğidir; kesin operand encoding'i ve transfer buffer/throughput tasarımı henüz sabitlenmemiştir.
+Bu assembly gösterimi semboliktir. Alan selector'larının bit yerleşimi ve opcode'a göre geçerliliği Instruction Encoding §4.15'teki aday eşlemeye tabidir; token yaşam döngüsü ve bazı alias/edge-case kuralları henüz açık karardır.
 
 ### 22.16 Lx domain'leri için XFER tamamlanma sözleşmesi
 
@@ -1382,4 +1385,4 @@ The exact ordering, variable-size frame format, nesting and overflow behavior ar
 
 ## 11. Memory access-control flow reference
 
-The validation flow for App RAM instruction fetch, LOAD/STORE, ATOM, and L1–L4 memory-domain XFER is specified in `NEXSUS-CPU-MEMORY-ACCESS-CONTROL-001.md`. The ISA-level effective-address, alignment, bounds, permission-fault, and all-checks-before-commit rules remain authoritative; the new document defines how those existing rules are applied along the access paths without adding an opcode or standalone protection unit.
+The validation flow for App RAM instruction fetch, LOAD/STORE, ATOM, and L1–L4 memory-domain XFER is specified in `NEXUS CPU/NEXSUS-CPU-MEMORY-ACCESS-CONTROL-001.md`. The ISA-level effective-address, alignment, bounds, permission-fault, and all-checks-before-commit rules remain authoritative; the new document defines how those existing rules are applied along the access paths without adding an opcode or standalone protection unit.
