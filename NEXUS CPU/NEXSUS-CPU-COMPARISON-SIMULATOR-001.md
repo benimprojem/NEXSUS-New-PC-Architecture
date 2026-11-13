@@ -150,6 +150,7 @@ These are diagnostic counters, not mutually exclusive wall-clock durations. Some
 From the repository root:
 
 ```bash
+python "NEXUS CPU/tools/test_cpu_comparison_sim.py"
 python "NEXUS CPU/tools/cpu_comparison_sim.py"
 python "NEXUS CPU/tools/cpu_comparison_sim.py" --scale 2 --json
 ```
