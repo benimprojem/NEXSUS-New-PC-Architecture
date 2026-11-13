@@ -23,13 +23,13 @@ Temel ilke:
 
 SPM, NEXSUS CPU içerisinde bulunan, doğrudan adreslenebilir ve sayfalara ayrılmış çalışma belleğidir.
 
-SPM0 ve SPM1'in görevleri birbirinden ayrıdır. SPM0, yürütme akışına alınmış komutların geçici kayıt/çalışma alanı olarak kullanılır. SPM1 ise değişken genişlikli geçici veri ve ara hesaplama değerleri için kullanılabilir.
+SPM0, CPU çalışırken yürütme aşamasında oluşan geçici komutsal durumun, ara değerlerin ve sonuçların saklandığı alandır. Stack benzeri geçici saklama işlevi görür; ancak zorunlu LIFO sırası yoktur ve doğrudan adreslenir. SPM1–SPM7 ise aynı doğrudan adreslenebilir modeli veri tarafında uygular; geçici veriler ve ara hesaplama değerleri için kullanılır.
 
 SPM, geleneksel yığının bire bir karşılığı değildir. Veriler zorunlu bir LIFO sırasına göre değil, tanımlı adresleri ve alanları üzerinden yönetilir.
 
 ### 2.1 SPM0 — 64 bitlik temel kayıt alanı
 
-SPM0, P0'dan fetch edilerek dispatch/yürütme akışına alınan komutların geçici kayıt alanıdır. Komutların yürütme birimlerine dağıtılması ve yürütme sırasında gereken geçici komut kayıtlarının tutulması için kullanılır. P0'ın yerini almaz: P0 sıradaki komutları App RAM'den getirirken SPM0 yürütme tarafındaki komut kayıtlarını tutar.
+SPM0, komutların kendisini veya fetch/dispatch kuyruğunu saklamaz. CPU çalışırken komutların yürütülmesi sonucunda oluşan geçici komutsal durumu, ara değerleri ve sonuçları tutar. Stack benzeri bir çalışma alanıdır; ancak veriler LIFO sırasına bağlı olmadan doğrudan adreslenebilir.
 
 SPM0 için başlangıç kapasitesi 32 KiB olarak belirlenir.
 
@@ -48,11 +48,11 @@ Her sayfa 4096 bayt fiziksel kapasiteye sahiptir ve 512 adet 64 bitlik kayıt e�
 
 SPM0'da 64 bitlik kayıt temel adreslenebilir birimdir. Daha küçük alanların kullanılması, kaydın fiziksel olarak ayrı belleklere bölünmesini gerektirmez.
 
-SPM0'ın birincil mimari görevi yürütülmekte olan komutlar için geçici kayıt alanı sağlamaktır. SPM0'ın genel amaçlı veri spill alanı olarak kullanılması zorunlu değildir; genel geçici veri ve ara hesaplama alanları için SPM1 veya diğer uygun bellek/register kaynakları değerlendirilir.
+SPM0'ın birincil görevi yürütme sırasında oluşan geçici komutsal durum, ara değerler ve sonuçlar için doğrudan adreslenebilir alan sağlamaktır. Genel geçici veri ve ara hesaplama değerleri SPM1–SPM7 alanlarında tutulur.
 
-### 2.2 SPM1 — Değişken genişlikli veri alanı
+### 2.2 SPM1–SPM7 — Değişken genişlikli veri alanları
 
-SPM1, değişken boyutlu veriler için tasarlanan mantıksal çalışma alanıdır.
+SPM1–SPM7, değişken boyutlu geçici veriler ve ara hesaplama değerleri için ayrılmış doğrudan adreslenebilir çalışma alanlarıdır. Her biri SPM sayfa/ofset modeliyle erişilir; yazılım ve derleyici ihtiyaç duyduğu alanı doğrudan adresleyebilir. Her alanın kesin kapasitesi ve fiziksel bank/port düzeni mikro-mimari aşamasında belirlenecektir.
 
 Desteklenmesi hedeflenen veri genişlikleri:
 
@@ -62,11 +62,11 @@ Desteklenmesi hedeflenen veri genişlikleri:
 - 64 bit
 - 128 bit
 
-SPM1'de 8 bitlik byte adresleme modeli kullanılabilir. Böylece veri türleri ve alanlar doğal boyutlarına göre tanımlanabilir.
+SPM1–SPM7'de 8 bitlik byte adresleme modeli kullanılabilir. Böylece veri türleri ve alanlar doğal boyutlarına göre tanımlanabilir.
 
 128 bitlik değerler, tek bir mantıksal veri türü olarak ele alınabilir; fiziksel olarak birden fazla kayıt veya erişim gerektirip gerektirmediği donanım tasarımına bağlıdır.
 
-SPM0 ve SPM1, başlangıçta mantıksal bellek bölgeleridir. Bunların mutlaka ayrı fiziksel bellek dizileri olması gerekmez.
+SPM0–SPM7, mimaride ayrı işlevsel çalışma alanları olarak tanımlanır; fiziksel bellek dizileri, bank paylaşımı ve port düzeni donanım tasarımında kesinleştirilir. Bunların mutlaka ayrı fiziksel bellek dizileri olması gerekmez.
 
 ## 3. Sayfa Kimliği ve Ofset Adreslemesi
 
@@ -82,7 +82,7 @@ SPM0 için sekiz sayfa ve her sayfada 512 adet 64 bitlik kayıt bulunduğundan, 
 
 Bu iki alan toplam 12 bitlik mantıksal kayıt konumu oluşturur.
 
-SPM1'de byte adresleme kullanıldığı için sayfa içi ofsetin yorumu farklıdır. 4 KiB sayfanın içindeki byte konumunu belirlemek için 12 bit gerekir.
+SPM1–SPM7'de byte adresleme kullanıldığı için sayfa içi ofsetin yorumu farklıdır. 4 KiB sayfanın içindeki byte konumunu belirlemek için 12 bit gerekir.
 
 Dolayısıyla SPM0 ve SPM1 aynı sayfa boyutunu kullanırken farklı adresleme birimlerine sahip olabilir.
 
