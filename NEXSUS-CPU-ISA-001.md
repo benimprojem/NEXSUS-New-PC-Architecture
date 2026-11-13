@@ -52,7 +52,7 @@ Bu bölümdeki scalar/integer komutlarının kaynak ve hedef operandları RA0–
 
 | Mnemonic (taslak) | Operand biçimi | İşlev | Unit |
 |---|---|---|---|
-| MOV | dst, src | Register kopyalama | Register path |
+| MOV | dst, src | Register kopyalama | Register path |\n| MOVI | dst, imm | Signed 36-bit immediate veya EXT ile tam 64-bit literal yükleme | ALU / immediate path |
 | ADD | dst, src1, src2 | Integer toplama | ALU |
 | SUB | dst, src1, src2 | Integer çıkarma | ALU |
 | MUL | dst, src1, src2 | Integer çarpma | ALU / multiply pipeline |
@@ -718,3 +718,23 @@ EXT, normal komutun önüne gelen bir prefix'tir; hedef opcode'un veya operandla
 - EXT kullanılmayan komutlar tek 64-bit word olarak kalır; normal komutların kodlanması ve yürütülmesi değişmez.
 
 Bu mekanizma MOVI64 gibi geniş sabit yükleme işlemlerinin yanı sıra, ileride opcode bazında tanımlanacak geniş displacement ve adres operandları için de ortak taşıma yolu sağlar. Numeric EXT opcode değeri ve opcode başına literal yorumları ISA taslağında henüz dondurulmamıştır.
+
+
+### 3.1 MOVI immediate yükleme semantiği
+
+`MOVI RA[d], imm`, RA hedef register'ına sabit değer yükler.
+
+- EXT kullanılmayan biçimde RI formatındaki signed 36-bit immediate 64-bit'e sign-extend edilir.
+- Tam 64-bit sabit gerektiğinde assembler, `EXT → MOVI RI → 64-bit literal` paketini üretir. EXT prefix `RAW_LITERAL` ve `COUNT=1` kullanır.
+- EXT'li biçimde RI.IMM alanı sıfırdır ve literal'in 64-bit ham bit deseni doğrudan hedef RA register'ına yazılır; sign-extension veya numeric reinterpretation yapılmaz.
+- `MOVI64`, `MOVI` için assembler alias'ıdır; ayrı bir opcode değildir.
+- Her iki biçimde de hedef register yalnızca komut paketi başarıyla decode edilip yürütüldüğünde güncellenir. Illegal encoding/fetch fault durumunda hedef register korunur.
+
+Örnek:
+
+```asm
+MOVI RA1, -17
+MOVI64 RA4, 0x123456789ABCDEF0
+```
+
+İkinci örnek üç 64-bit word tüketir: EXT prefix, MOVI instruction ve literal. Numeric opcode ataması henüz yapılmamıştır.
