@@ -346,3 +346,39 @@ The following provisional IDs extend the CSR map; detailed behavior is specified
 TIME frequency is platform-discovered and is not fixed by the ISA. TIME wraps modulo 2^64; modular deadline comparisons are valid within a half-range (<2^63 ticks). Timer expiration is a source event routed through the IRQ Controller, never a direct CPU bypass. Timer-source pending and IRQ-controller pending are separate states.
 
 IPI is a core-to-core interrupt notification, not a data transfer. Sender publishes shared data with RELEASE before IPI; receiver consumes with ACQUIRE. Mailbox overflow/lost sequence must be observable and recoverable. Mailbox acknowledgement and IRQEOI are separate operations. Exact IPI_SEND packing, mailbox capacity, and source IDs remain platform-defined.
+
+
+## 18. Synchronous exception CODE baseline
+
+CAUSE.CODE is a 7-bit architectural exception code. These codes describe synchronous CPU faults/traps only; asynchronous timer/IPI/Node events are IRQ event classes and do not use this table.
+
+| CODE | Name | Meaning |
+|---:|---|---|
+| 0x00 | RESERVED | Invalid/unassigned; never a normal exception |
+| 0x01 | INSTR_ALIGN | PC/instruction packet alignment fault |
+| 0x02 | INSTR_ACCESS | App-RAM/P0 instruction fetch access fault |
+| 0x03 | ILLEGAL_INSTR | Undefined opcode, format or reserved encoding |
+| 0x04 | PRIVILEGE | Operation/CSR access forbidden at current privilege |
+| 0x05 | BREAKPOINT | Explicit breakpoint instruction/debug trap |
+| 0x06 | ECALL | Environment/system-call trap |
+| 0x07 | INSTR_EXT | Invalid/missing EXT literal or malformed instruction packet |
+| 0x08 | BRANCH_TARGET | Branch/call target is not a valid instruction boundary |
+| 0x10 | LOAD_ALIGN | Load address alignment fault |
+| 0x11 | LOAD_ACCESS | Load access/domain/permission fault |
+| 0x12 | STORE_ALIGN | Store address alignment fault |
+| 0x13 | STORE_ACCESS | Store access/domain/permission fault |
+| 0x14 | ATOMIC_ALIGN | Atomic operand alignment fault |
+| 0x15 | ATOMIC_ACCESS | Atomic permission or unsupported-width fault |
+| 0x16 | DOMAIN_ACCESS | Invalid or inaccessible memory domain/handle |
+| 0x17 | MEMORY_BOUNDS | Bounds/region violation |
+| 0x20 | DIV_ZERO | Integer division by zero |
+| 0x21 | INT_OVERFLOW | Trapping integer overflow (where operation defines it) |
+| 0x28 | FP_EXCEPTION | Floating-point exception configured to trap |
+| 0x29 | FP_UNSUPPORTED | Unsupported FP operation/format |
+| 0x30 | VECTOR_EXCEPTION | Vector/matrix operation fault |
+| 0x38 | CSR_FAULT | CSR absent, read-only write, or invalid CSR operation |
+| 0x40 | TRAP | Explicit synchronous TRAP instruction |
+| 0x7E | DOUBLE_FAULT | Exception while handling an exception; fatal vector |
+| 0x7F | PLATFORM_EXCEPTION | Platform-defined synchronous exception (EXCINFO supplies detail) |
+
+Unlisted codes are reserved and must not be reused without an architecture revision. BADADDR_VALID and EXCINFO_VALID determine whether BADADDR/EXCINFO contain meaningful data. RETRYABLE and SKIP_ALLOWED are cause-specific; software must not infer them from CODE alone.
