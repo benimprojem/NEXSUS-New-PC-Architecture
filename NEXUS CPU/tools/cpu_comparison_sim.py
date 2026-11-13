@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""NEXSUS CPU comparison simulator — controlled 8-core model v0.2.
+"""NEXSUS CPU comparison simulator — controlled 8-core model v0.2.3
 
 This is an event/cycle-level teaching and design-space model, not RTL, gem5,
 or a vendor-certified replica. Unknown NEXSUS parameters are explicit inputs.
@@ -46,7 +46,7 @@ class CoreProfile:
     bank_count: int = 8
     bank_beat_bytes: int = 8
     bank_hash: str = "low"
-    dram_bytes_per_cycle: int = 32
+    dram_bytes_per_cycle: float = 32
     core_count: int = 1
     core_type: str = "uniform"
 
@@ -432,7 +432,7 @@ def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=N
     # the full chip-wide bandwidth.
     core_profile_dict = dict(profile_dict)
     aggregate_dram_bandwidth = int(profile_dict.get("dram_bytes_per_cycle", 32))
-    per_core_dram_bandwidth = max(1, aggregate_dram_bandwidth // max(1, cores))
+    per_core_dram_bandwidth = aggregate_dram_bandwidth / max(1, cores)
     core_profile_dict["dram_bytes_per_cycle"] = per_core_dram_bandwidth
     p = profile_from_dict(core_profile_dict)
     results = {}
@@ -498,9 +498,9 @@ def main():
             print(f"{name:22} {kernel['cycles']:10d} {kernel['ops']:9d} "
                   f"{kernel['aggregate_ipc']:8.3f} {kernel['active_cores']:7d} "
                   f"{kernel['cache_accesses']['DRAM']:8d}")
-    print("\\nSTALL COUNTERS (blocked operation-cycle events and cycle counters; not additive wall-clock time)")
+    print("\nSTALL COUNTERS (blocked operation-cycle events and cycle counters; not additive wall-clock time)")
     for key, result in profiles.items():
-        print(f"\\n[{result['cpu']}]")
+        print(f"\n[{result['cpu']}]")
         print(f"{'kernel':22} {'dep-opcy':>10} {'issue-opcy':>11} {'unit-opcy':>10} {'front-cy':>9} {'ROB-cy':>8} {'branch-cy':>10} {'mem-exp':>10}")
         for name, kernel in result["kernels"].items():
             c = kernel["stall_counters"]
