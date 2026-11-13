@@ -260,7 +260,7 @@ The eight-bank × 64-bit organization is the recommended architecture baseline f
 
 Until then, the bank count and width are a recommended topology, not a claim of proven silicon performance.
 
-## 12. Architecture references
+## 12. Architecture references\n\n- [Bank Controller Behavior](NEXSUS-CPU-BANK-CONTROLLER-001.md) defines local bank queues, all-or-none multi-bank admission, port scheduling and wide-access completion.
 
 These references are comparative evidence for banked access paths, address-based bank selection, independent load/store resources and the value of bank-conflict testing. They are not direct templates for MOSRAM:
 
