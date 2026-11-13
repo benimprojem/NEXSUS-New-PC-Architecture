@@ -54,49 +54,45 @@ class CoreProfile:
 # Publicly documented or independently measured values are marked in docs.
 # Unpublished/uncertain values are conservative model assumptions, not claims.
 PROFILES = {
-    "amd_9950x": {
-        "name": "AMD Ryzen 9 9950X / Zen 5",
-        "core_count": 8, "core_type": "uniform", "frontend": 4,
+    "amd_9950x3d2": {
+        "name": "AMD Ryzen 9 9950X3D2 Dual Edition / Zen 5",
+        "core_count": 16, "core_type": "uniform", "frontend": 4,
         "dispatch": 8, "issue": 8, "retire": 8, "rob": 448,
         "units": {"INT": 6, "FP": 4, "VEC": 2, "LOAD": 4, "STORE": 2, "BR": 1, "CTX": 1, "ATOM": 1},
         "latency": {"INT": 1, "FP": 3, "VEC": 3, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 8},
-        "l1_kb": 48, "l2_kb": 1024, "l3_kb": 32768, "l4_kb": 0,
+        "l1_kb": 48, "l2_kb": 1024, "l3_kb": 196608, "l4_kb": 0,
         "l1_lat": 4, "l2_lat": 14, "l3_lat": 48, "l4_lat": 0, "dram_lat": 120,
-        "branch_penalty": 15, "frequency_ghz": 3.0,
-        "dram_lat": 120, "dram_bytes_per_cycle": 32
+        "branch_penalty": 15, "frequency_ghz": 4.3, "dram_bytes_per_cycle": 32
     },
-    "intel_285k_p": {
-        "name": "Intel Core Ultra 9 285K / Lion Cove P-core",
-        "core_count": 8, "core_type": "P", "frontend": 8,
-        "dispatch": 8, "issue": 8, "retire": 12, "rob": 576,
-        "units": {"INT": 6, "FP": 4, "VEC": 2, "LOAD": 3, "STORE": 2, "BR": 1, "CTX": 1, "ATOM": 1},
-        "latency": {"INT": 1, "FP": 3, "VEC": 3, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 8},
-        "l1_kb": 48, "l2_kb": 3072, "l3_kb": 36864, "l4_kb": 0,
-        "l1_lat": 4, "l2_lat": 17, "l3_lat": 84, "l4_lat": 0, "dram_lat": 120,
-        "branch_penalty": 16, "frequency_ghz": 3.0,
-        "dram_lat": 120, "dram_bytes_per_cycle": 32
+    "intel_xeon_698x": {
+        "name": "Intel Xeon 698X / Redwood Cove+",
+        "core_count": 86, "core_type": "uniform", "frontend": 6,
+        "dispatch": 8, "issue": 8, "retire": 8, "rob": 512,
+        "units": {"INT": 6, "FP": 4, "VEC": 2, "LOAD": 4, "STORE": 2, "BR": 1, "CTX": 1, "ATOM": 1},
+        "latency": {"INT": 1, "FP": 4, "VEC": 3, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 10, "CTX": 8},
+        "l1_kb": 48, "l2_kb": 2048, "l3_kb": 344064, "l4_kb": 0,
+        "l1_lat": 4, "l2_lat": 16, "l3_lat": 60, "l4_lat": 0, "dram_lat": 150,
+        "branch_penalty": 16, "frequency_ghz": 2.0, "dram_bytes_per_cycle": 160
     },
-    "intel_285k_e": {
-        "name": "Intel Core Ultra 9 285K / Skymont E-core",
-        "core_count": 8, "core_type": "E", "frontend": 9,
-        "dispatch": 8, "issue": 8, "retire": 16, "rob": 416,
-        "units": {"INT": 4, "FP": 2, "VEC": 2, "LOAD": 3, "STORE": 2, "BR": 1, "CTX": 1, "ATOM": 1},
-        "latency": {"INT": 1, "FP": 4, "VEC": 4, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 10, "CTX": 8},
-        "l1_kb": 32, "l2_kb": 4096, "l3_kb": 36864, "l4_kb": 0,
-        "l1_lat": 4, "l2_lat": 16, "l3_lat": 90, "l4_lat": 0, "dram_lat": 120,
-        "branch_penalty": 17, "frequency_ghz": 3.0,
-        "dram_lat": 120, "dram_bytes_per_cycle": 32
+    "apple_m6": {
+        "name": "Apple M6 / 12-core ARM SoC (heterogeneous approximation)",
+        "core_count": 12, "core_type": "uniform", "frontend": 6,
+        "dispatch": 8, "issue": 8, "retire": 8, "rob": 384,
+        "units": {"INT": 6, "FP": 4, "VEC": 2, "LOAD": 4, "STORE": 2, "BR": 1, "CTX": 1, "ATOM": 1},
+        "latency": {"INT": 1, "FP": 3, "VEC": 2, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 6},
+        "l1_kb": 64, "l2_kb": 4096, "l3_kb": 24576, "l4_kb": 0,
+        "l1_lat": 3, "l2_lat": 12, "l3_lat": 36, "l4_lat": 0, "dram_lat": 100,
+        "branch_penalty": 12, "frequency_ghz": 3.0, "dram_bytes_per_cycle": 48
     },
     "nexus_balanced_128": {
-        "name": "NEXSUS CPU / selected 128-window architecture",
+        "name": "NEXSUS CPU / 8-core proposed architecture",
         "core_count": 8, "core_type": "uniform", "frontend": 8,
         "dispatch": 8, "issue": 10, "retire": 8, "rob": 128,
         "units": {"INT": 4, "FP": 4, "VEC": 2, "LOAD": 8, "STORE": 4, "BR": 2, "CTX": 1, "ATOM": 1},
         "latency": {"INT": 1, "FP": 3, "VEC": 2, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 4},
         "l1_kb": 128, "l2_kb": 1024, "l3_kb": 8192, "l4_kb": 65536,
         "l1_lat": 2, "l2_lat": 8, "l3_lat": 24, "l4_lat": 64, "dram_lat": 120,
-        "branch_penalty": 10, "frequency_ghz": 3.0,
-        "bank_hash": "folded", "dram_bytes_per_cycle": 64
+        "branch_penalty": 10, "frequency_ghz": 3.0, "bank_hash": "folded", "dram_bytes_per_cycle": 64
     }
 }
 
@@ -323,26 +319,26 @@ def build_cache_hierarchies(p: CoreProfile, core_count: int) -> List[CacheHierar
 
 
 class CommandFetchModel:
-    """Conventional I-cache or NEXSUS P0/P1 ping-pong command buffers."""
+    """Conventional I-cache or PX P0-P7 pool feeding two 2-KiB SPM0 banks."""
     def __init__(self, enabled: bool, p0_capacity_bytes: int = 16384,
                  conventional_capacity_bytes: int = 32768,
-                 p0_refill_latency: int = 128, conventional_refill_latency: int = 32,
-                 p0_buffer_bytes: int = 8192):
+                 p0_refill_latency: int = 48, conventional_refill_latency: int = 32,
+                 p0_buffer_bytes: int = 2048):
         self.enabled = enabled
         self.capacity_bytes = p0_capacity_bytes if enabled else conventional_capacity_bytes
         self.lines = LRU(self.capacity_bytes, 64)
         self.refill_latency = p0_refill_latency if enabled else conventional_refill_latency
-        self.p0_buffer_bytes = p0_buffer_bytes or max(1024, p0_capacity_bytes // 2)
-        self.p0_buffers = [None, None]  # P0/P1 each hold one 8-KiB command block
-        self.p0_pending = None           # (block_id, completion_cycle, buffer_index)
-        self.pending = None              # conventional I-cache line refill
-        self.hits = 0
-        self.refills = 0
-        self.refill_bytes = 0
-        self.wait_cycles = 0
-        self.prefetches = 0
-        self.buffer_hits = 0
-        self.prefetch_wait_cycles = 0
+        self.p0_buffer_bytes = p0_buffer_bytes
+        self.p0_buffers = [None, None]  # SPM0-A/B, 2 KiB each
+        self.p0_pending = None
+        self.pending = None
+        self.active_block = None
+        self.hits = self.refills = self.refill_bytes = self.wait_cycles = 0
+        self.prefetches = self.buffer_hits = self.prefetch_wait_cycles = 0
+        self.bank_switches = self.ready_boundaries = self.boundary_waits = 0
+        self.useful_bytes = self.wasted_bytes = 0
+        self.pool_pages = OrderedDict()
+        self.pool_hits = self.pool_misses = 0
 
     def complete(self, cycle: int):
         if self.enabled:
@@ -356,32 +352,52 @@ class CommandFetchModel:
             self.lines.insert(line)
             self.pending = None
 
+    def _pool_touch(self, block: int):
+        if block in self.pool_pages:
+            self.pool_hits += 1
+            self.pool_pages.move_to_end(block)
+        else:
+            self.pool_misses += 1
+            self.pool_pages[block] = None
+            max_pages = max(1, self.capacity_bytes // self.p0_buffer_bytes)
+            if len(self.pool_pages) > max_pages:
+                self.pool_pages.popitem(last=False)
+
     def _start_p0_prefetch(self, block: int, cycle: int):
         if block in self.p0_buffers or (self.p0_pending and self.p0_pending[0] == block):
             return
         if self.p0_pending is not None:
-            return  # one refill engine; current transfer completes before another starts
-        bank = block & 1  # P0/P1 alternate on successive 8-KiB command blocks
+            return
+        bank = block & 1
+        if self.active_block is not None and bank == (self.active_block & 1):
+            return  # do not overwrite the bank currently consumed by CPU
+        self._pool_touch(block)
         self.p0_pending = (block, cycle + self.refill_latency, bank)
         self.prefetches += 1
         self.refills += 1
         self.refill_bytes += self.p0_buffer_bytes
+        self.useful_bytes += self.p0_buffer_bytes
 
     def can_fetch(self, command_address: int, cycle: int) -> bool:
         self.complete(cycle)
         if self.enabled:
             block = max(0, command_address) // self.p0_buffer_bytes
             if block in self.p0_buffers:
+                if self.active_block != block:
+                    if self.active_block is not None:
+                        self.bank_switches += 1
+                    self.active_block = block
+                    self.ready_boundaries += 1
                 self.hits += 1
                 self.buffer_hits += 1
                 self._start_p0_prefetch(block + 1, cycle)
                 return True
-            if self.p0_pending is not None:
-                self.wait_cycles += 1
-                self.prefetch_wait_cycles += 1
-                return False
-            self._start_p0_prefetch(block, cycle)
             self.wait_cycles += 1
+            self.boundary_waits += 1
+            if self.p0_pending is not None:
+                self.prefetch_wait_cycles += 1
+            else:
+                self._start_p0_prefetch(block, cycle)
             return False
         line = command_address // 64
         if self.lines.lookup(line):
@@ -393,6 +409,7 @@ class CommandFetchModel:
         self.pending = (line, cycle + self.refill_latency)
         self.refills += 1
         self.refill_bytes += 64
+        self.useful_bytes += 64
         self.wait_cycles += 1
         return False
 
