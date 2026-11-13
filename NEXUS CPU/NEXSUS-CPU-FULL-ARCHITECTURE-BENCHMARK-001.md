@@ -6,16 +6,16 @@
 
 ## 1. Comparison targets
 
-The first controlled comparison uses four architecture profiles, each configured as an 8-core homogeneous run:
+The first comparison uses four current architecture profiles at their native core counts. A separate normalized 8-core run must also be retained so native package scale and per-core architectural efficiency are not conflated:
 
 | ID | Architecture profile | Controlled core count | Role |
 |---|---|---:|---|
-| AMD-Z5 | AMD Zen 5 / Ryzen 9 9950X Zen 5 core profile | 8 | Modern high-performance x86 reference |
-| INTEL-P | Intel Arrow Lake Lion Cove P-core profile | 8 | Modern high-performance hybrid x86 P-core reference |
-| INTEL-E | Intel Arrow Lake Skymont E-core profile | 8 | Modern efficiency-oriented x86 E-core reference |
+| AMD-Z5 | AMD Ryzen 9 9950X3D2 Dual Edition / Zen 5 | 16 | Current high-performance desktop x86 reference |
+| INTEL-XEON | Intel Xeon 698X / Redwood Cove+ | 86 | Current workstation x86 reference; all P-cores |
+| ARM-M6 | Apple M6 | 12 | Current heterogeneous ARM SoC reference (2 super + 4 performance + 6 efficiency cores) |
 | NEXSUS | Current NEXSUS CPU proposal | 8 | Candidate architecture under test |
 
-The three reference profiles must remain separate. Do not average Intel P and E results. This controlled phase uses the same number of active cores and one hardware thread per core; SMT is disabled unless a separate explicitly labeled experiment enables it.
+Native-core runs use 16 AMD cores, 86 Intel Xeon cores, 12 Apple M6 cores, and 8 NEXSUS cores. Also run a normalized 8-core experiment for all four profiles. Xeon 698X is an all-P-core design, avoiding an artificial P/E average. Apple M6's 2-super/4-performance/6-efficiency topology must ultimately be represented as heterogeneous core classes; the current homogeneous approximation is provisional and must not be mistaken for Apple silicon measurements. SMT is disabled in the first phase; a separate Intel SMT experiment can be added.
 
 These are architectural simulation profiles, not cycle-accurate replicas of commercial silicon. Publicly documented or measured parameters must be distinguished from inferred assumptions. Each uncertain parameter receives low/base/high sensitivity values.
 
@@ -77,7 +77,15 @@ The input generator must be deterministic. Each kernel has a small reference imp
 | K14 | Mixed system load | Concurrent compute, memory, tasks and events | Aggregate throughput, fairness, tail latency |
 | K15 | Instruction-fetch stress | Small loops, large code, page boundaries and partial final pages | Front-end starvation, PX refill, SPM0 bank switching |
 
-## 5. NEXSUS PX/SPM0-specific experiment
+## 5. Branch prediction and control-flow experiment
+
+Short branch distance does not eliminate the need for prediction: a misprediction still discards speculative front-end work and can leave a wide issue engine underfed. NEXSUS should evaluate a compact predictor before considering a large high-power design.
+
+Candidate NEXSUS baseline: small 2-bit saturating-counter direction table, compact BTB, and a simple static fallback (e.g. backward-taken/forward-not-taken). Predictor state is indexed/tagged by logical PC, never by the transient physical SPM0 bank address. The BTB must support same-page and cross-page logical targets. PX_NEXT/PX_END remain PX Manager metadata and are not branch instructions.
+
+Run three NEXSUS ablations: predictor disabled, compact predictor, and a larger reference-class predictor sensitivity profile. Test loop branches, mostly predictable conditions, random branches, pointer-dependent decisions, and cross-page targets. Record direction accuracy, BTB hit rate, misprediction penalty, frontend starvation, and cycles. The current simulator's predictor rates are deterministic sensitivity assumptions, not a cycle-accurate implementation of commercial predictors.
+
+## 6. NEXSUS PX/SPM0-specific experiment
 
 The current NEXSUS code path is modeled as:
 - PX P0–P7: eight equal 2 KiB physical code-pool slots (16 KiB/core);
@@ -113,7 +121,7 @@ For every instruction-fetch test, include code lengths and boundary placements s
 
 Check that no marker bytes are counted as instructions, no padding is executed, no valid instruction is skipped or duplicated, and the logical PC remains correct across bank switches.
 
-## 6. Timing model requirements
+## 7. Timing model requirements
 
 The cycle model must include, per target:
 - fetch/decode/dispatch/issue/retire widths;
@@ -140,7 +148,7 @@ The NEXSUS App-RAM refill target currently considered is 64 B/cycle. Reference p
 
 For PX refill, model payload transfer, source latency, queueing, arbitration, bank-switch overhead, and contention separately. The ideal payload-only time for 2 KiB at 64 B/cycle is 32 cycles; this is not a guaranteed end-to-end refill time.
 
-## 7. Metrics
+## 8. Metrics
 
 Report every kernel separately and aggregate only after showing the component results.
 
@@ -180,7 +188,7 @@ Report every kernel separately and aggregate only after showing the component re
 
 Energy/power metrics are excluded until operation-level and memory-level energy parameters are calibrated. Uncalibrated energy estimates must not be presented as measured power.
 
-## 8. Simulation algorithm (pseudocode)
+## 9. Simulation algorithm (pseudocode)
 
 ```text
 for architecture in [AMD_ZEN5, INTEL_ARROW_LAKE_P, INTEL_ARROW_LAKE_E, NEXSUS]:
@@ -203,7 +211,7 @@ emit_raw_csv_json_event_logs_and_summary_tables()
 
 The functional model must validate outputs independently from the timing engine. Timing may change with a parameter sweep; functional results must not.
 
-## 9. Required test matrix
+## 10. Required test matrix
 
 At minimum, run:
 - four architecture profiles × all 15 kernels;
@@ -217,7 +225,7 @@ At minimum, run:
 - branch-predictable and branch-randomized cases;
 - code working sets below, at, and above PX capacity.
 
-## 10. Validation gates
+## 11. Validation gates
 
 A result is publishable only when:
 1. all architecture backends pass functional correctness;
@@ -230,7 +238,7 @@ A result is publishable only when:
 
 A failed gate blocks comparative speedup claims for the affected workload.
 
-## 11. Output artifacts
+## 12. Output artifacts
 
 Each benchmark run produces:
 - machine-readable configuration snapshot;
@@ -244,18 +252,20 @@ Each benchmark run produces:
 
 Every report must label results as simulated, measured, or assumed. Never describe behavioral simulation output as physical silicon performance.
 
-## 12. Implementation sequence
+## 13. Implementation sequence
 
 1. Update the existing simulator's NEXSUS configuration to 4 KiB dual-bank SPM0 and the PX P0–P7 pool.
-2. Add PX metadata parsing and page-boundary correctness tests.
-3. Add the cycle-level active-bank/inactive-bank refill engine.
-4. Add instruction-fetch stress kernel K15 and PX metrics.
-5. Integrate the existing AMD Zen 5, Intel P-core, and Intel E-core profiles into the same runner.
-6. Run all four profiles on the shared workload suite.
-7. Add ablations, sensitivity sweeps, and correctness/fault injection.
-8. Publish results only after all validation gates pass.
+2. Replace stale reference profiles with Ryzen 9 9950X3D2, Xeon 698X, and Apple M6; keep native-core and normalized 8-core runs.
+3. Add branch-predictor ablations and logical-PC/BTB cross-page tests.
+4. Add PX metadata parsing and page-boundary correctness tests.
+5. Add the cycle-level active-bank/inactive-bank refill engine.
+6. Add instruction-fetch stress kernel K15 and PX metrics.
+7. Integrate the AMD, Intel Xeon, ARM, and NEXSUS profiles into the same runner.
+8. Run all four profiles on the shared workload suite.
+9. Add ablations, sensitivity sweeps, and correctness/fault injection.
+10. Publish results only after all validation gates pass.
 
-## 13. Open parameters
+## 14. Open parameters
 
 The following are intentionally not frozen:
 - exact SPM0 bank-switch latency and fetch granularity;
