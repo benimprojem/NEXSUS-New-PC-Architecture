@@ -419,6 +419,24 @@ class PXMetadataTests(unittest.TestCase):
         ops = [sim.Op(0, "INT"), sim.Op(1, "INT")]
         self.assertEqual(len(ops), 2)
 
+    def test_spm0_fetch_uses_px_next_and_stops_prefetch_at_px_end(self):
+        fetch = sim.CommandFetchModel(True, page_descriptors={
+            0: {"valid_bytes": 1024, "marker": "PX_NEXT", "next_logical_page_id": 1},
+            1: {"valid_bytes": 512, "marker": "PX_END"},
+        })
+        self.assertFalse(fetch.can_fetch(0, 0))
+        fetch.complete(48)
+        self.assertTrue(fetch.can_fetch(0, 48))
+        self.assertEqual(fetch.p0_pending, (1, 96, 1))
+        self.assertFalse(fetch.can_fetch(2048, 49))
+        fetch.complete(96)
+        self.assertTrue(fetch.can_fetch(2048, 96))
+        self.assertIsNone(fetch.p0_pending)  # PX_END suppresses next-page prefetch.
+        with self.assertRaises(ValueError):
+            fetch.can_fetch(2048 + 512, 97)  # No padding fetch past valid_bytes.
+        with self.assertRaises(ValueError):
+            fetch.can_fetch(4096, 97)  # PX_END cannot continue sequentially.
+
     def test_partial_page_without_marker_is_rejected(self):
         with self.assertRaises(ValueError):
             sim.validate_px_page_descriptors([
