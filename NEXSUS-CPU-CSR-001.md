@@ -382,3 +382,23 @@ CAUSE.CODE is a 7-bit architectural exception code. These codes describe synchro
 | 0x7F | PLATFORM_EXCEPTION | Platform-defined synchronous exception (EXCINFO supplies detail) |
 
 Unlisted codes are reserved and must not be reused without an architecture revision. BADADDR_VALID and EXCINFO_VALID determine whether BADADDR/EXCINFO contain meaningful data. RETRYABLE and SKIP_ALLOWED are cause-specific; software must not infer them from CODE alone.
+
+
+## 19. Exception Context Stack and privileged stack CSRs
+
+The exception-entry storage model is defined in **NEXSUS-CPU-EXCEPTION-FRAME-001.md**. EPC/CAUSE/BADADDR/EXCINFO/RETSTATE expose the top hardware ECS frame; nested entry pushes a new frame and does not overwrite the outer context.
+
+| ID | Name | Access | Description |
+|---:|---|---|---|
+| 0x007 | KESP | privileged R/W | Per-core kernel exception stack pointer |
+| 0x008 | KELIMIT | privileged R/W | Exception stack bound/limit descriptor |
+| 0x009 | ECSCTRL | privileged R/W | Controlled ECS diagnostics and overflow policy |
+| 0x018 | ECSDEPTH | R/O | Current hardware exception-context depth |
+| 0x019 | ECSCAP | R/O | Implemented ECS capacity; architectural minimum 8 |
+| 0x01A | DFCAUSE | R/O | Double-fault cause and entry-failure status |
+| 0x01B | DFPC | R/O | PC captured for double-fault diagnosis |
+
+KESP/KELIMIT are per-core. On a lower-to-higher privilege transition, hardware switches to the configured privileged exception stack before executing the handler. The interrupted application stack is not used as the privileged handler stack. ECS is protected core-local storage and is separate from all RA/FA/DA/MA registers, SPM0 and ordinary RAM.
+
+Hardware automatically saves control/return metadata only. RA/FA/DA/MA register payloads are saved by compiler-generated or handwritten handler prologues according to the interrupt ABI and actual bank usage. IRET validates and pops exactly one ECS frame; it does not restore general register payloads. IRQEOI and IRET remain separate operations.
+
