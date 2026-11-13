@@ -159,3 +159,8 @@ The following remain OS/simulator policy or implementation choices rather than a
 - whether SPM2 save/restore uses full-image copy or proven dirty-range optimization;
 - exact migration acceptance handshake and timeout recovery;
 - treatment of non-migratable device/core-local handles.
+
+
+## 13. SPM access-control reference
+
+The scheduler must enforce the privilege and ownership boundaries in `NEXSUS-CPU-SPM-ACCESS-PROTECTION-001.md`. In particular, it must not expose SPM3–SPM6 context slots to PL0, must assign SPM2 to exactly the currently running task on that core, and must not repurpose SPM7 for scheduling or ordinary OS work. SPM2 ownership and the incoming task's memory permissions must be valid before returning to PL0.
