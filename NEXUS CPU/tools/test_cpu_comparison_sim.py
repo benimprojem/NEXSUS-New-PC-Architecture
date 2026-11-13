@@ -19,9 +19,7 @@ class BandwidthPolicyTests(unittest.TestCase):
                 )
 
     def test_vendor_profiles_use_same_chip_wide_bandwidth_ceiling(self):
-        for key in ("amd_9950x", "intel_285k_p", "intel_285k_e",
-                    "nexus_candidate", "nexus_8l4s",
-                    "nexus_balanced_128", "nexus_wide_balanced"):
+        for key in ("amd_9950x", "intel_285k_p", "intel_285k_e", "nexus_balanced_128"):
             with self.subTest(profile=key):
                 self.assertEqual(sim.PROFILES[key]["dram_bytes_per_cycle"], 32)
 
@@ -82,7 +80,7 @@ class SharedMemoryControllerTests(unittest.TestCase):
         self.assertEqual(second["c1"]["bus_wait"], 0)
 
     def test_lockstep_cores_contend_for_one_global_bank(self):
-        profile_data = dict(sim.PROFILES["nexus_candidate"])
+        profile_data = dict(sim.PROFILES["nexus_balanced_128"])
         profile_data["bank_hash"] = "low"
         profile = sim.profile_from_dict(profile_data)
         shards = [
@@ -94,7 +92,7 @@ class SharedMemoryControllerTests(unittest.TestCase):
         self.assertEqual(result["cores"][1]["ready_at"][0], 121)
 
     def test_lockstep_cores_use_independent_banks_in_parallel(self):
-        profile_data = dict(sim.PROFILES["nexus_candidate"])
+        profile_data = dict(sim.PROFILES["nexus_balanced_128"])
         profile_data["bank_hash"] = "low"
         profile = sim.profile_from_dict(profile_data)
         shards = [
@@ -106,8 +104,11 @@ class SharedMemoryControllerTests(unittest.TestCase):
         self.assertEqual(result["cores"][1]["ready_at"][0], 120)
 
 
-class CandidateProfileTests(unittest.TestCase):
-    def test_balanced_128_matches_experimental_target(self):
+class SelectedNexusProfileTests(unittest.TestCase):
+    def test_only_selected_nexus_profile_is_exposed(self):
+        self.assertEqual([k for k in sim.PROFILES if k.startswith("nexus_")], ["nexus_balanced_128"])
+
+    def test_balanced_128_matches_selected_architecture(self):
         p = sim.PROFILES["nexus_balanced_128"]
         self.assertEqual((p["frontend"], p["dispatch"], p["issue"], p["retire"], p["rob"]),
                          (8, 8, 10, 8, 128))
@@ -115,15 +116,6 @@ class CandidateProfileTests(unittest.TestCase):
             "INT": 4, "FP": 4, "VEC": 2, "LOAD": 8,
             "STORE": 4, "BR": 2, "CTX": 1, "ATOM": 1,
         })
-
-    def test_wide_balanced_differs_only_by_window_size(self):
-        a = dict(sim.PROFILES["nexus_balanced_128"])
-        b = dict(sim.PROFILES["nexus_wide_balanced"])
-        self.assertEqual(a.pop("rob"), 128)
-        self.assertEqual(b.pop("rob"), 192)
-        a.pop("name")
-        b.pop("name")
-        self.assertEqual(a, b)
 
 
 class WorkloadPartitionTests(unittest.TestCase):
