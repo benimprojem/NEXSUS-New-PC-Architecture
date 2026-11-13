@@ -94,21 +94,26 @@ Existing XFER.MEM / XFER.START / XFER.WAIT operations use the same protection do
 
 For XFER.MEM or XFER.START with a nonzero length:
 1. Snapshot the source address, destination address, and byte length from their selected RA registers before writing any destination register. Therefore, the token destination RA may alias DRA, SRA, or LRA.
-2. Validate the complete source range for read access.
-3. Validate the complete destination range for write access.
-4. Validate source and destination domain membership, 64-bit range arithmetic, bounds, and any required transfer alignment.
+2. Interpret LRA as an unsigned 64-bit byte count. The architectural instruction has no fixed small transfer-size ceiling; the implementation may divide a large request into bounded internal beats.
+3. Validate the complete source range for read access and the complete destination range for write access.
+4. Validate source and destination domain membership, 64-bit range arithmetic, bounds, and any required transfer alignment. Range-end calculation must detect overflow before the first payload beat.
 5. Validate task ownership and any explicit shared/Fabric grant for both ranges.
-6. Do not begin payload movement until both endpoints pass validation.
-7. For asynchronous transfers, preserve source stability and target-not-valid-until-completion. A permission grant or allocation cannot be reclaimed while an accepted transfer still uses it; revocation must wait for completion or defined cancellation.
+6. Do not begin payload movement until both endpoints pass validation and the destination range is reserved for this transfer.
+7. The source range must remain stable and readable until completion. The destination range is exclusively owned by the transfer and must not be read, modified, reclaimed, or published while the transfer is in flight. A grant/allocation cannot be revoked or reclaimed until completion or defined cancellation.
 
-**Acceptance and fault point:** XFER.START performs all validation before acceptance. If validation fails, it raises the corresponding synchronous fault, creates no token, starts no payload movement, and leaves TRA unchanged. XFER.MEM reports both validation faults and runtime transfer faults at the XFER.MEM instruction itself. A synchronous transfer that faults before full completion leaves its destination invalid; it does not expose a partially written destination as valid data.
+**Length and range limit:** The ISA does not impose an arbitrary 4 KiB/64 KiB/etc. maximum. The effective limit is the largest valid range in the selected domain, subject to unsigned 64-bit length and checked address arithmetic. For nonzero length, the last byte address must be representable in the 64-bit address space; overflow raises ADDRESS_OVERFLOW_FAULT. A transfer may be internally segmented into smaller beats without changing its architectural single-operation semantics. Zero length is handled by the special case below and does not form or validate a memory range.
 
-**Zero-length special case:** If the selected length is zero, XFER.MEM is a successful no-op and XFER.START creates an already-completed token. No memory range, mapping, or permission checks are performed because no byte is accessed. Instruction format, domain selectors, and RA selectors must still be valid. No payload movement occurs.
+**Acceptance and fault point:** XFER.START performs all validation and reserves the destination before acceptance. If validation or reservation fails, it raises the corresponding synchronous fault, creates no token, starts no payload movement, and leaves TRA unchanged. XFER.MEM reports both validation faults and runtime transfer faults at the XFER.MEM instruction itself. On successful completion, the destination becomes eligible for normal use. If a transfer faults after one or more internal beats, physical destination bytes may have been written; hardware is not required to roll them back. The entire destination range nevertheless remains logically invalid/unpublished. Software must discard that destination allocation or overwrite the complete range successfully before publishing it. No consumer may treat a partial result as valid data.
+
+**Token capacity and backpressure:** Each accepted XFER.START owns one core-local token record until a successful or failed terminal WAIT consumes it. The number of token records is finite and implementation-defined; it is reported through the platform/OS capability information, not through a new ISA register or CSR. If no token record is available, START raises MEMORY_ACCESS_FAULT with EXCINFO subtype TRANSFER_RESOURCE_UNAVAILABLE. This is a retryable resource condition: no transfer is accepted, no payload moves, and TRA remains unchanged. START must not wait indefinitely for a token slot, because doing so could prevent the same instruction stream from issuing the WAIT needed to free one. A zero-length START also requires a token record until WAIT consumes it.
+
+**Zero-length special case:** If the selected length is zero, XFER.MEM is a successful no-op and XFER.START creates an already-completed token, subject to token-record availability. No memory range, mapping, ownership, or permission checks are performed because no byte is accessed. Instruction format, domain selectors, and RA selectors must still be valid. No payload movement occurs.
 
 **WAIT/token behavior:**
 - Successful XFER.WAIT consumes the token and clears its TRA register to zero. Reusing a consumed token is an illegal-token fault.
 - An asynchronous runtime transfer failure is reported synchronously by XFER.WAIT. The failed token is retired by hardware, but the faulting WAIT does not commit its TRA write under precise-exception rules; the old token bits remain in the RA and are stale. The exception handler may clear or overwrite that RA using normal RA operations.
 - A token is local to the initiating core and does not grant new access rights.
+- A token record remains allocated after the transfer reaches either success or failure, until WAIT consumes it. Completion frees transfer-engine execution resources, not the token record.
 
 ## 7. Domain reachability is not task permission
 
