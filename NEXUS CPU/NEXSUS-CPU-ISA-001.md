@@ -887,6 +887,38 @@ Bu örnekte release/acquire atomic çifti payload'ın görünürlüğünü ve er
 
 
 
+
+**8. MEMXFER ve domain'ler arası görünürlük**
+- MEMXFER, kaynak domain'den byte'ları okuyup hedef domain'e yazar; kaynak ve hedef ayrı nesnelerdir. Transfer, iki domain arasında coherence veya alias oluşturmaz.
+- XFER.MEM, komut tamamlanmadan dönmez. Başarılı dönüşte hedef aralık, hedef domain'in kendi NDC kuralları içinde normal LOAD/STORE erişimine uygun hâle gelir.
+- XFER.START'ın kabul edilmesi transferin tamamlandığı veya hedefin okunabilir olduğu anlamına gelmez. Hedef aralık, başarılı XFER.WAIT tamamlanana kadar invalid/unpublished kalır.
+- Başarılı XFER.WAIT, issuing core için hedef domain'e yönelik acquire-completion sınırıdır: WAIT sonrasındaki hedef-domain LOAD'ları tamamlanmış transfer verisini gözlemlemelidir. WAIT başarısızsa bu acquire-completion etkisi oluşmaz.
+- XFER.MEM'in başarılı dönüşü de issuing core için aynı hedef-domain completion/acquire garantisini verir.
+- Bu garanti yalnızca transferi bekleyen çekirdeğe yöneliktir. Diğer çekirdekler hedef veriyi kullanmadan önce hedef domain'deki uygun release/acquire synchronization nesnesi üzerinden yayımlama/tüketme ilişkisi kurmalıdır.
+- Kaynak domain'de transferden önce başka çekirdeğin ürettiği verinin güncel olması, o üretici ile transferi başlatan taraf arasında kaynak domain'in NDC kurallarına uygun synchronization gerektirir. XFER tek başına kaynak üreticisiyle synchronization kurmaz.
+- Transfer sırasında kaynak aralık değiştirilemez; bu kural source snapshot tutarlılığını sağlar. Transferin hedefe yazdığı byte'lar, başarılı completion öncesinde hiçbir çekirdek tarafından tüketilemez.
+- FENCE, ilk sürümde normal LOAD/STORE ve ATOM erişimlerini sıralar; MEMXFER'ın tamamlanmasını beklemez ve transfer completion yerine geçmez. MEMXFER sıralaması kendi START/MEM/WAIT completion sözleşmesiyle sağlanır.
+
+**9. Domain'ler arası veri yayımlama örneği**
+
+```asm
+; Producer, paylaşılan L3'te payload üretir ve yayımlar
+STORE.L3.W64 [RA20], DA4
+ATOM.STORE.RELEASE.L3.W64 [RA24], DA5
+
+; Transfer başlatan çekirdek, payload'ın yayımlanmasını L3'te acquire ile gözlemler
+ATOM.LOAD.ACQUIRE.L3.W64 DA6, [RA24]
+XFER.START token=RA7, L4:[RA30], L3:[RA20], length=RA5
+XFER.WAIT RA7
+
+; WAIT başarılı olduktan sonra hedef L4 aralığı bu çekirdekte okunabilir.
+; Başka çekirdeğe vermeden önce L4'te ayrı bir release publish gerekir.
+ATOM.STORE.RELEASE.L4.W64 [RA34], DA8
+```
+
+Bu örnek, producer ile transferi başlatan çekirdek arasındaki L3 synchronization'ı ve transferi başlatan çekirdeğin L4'e yayınını ayrı adımlar olarak gösterir. Transferin kendisi bu iki synchronization ilişkisini otomatik kurmaz.
+
+
 ## 11. Instruction dispatch ve paralellik
 
 - Integer/logic komutları ALU0/ALU1 (ve konfigürasyonda ALU2) üzerinde yürütülür.
