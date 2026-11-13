@@ -591,7 +591,17 @@ MA registerları 256-bit fiziksel genişliktedir. ME512 512-bit yürütme yoludu
 - Mask register'ı sonraki komutlarda bitwise VAND/VOR/VXOR ile seçim ve maskeleme amacıyla kullanılabilir. İlk sürümde ayrı predicate register bankı yoktur.
 - Signed/unsigned karşılaştırma mnemonic'inde açıkça belirtilir; NaN kavramı integer vector komutları için geçerli değildir.
 
-### 8.4 Vector işlem kapsamı ve henüz açık noktalar
+### 8.4 Vector reduction komutları
+
+- `VSUM.S.W` / `VSUM.U.W`, kaynak MA register'ındaki tüm lane'leri signed/unsigned olarak toplayıp sonucu hedef MA register'ının en düşük 256 bitine yazar. Sonucun üst bitleri sıfırlanır; signed sonuç iki'nin tümleyeni 256-bit olarak sign-extend edilir.
+- `VDOT.S.W` / `VDOT.U.W`, A ve B'nin karşılık gelen lane'lerini çarpıp tüm lane çarpımlarını toplar. Sonuç aynı şekilde 256-bit genişlikte D MA'ya yazılır.
+- VSUM için lane sayısı 256/W; VDOT için de 256/W'dir. W=8/16/32/64/128/256 vector lane genişlikleri geçerlidir.
+- 256-bit sonuç, tanımlanan bütün lane genişlikleri için tam toplamı ve tam dot-product sonucunu taşır; bu komutlarda ara/sonuç taşması oluşmaz.
+- D, A veya B ile aynı MA selector'ı olabilir; kaynaklar komut başlangıcında snapshot edilir. D'nin tamamı tek commit ile güncellenir.
+- Signed/unsigned yorum opcode varyantıyla seçilir. Floating-point reduction/dot product bu komutların kapsamında değildir.
+- `VSUM` ve `VDOT` R3 formatını kullanır; D/A/B MA selector'larıdır, M=000 ve AUX=0 olmalıdır. Numeric opcode değerleri henüz atanmadı.
+
+### 8.5 Vector işlem kapsamı ve henüz açık noktalar
 
 - Bu ilk semantik tanım MA başına 256-bit integer vector lane işlemlerini kapsar. 512-bit pair işlem desteği ME512 komutlarının ayrı operand/pair tanımıyla uygulanır.
 - Saturating add/subtract, widening/narrowing, permute/shuffle, gather/scatter, maskeli lane yazımı ve FP vector arithmetic ayrı komutlar olarak tasarlanacaktır; mevcut VADD/VSUB/VMUL davranışına örtük olarak dahil değildir.
@@ -652,6 +662,15 @@ MMAC.S.N8.W32 MA24, MA0, MA8, MA16
 ```
 
 Son örnekte dört tile grubu MA0–MA31 aralığını tam olarak kullanır. Bu bir ISA operand örneğidir; ME512'nin tek çevrimde 8×8×32-bit MMAC tamamladığı anlamına gelmez.
+
+### 8.7 Matrix transpose
+
+- `MTRANS.N2/N4/N8.W` bir tile'ın satır ve sütun indekslerini değiştirir: `D[i,j] = A[j,i]`. Eleman bit desenleri aynen taşınır; signed/unsigned yorum gerekmez.
+- N ve W, MMUL/MMAC ile aynı tile şekli ve eleman genişliği kodlarını kullanır.
+- Kaynak tile komut başında snapshot edilir. D=A tam alias ise işlem in-place olarak güvenlidir; kısmi/örtüşen ama eşit olmayan register grupları geçersizdir.
+- Hedef tile'ın kullanılmayan yüksek bitleri sıfırlanır. İşlem aritmetik değildir; overflow veya saturation üretmez.
+- MTRANS R2 kullanır: D/A tile başlangıç selector'larıdır, W eleman genişliğini, M tile şeklini seçer; AUX=0 olmalıdır.
+- Desteklenmeyen N/W, hizasız selector veya MA31 sınır aşımı `ILLEGAL_OPERAND_CONFIGURATION_FAULT` üretir ve hedef tile değişmez.
 
 ## 9. Control-flow komutları
 
