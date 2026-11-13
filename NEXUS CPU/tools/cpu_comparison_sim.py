@@ -308,16 +308,14 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
         # Select ready operations oldest-first; dependencies may execute out of order.
         issued_this_cycle = 0
         for seq in list(rob):
-            if issued_this_cycle >= p.issue:
-                break
             if issued[seq]:
+                continue
+            if issued_this_cycle >= p.issue:
+                stalls["issue_width"] += 1
                 continue
             op = ops[seq]
             if any(not done[x] for x in op.deps):
                 stalls["dependency"] += 1
-                continue
-            if issued_this_cycle >= p.issue:
-                stalls["issue_width"] += 1
                 continue
             kind = op.kind
             resource = "LOAD" if kind == "LOAD" else ("STORE" if kind == "STORE" else kind)
