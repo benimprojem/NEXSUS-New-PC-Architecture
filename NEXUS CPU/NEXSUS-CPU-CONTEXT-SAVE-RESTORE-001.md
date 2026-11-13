@@ -102,7 +102,7 @@ Baseline full context includes:
 - SPM7 is reserved for active exception entry and is not task-owned.
 - P0/P1 are refillable instruction prefetch state, not architectural task state.
 
-Full four-bank register payload is 3,584 bytes before metadata. Scheduler may optimize using bank ownership/dirty state but must restore exact architectural values before resuming a task.
+Full four-bank register payload is 1,792 bytes before metadata. Scheduler may optimize using bank ownership/dirty state but must restore exact architectural values before resuming a task.
 
 ## 8. SPM ownership and migration
 SPM banks are directly addressed local resources, not automatically coherent cache levels.
@@ -182,35 +182,35 @@ The scheduler may use available SPM1–SPM6 capacity to keep several complete ta
 
 ### 14.1 Slot sizing and resident-context target
 
-With 64 registers in each bank, the full register payload is **3,584 bytes**:
-- RA: 64 × 8 = 512 bytes
-- FA: 64 × 8 = 512 bytes
-- DA: 64 × 8 = 512 bytes
-- MA: 64 × 32 = 2,048 bytes
+The selected register banks remain **32 entries each**:
+- RA: 32 × 8 = 256 bytes
+- FA: 32 × 8 = 256 bytes
+- DA: 32 × 8 = 256 bytes
+- MA: 32 × 32 = 1,024 bytes
 
-A resident context slot is **4 KiB**, aligned to 4 KiB. A 64-byte frame header plus 3,584-byte register payload totals 3,648 bytes and fits with alignment reserve.
+Full register payload: **1,792 bytes**. With a 64-byte frame header, the base frame is **1,856 bytes**, fitting a 2-KiB context slot.
 
-SPM3–SPM6 provide four 8-KiB banks. Each bank holds two 4-KiB slots:
-- 4 banks × 2 slots = **8 resident full-context slots/core**.
+SPM3–SPM6 provide four 8-KiB banks. Each bank holds four 2-KiB slots:
+- 4 banks × 4 slots = **16 resident full-context slots/core**.
 - These are fast resident contexts, not total task count or simultaneous execution count.
 - Further task contexts remain in protected Data RAM.
 
 ### 14.2 Allocation policy
 
-- SPM3–SPM6 remain OS-managed context-residency pools; each 4-KiB slot has task ID, generation, valid state and ownership metadata.
+- SPM3–SPM6 remain OS-managed context-residency pools; each 2-KiB slot has task ID, generation, valid state and ownership metadata.
 - A slot becomes valid only after its complete context is saved and published with release ordering; restore requires acquire ordering.
-- SPM1/SPM2 keep their OS/user workspace roles and are not counted in the eight-slot context pool.
+- SPM1/SPM2 keep their OS/user workspace roles and are not counted in the context pool.
 - SPM0 remains CPU-exclusive; SPM7 remains exception-entry-only.
 - If a task has no resident slot, its full context stays in protected Data RAM.
 
-### 14.3 Eight-context ready set
+### 14.3 Sixteen-context ready set
 
-A core may keep up to eight full register contexts resident across SPM3–SPM6. One task owns the execution pipeline at a time; the other contexts are saved and ready. The OS may choose residency based on scheduling priority and reuse. Eviction is an explicit OS decision and must never overwrite a live context.
+A core may keep up to sixteen full register contexts resident across SPM3–SPM6. One task owns the execution pipeline at a time; the other contexts are saved and ready. The OS may choose residency based on scheduling priority and reuse. Eviction is an explicit OS decision and must never overwrite a live context.
 
 ### 14.4 Task-switch operation
 
 1. Stop outgoing architectural retirement at the defined switch boundary.
-2. Save the outgoing 3,584-byte register payload plus frame metadata into a resident 4-KiB slot when available; otherwise use protected Data RAM.
+2. Save the outgoing 1,792-byte register payload plus frame metadata into a resident 2-KiB slot when available; otherwise use protected Data RAM.
 3. Resolve and restore the incoming task's register state from its resident slot or Data RAM.
 4. Restore control, address-space and memory-domain state under privilege checks.
 5. Refill the incoming task's P0/P1 command buffers in parallel where the App RAM and context paths permit.
@@ -273,9 +273,9 @@ SPM2 has one physical 8 KiB capacity per core. Its contents are owned by the cur
 
 Four banks are dedicated to the OS-managed fast task-context pool: SPM3, SPM4, SPM5, and SPM6. Their combined capacity is 32 KiB.
 
-A full RA/FA/DA/MA payload is 1,792 bytes. The existing 64-byte save-frame header brings the base frame to 3,648 bytes, which fits in a 4 KiB slot with 32-byte alignment. Therefore each 8 KiB bank contains two 4 KiB slots:
+A full RA/FA/DA/MA payload is 1,792 bytes. The existing 64-byte save-frame header brings the base frame to 1,856 bytes, which fits in a 2 KiB slot with 32-byte alignment. Therefore each 8 KiB bank contains two 2 KiB slots:
 
-- 4 banks × 2 slots = **8 resident task-context slots per core**.
+- 4 banks × 2 slots = **16 resident task-context slots per core**.
 - Each 4-KiB slot holds one full register-bank image and its save-frame header.
 - Task control metadata (PC, STATUS, FP control/status, address-space and memory-domain descriptors, SPM ownership metadata, and scheduling state) remains in the task control block in protected Data RAM; the slot does not duplicate ECS state.
 - A slot is assigned to exactly one task at a time. The OS tracks valid/invalid state, task identity, generation, and ownership. It must complete the save before publishing a slot as valid and complete restore before resuming the task.
