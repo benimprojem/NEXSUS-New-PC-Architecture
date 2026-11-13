@@ -255,6 +255,7 @@ The following remain open implementation details:
 - NEXSUS-SYSTEM-NODE-COMMUNICATION-001.md — Fabric task descriptors and payload requests.
 - NEXSUS System Fabric.md — Address Manager, bank parallelism, and Fabric arbitration.
 - NEXSUS-CPU-MEMORY-BANK-TOPOLOGY-001.md — 8×64-bit bank grouping, address interleaving and throughput model.
+- NEXSUS-CPU-BANK-CONTROLLER-001.md — per-bank queues, all-or-none multi-bank admission, wide-access completion and local arbitration.
 
 
 ## 10.4 Fiziksel bank çakışması, interleaving ve read/write turnaround
