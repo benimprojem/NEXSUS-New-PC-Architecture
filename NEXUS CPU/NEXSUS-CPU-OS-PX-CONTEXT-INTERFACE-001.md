@@ -187,3 +187,42 @@ Report measured simulation outputs, not estimated wins:
 - per-task fairness and starvation.
 
 All cycle results must state refill latency, DRAM bandwidth, arbitration, and overlap assumptions. This document defines interfaces and invariants; opcode encodings, exact CSR layout, and cycle timing remain open.
+
+
+## 11. SPM0 code workspace and PX metadata protocol
+
+This section updates the earlier SPM0 sizing in the context/interface proposal.
+
+### 11.1 SPM0 is not register context storage
+
+SPM0 is the CPU's active instruction-code workspace. It is **4 KiB total**, organized as two independently managed 2 KiB banks (SPM0-A and SPM0-B). PX Manager fills these banks with executable code. PX does not write RA/FA/DA/MA architectural registers and does not transfer register context images through SPM0.
+
+Register images continue to use Context Manager and the context residency/spill mechanism. SPM0 code residency and task-context residency are independent.
+
+### 11.2 Bank operation
+
+While CPU fetch consumes one SPM0 bank, PX Manager may fill the other. The hardware switches banks at a legal instruction boundary only after the destination bank is fully READY and its ownership, generation, logical-page mapping, permissions, and valid-byte range have passed validation. The consumed bank then becomes available for the next refill.
+
+The intended sequence is A active/B filling, then B active/A filling, alternating continuously. If the next bank is not READY when needed, the fetch stream waits; no partially loaded bank is executable.
+
+### 11.3 PX_NEXT / PX_END are metadata, not instructions
+
+These markers are consumed only by PX Manager from code-stream/page metadata. They are not part of the CPU ISA, are never copied into either SPM0 bank, and never reach the instruction decoder.
+
+- A full 2 KiB valid page continues automatically to the next logical page.
+- PX_NEXT marks an intermediate page that intentionally ends before 2 KiB; PX Manager continues at the next logical page.
+- PX_END marks a partial final code page; PX Manager closes the sequential code stream and does not request another page as continuation.
+- Markers occupy no code bytes and do not consume an instruction slot.
+
+The valid byte count must be explicit in the page descriptor and satisfy instruction-alignment and region-bound checks. Ordinary branches and calls still use logical PC mapping; metadata markers only describe sequential code-stream layout.
+
+### 11.4 Page descriptor additions
+
+Add/confirm these descriptor fields:
+- valid_bytes: executable bytes in the page;
+- stream_boundary_kind: FULL_PAGE, PX_NEXT, or PX_END;
+- next_logical_page_id: required for PX_NEXT or full-page sequential continuation;
+- stream_generation: binds metadata to the current task/code image.
+
+The metadata and page contents must be validated and atomically published together before READY.
+
