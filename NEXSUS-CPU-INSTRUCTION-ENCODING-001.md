@@ -132,7 +132,38 @@ R4 örnekleri:
 
 Bu format, dört ayrı register operandını tek 64-bit instruction word içinde kodlar; komutun çok çevrimli çalışması encoding uzunluğunu değiştirmez.
 
-### 4.4 RI — Register + immediate
+### 4.4 R2 bit-field işlemleri — BEXT / BINS
+
+BEXT ve BINS iki register ile iki küçük alan parametresi kullandığından R2 formatını kullanır. D/A register selector alanları korunur; AUX bit konumu ve alan genişliğini taşır.
+
+**AUX alanı**
+
+| AUX bitleri | Alan | Genişlik |
+|---|---|---:|
+| [35:30] | START | 6 |
+| [29:23] | FIELD_WIDTH | 7 |
+| [22:0] | RESERVED | 23 |
+
+- START, register'ın en düşük anlamlı bitinden itibaren sıfır tabanlı konumdur (0–63).
+- FIELD_WIDTH, 1–64 arası bit sayısıdır; 0 geçersizdir.
+- `START + FIELD_WIDTH`, seçilen W genişliğini aşamaz.
+- W yalnızca 8/16/32/64 olabilir; 128/256/512 bu scalar komutlarda geçersizdir.
+- M=000 olmalıdır; RESERVED alan sıfır olmalıdır.
+
+**BEXT**
+- `BEXT D, A, START, FIELD_WIDTH`
+- A içindeki seçili alanı çıkarır ve D'nin düşük FIELD_WIDTH bitine yerleştirir.
+- D'nin seçilen W genişliğindeki kalan üst bitleri sıfırlanır.
+- BEXT zero-extend eder; signed sonuç gerekiyorsa ayrıca sign-extension uygulanır.
+
+**BINS**
+- `BINS D, A, START, FIELD_WIDTH`
+- A'nın düşük FIELD_WIDTH bitini D içindeki START konumuna yerleştirir.
+- D'nin seçilen alan dışındaki bitleri korunur.
+- Kaynak ve hedef aynı register olabilir; sonuç eski kaynak/hedef değerlerinden hesaplanır.
+- FIELD_WIDTH, A'nın seçilen W genişliğini aşamaz; hedef aralığı W sınırları içinde kalmalıdır.
+
+### 4.5 RI — Register + immediate
 
 ```text
 63       56 55    52 51   47 46   42 41  39 38  36 35                 0
@@ -145,7 +176,7 @@ Bu format, dört ayrı register operandını tek 64-bit instruction word içinde
 - Opcode signed/unsigned yorumunu veya shift-count gibi özel kullanımı açıkça belirtir.
 - Daha geniş sabitler EXT formatı ile taşınır.
 
-### 4.4 MEM — Bellek erişimi
+### 4.6 MEM — Bellek erişimi
 
 ```text
 63       56 55    52 51   47 46   42 41  39 38  36 35             4 3   0
@@ -167,7 +198,7 @@ Effective address:
 
 64-bit adresin tamamı RA kaydında tutulur. Böylece 32-bit displacement, 64-bit adres alanını sınırlamaz.
 
-### 4.5 XFER — Register bankları arası açık aktarım
+### 4.7 XFER — Register bankları arası açık aktarım
 
 ```text
 63       56 55    52 51  50 49   45 44  43 42   38 37  35 34  32 31     0
@@ -189,7 +220,7 @@ Effective address:
 
 Register bankları arası aktarım bit kopyalama/paketleme işlemidir; integer↔float sayısal dönüşümü değildir. Sayısal dönüşüm FCONV gibi ayrı bir execution opcode'udur.
 
-### 4.6 XFER tabanlı sayısal dönüşüm — FCONV
+### 4.8 XFER tabanlı sayısal dönüşüm — FCONV
 
 FCONV bit kopyalama yapmaz; kaynak sayısal değeri hedef türüne dönüştürür. XFER alan yerleşimini kullanır, ancak ayrı opcode ve dönüşüm alt alanlarına sahiptir.
 
@@ -252,7 +283,7 @@ W, DST_TYPE genişliğiyle aynı olmalıdır. F128 kaynak veya hedef, FA bankın
 
 Normal MOV.* XFER komutlarında M/AUX alanları ilgili transfer opcode tanımına göre yorumlanır; FCONV alt alanları onlara uygulanmaz.
 
-### 4.7 BR — PC-relative branch
+### 4.9 BR — PC-relative branch
 
 ```text
 63       56 55    52 51   48 47                         16 15          0
@@ -266,7 +297,7 @@ Normal MOV.* XFER komutlarında M/AUX alanları ilgili transfer opcode tanımın
 - COND, branch koşulunu belirler; koşul kodları ayrı tabloda tanımlanacaktır.
 - Reserved alan sıfır olmalıdır.
 
-### 4.8 SYS — System ve kontrol komutları
+### 4.10 SYS — System ve kontrol komutları
 
 SYS formatı privilege, system state, interrupt, synchronization ve özel kontrol komutları için ayrılmıştır. Alt alan yerleşimi her komut sınıfı için ayrı tabloda tanımlanacaktır. Henüz system register bankı veya CSR sayısı kesinleştirilmemiştir.
 
