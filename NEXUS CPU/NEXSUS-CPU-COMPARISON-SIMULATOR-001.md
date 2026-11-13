@@ -1,7 +1,7 @@
 # NEXSUS CPU — Cross-Architecture Comparison Simulator
 
 **Document ID:** NEXSUS-CPU-COMPARISON-SIMULATOR-001  
-**Status:** Simulator v0.2.4-dev; lockstep multicore execution submits same-cycle DRAM misses to one shared bank/bus controller; validation in progress  
+**Status:** Simulator v0.2.4-dev; lockstep multicore, shared cache groups, first-stage P0/SPM2 ablation models; validation in progress  
 **Purpose:** Compare one deterministic mixed workload across AMD Zen 5, Intel Arrow Lake P/E cores, and the selected NEXSUS 128-window architecture.
 
 ## 1. Comparison targets
@@ -148,7 +148,7 @@ The report now includes:
 
 These are diagnostic counters, not mutually exclusive wall-clock durations. Some count per-operation events and others count cycles; they must not be added together as elapsed time. The v0.2.4-dev model replaces the static per-core split with lockstep global bank arbitration. The shared controller models same-cycle DRAM miss contention; NEXSUS shared cache groups now model capacity and hit paths, while coherence and physical controller details remain approximations. The memory-latency exposure counter is descriptive latency accounting, not a count of cycles during which the pipeline was actually stalled. Shared memory arbitration must be implemented before treating 8L4S throughput as a realistic whole-chip prediction.
 
-## 7. Roadmap
+## 7. P0 and SPM2 first-stage model\n\nThe simulator now accepts independent NEXSUS feature toggles (`spm`, `p0`) without changing the logical operation graph. P0-enabled mode uses an 8 KiB command store (128 × 64-byte lines, eight 64-bit command records per refill line), one outstanding refill per core and a provisional 8-cycle refill. P0-disabled mode uses a 32 KiB conventional instruction cache (512 × 64-byte lines) and a provisional 32-cycle refill. The fetch gate limits dispatch until the command line is available; this does not equate refill width with decode/retire width. Command-path timings and capacities are explicit model assumptions, not measured silicon values.\n\nSPM2-enabled mode recognizes explicitly tagged task-local accesses and routes in-range accesses (within 8 KiB) to a modeled local workspace with provisional 2-cycle access latency and one port per core. Out-of-range accesses fall back to the normal cache/Data RAM path. SPM2-disabled mode sends all such accesses through the normal cache/Data RAM path. Per-core counters report SPM2 accesses, bytes, port conflicts, overflow events and fallback bytes; P0 counters report hits, refills, refill bytes and command-fetch wait cycles.\n\nThe initial targeted suite includes SPM2 hot-working-set/capacity kernels and P0 sequential/branch/working-set/starvation kernels. The current command trace is a deterministic address stream; detailed branch-target redirects, refill queue arbitration, SPM2 multi-bank organization and SPM0/1/3–7 behavior remain future work.\n\n## 8. Roadmap
 
 | Version | Scope | Acceptance condition |
 |---|---|---|
@@ -162,7 +162,7 @@ These are diagnostic counters, not mutually exclusive wall-clock durations. Some
 | v0.5 | Calibration against actual Ryzen 9 9950X and Core Ultra 9 285K measurements | Error bounds reported per kernel |
 | v1.0 | Stable comparative simulator and repeatable benchmark suite | Reproducible reports and documented limitations |
 
-## 8. Run
+## 9. Run
 
 From the repository root:
 
@@ -174,7 +174,7 @@ python "NEXUS CPU/tools/cpu_comparison_sim.py" --scale 2 --json
 
 The script is a research model, not a substitute for RTL simulation, gem5, vendor performance counters or physical silicon measurements.
 
-## 9. Primary references
+## 10. Primary references
 
 - AMD Ryzen 9 9950X specifications: https://www.amd.com/en/products/processors/desktops/ryzen/9000-series/amd-ryzen-9-9950x.html
 - AMD Zen 5 Hot Chips overview: https://hc2024.hotchips.org/assets/program/conference/day2/24_HC2024.AMD.Cohen.Subramony.final.pdf
