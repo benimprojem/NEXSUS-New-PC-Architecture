@@ -92,9 +92,9 @@ CPU'nun komut kodu ve veri alanları ayrıdır. P0, App RAM'den getirilen 64-bit
 Temel belgeler:
 
 - [CPU ana mimarisi](Yeni%20Nesil%20Ayr%C4%B1%C5%9Ft%C4%B1r%C4%B1lm%C4%B1%C5%9F%20Register%20Tabanl%C4%B1%20CPU%20Mimarisi.md)
-- [ISA komut seti ve execution-unit eşlemesi](NEXSUS-CPU-ISA-001.md)
-- [Instruction Encoding Specification — 64-bit komut kodlaması](NEXSUS-CPU-INSTRUCTION-ENCODING-001.md)
-- [SPM ve register görünümleri](NEXSUS%20CPU%20%E2%80%94%20SPM,%20Register%20G%C3%B6r%C3%BCn%C3%BCmleri%20ve%20Do%C4%9Frudan%20Alan%20Eri%C5%9Fimi.md)
+- [ISA komut seti ve execution-unit eşlemesi](NEXUS%20CPU/NEXSUS-CPU-ISA-001.md)
+- [Instruction Encoding Specification — 64-bit komut kodlaması](NEXUS%20CPU/NEXSUS-CPU-INSTRUCTION-ENCODING-001.md)
+- [SPM ve register görünümleri](NEXUS%20CPU/NEXSUS%20CPU%20%E2%80%94%20SPM,%20Register%20G%C3%B6r%C3%BCn%C3%BCmleri%20ve%20Do%C4%9Frudan%20Alan%20Eri%C5%9Fimi.md)
 
 
 # 4. FAPU
@@ -676,13 +676,26 @@ Bu nedenle sonraki aşamada yapılması gereken en önemli çalışma, her bir y
 
 ## CPU Belgeleri
 
-- [Ayrıştırılmış Register Tabanlı CPU Mimarisi](Yeni%20Nesil%20Ayr%C4%B1%C5%9Ft%C4%B1r%C4%B1lm%C4%B1%C5%9F%20Register%20Tabanl%C4%B1%20CPU%20Mimarisi.md) — RA/DA/MA, bellek ayrımı ve execution unit yapısı.
-- [CPU Special Register Architecture — SRA-001](NEXSUS-CPU-SRA-001.md) — PC, SR, CR, SPM page/offset, AGU ve internal register ayrımı.
-- [CPU Instruction Set — ISA-001](NEXSUS-CPU-ISA-001.md) — ALU, FPU, Matrix Engine, transfer, SPM ve control-flow komut tabloları.
-- [SPM ve Register Görünümleri](NEXSUS%20CPU%20%E2%80%94%20SPM,%20Register%20G%C3%B6r%C3%BCn%C3%BCmleri%20ve%20Do%C4%9Frudan%20Alan%20Eri%C5%9Fimi.md) — SPM0/SPM1, page-offset ve RA/RB/RC/RD view sistemi.
-- [CPU Memory Protection Domains](NEXSUS-CPU-MEMORY-PROTECTION-DOMAINS-001.md) — App RAM/Data RAM sahipliği, görev izolasyonu ve açık paylaşım izinleri.
-- [CPU Memory Access Control Flow](NEXSUS-CPU-MEMORY-ACCESS-CONTROL-001.md) — Fetch, LOAD/STORE, ATOM ve XFER erişim doğrulama/commit sırası.
-- [CPU Context Save/Restore](NEXSUS-CPU-CONTEXT-SAVE-RESTORE-001.md) — Register ve SPM bağlamlarının korunması.
-- [CPU Task Scheduling / SPM Residency](NEXSUS-CPU-TASK-SCHEDULING-SPM-RESIDENCY-001.md) — Görev durumları, bağlam yuvaları ve SPM2 sahipliği.
-- [CPU SPM Access Protection](NEXSUS-CPU-SPM-ACCESS-PROTECTION-001.md) — SPM0–SPM7 ayrıcalık ve erişim sınırları.
+CPU ile ilgili teknik belgeler `NEXUS CPU/` klasöründe merkezi olarak tutulur. Aşağıdaki liste klasördeki mevcut belge envanteridir.
 
+### Mimari ve komut seti
+- [CPU ana mimarisi](NEXUS%20CPU/Yeni%20Nesil%20Ayr%C4%B1%C5%9Ft%C4%B1r%C4%B1lm%C5%9F%20Register%20Tabanl%C4%B1%20CPU%20Mimarisi.md) — Register bankları, yürütme birimleri ve temel CPU organizasyonu.
+- [CPU ISA-001](NEXUS%20CPU/NEXSUS-CPU-ISA-001.md) — Komut seti ve yürütme davranışları.
+- [Instruction Encoding-001](NEXUS%20CPU/NEXSUS-CPU-INSTRUCTION-ENCODING-001.md) — 64-bit komut biçimi ve alan kodlamaları.
+- [Special Register Architecture (SRA-001)](NEXUS%20CPU/NEXSUS-CPU-SRA-001.md) — Özel register'lar, adres üretimi ve dahili kontrol kayıtları.
+- [CSR-001](NEXUS%20CPU/NEXSUS-CPU-CSR-001.md) — Control and Status Register mimarisi.
+
+### Register, SPM ve görev bağlamı
+- [SPM ve Register Görünümleri](NEXUS%20CPU/NEXSUS%20CPU%20%E2%80%94%20SPM,%20Register%20G%C3%B6r%C3%BCn%C3%BCmleri%20ve%20Do%C4%9Frudan%20Alan%20Eri%C5%9Fimi.md) — Register görünümleri ve doğrudan SPM alan erişimi.
+- [Context Save/Restore](NEXUS%20CPU/NEXSUS-CPU-CONTEXT-SAVE-RESTORE-001.md) — Register ve çalışma bağlamlarının korunması/geri yüklenmesi.
+- [Task Scheduling / SPM Residency](NEXUS%20CPU/NEXSUS-CPU-TASK-SCHEDULING-SPM-RESIDENCY-001.md) — Görev durumları ve SPM bağlam yuvaları.
+- [SPM Access Protection](NEXUS%20CPU/NEXSUS-CPU-SPM-ACCESS-PROTECTION-001.md) — SPM0–SPM7 erişim ve ayrıcalık sınırları.
+
+### Bellek ve erişim denetimi
+- [Memory Protection Domains](NEXUS%20CPU/NEXSUS-CPU-MEMORY-PROTECTION-DOMAINS-001.md) — App RAM/Data RAM sahipliği, görev izolasyonu ve paylaşım izinleri.
+- [Memory Access Control](NEXUS%20CPU/NEXSUS-CPU-MEMORY-ACCESS-CONTROL-001.md) — Fetch, LOAD/STORE, ATOM ve XFER doğrulama/commit akışı.
+
+### Exception ve kesme sistemi
+- [Exception Frame](NEXUS%20CPU/NEXSUS-CPU-EXCEPTION-FRAME-001.md) — Exception giriş/çıkış bağlamı ve frame düzeni.
+- [System IRQ / Exception](NEXUS%20CPU/NEXSUS-SYSTEM-IRQ-EXCEPTION-001.md) — Event Router, IRQ Controller ve CPU exception/IRQ akışı.
+- [System Timer / Inter-core IRQ](NEXUS%20CPU/NEXSUS-SYSTEM-TIMER-INTERCORE-IRQ-001.md) — Zamanlayıcı ve çekirdekler arası kesme altyapısı.
