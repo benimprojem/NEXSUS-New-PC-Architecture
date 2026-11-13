@@ -208,3 +208,83 @@ Thread komutları (SPAWN, SEND, RECEIVE/LISTEN, DONE vb.) CPU çekirdek ISA'sın
 - [CPU ana mimarisi](Yeni%20Nesil%20Ayr%C4%B1%C5%9Ft%C4%B1r%C4%B1lm%C4%B1%C5%9F%20Register%20Tabanl%C4%B1%20CPU%20Mimarisi.md)
 - [SPM ve register views](NEXSUS%20CPU%20%E2%80%94%20SPM,%20Register%20G%C3%B6r%C3%BCn%C3%BCmleri%20ve%20Do%C4%9Frudan%20Alan%20Eri%C5%9Fimi.md)
 - [NEXSUS PC Architecture README](README.md)
+
+
+---
+
+## 14. ME512 operand eşleme ve register pair
+
+ME512'nin veri yolu genişliği 512-bit, MA registerlarının fiziksel genişliği 256-bit olarak tanımlıdır. Bu nedenle ISA seviyesinde **MA pair** kullanılacaktır.
+
+### 14.1 Pair kuralı
+
+- `MA00:MA01` → 512-bit birleşik operand (pair index 0)
+- `MA02:MA03` → pair index 1
+- ...
+- `MA30:MA31` → pair index 15
+- Pair başlangıcı çift MA index olmalıdır.
+- `MA[2p]` düşük 256-bit; `MA[2p+1]` yüksek 256-bit dilim olarak tanımlanır.
+- 512-bit sonuç aynı pair'e yazılır.
+- Pair içindeki registerlar bağımsız 256-bit işlemlerde de kullanılabilir; pair komutu yürürken pair'in iki registerı o komut tarafından rezerve edilir.
+
+### 14.2 Pair operand biçimi
+
+Matrix/Vector komutları için:
+`M512p` = pair index (0..15), fiziksel olarak `MA[2p] + MA[2p+1]`.
+
+Örnek:
+`MMUL.M512 MA00:MA01, MA02:MA03, MA04:MA05`
+
+Bu örnek sadece 512-bit operand/result register eşlemesini gösterir; matris shape ve element packing ayrıca opcode/format tarafından belirlenir.
+
+### 14.3 ME512 kaynak kuralı
+
+- Her çekirdekte bir ME512 bulunur; aynı anda bir ME512 komutu yürütür (ilk mikro-mimari hedef).
+- Komut issue edildiğinde kaynak ve hedef MA pair'leri operand/result boyunca kilitlenir.
+- Aynı pair'e scalar/vector write yapılması hazard çözülene kadar bekletilir.
+- ME512 ile ALU/FPU komutları bağımsız register ve kaynaklar kullanıyorsa paralel ilerleyebilir.
+- ME512'nin iç tile/accumulator kapasitesi 512-bit dış operand yolundan ayrı bir mikro-mimari konudur.
+
+## 15. Scalar register bank portları ve paralel issue
+
+İlk mikro-mimari için port sayıları **tasarım hedefi** olarak tanımlanır (final silikon gereksinimi değil):
+
+| Register bank | Read port hedefi | Write port hedefi | Açıklama |
+|---|---:|---:|---|
+| RA (64-bit) | 6 | 3 | 2–3 ALU ve 2 FPU için operand besleme hedefi |
+| DA (64-bit) | 4 | 2 | Load/store ve data staging |
+| MA (256-bit) | 4 × 256-bit | 2 × 256-bit | ME512 pair ve vector data |
+| SPM0 | 2 × 64-bit | 1 × 64-bit | 64-bit record access |
+| SPM1 | 2 variable-width | 1 variable-width | Byte/field access; bank implementation TBD |
+
+RA port hedefleri ideal koşulda 3 adet 2-source ALU komutu ve 2-source FPU komutlarını aynı çevrimde beslemeye tek başına yetmez; operand reuse, immediate, bypass ve dispatch sınırlaması gerekir. Bu nedenle tablo **azami port hedefi değil, ilk planlama değeridir**; issue scheduler port/operand kaynaklarına göre komut seçer. RA register rename/physical bank çoğaltma henüz kararlaştırılmadı.
+
+MA'nın 4 read portu, 512-bit pair okumasında iki 256-bit register dilimini birlikte besleme hedefidir. Pair için 2 read port tüketimi varsayılır; iki pair operandı aynı anda okunduğunda 4 port kullanılır. ME512 sonucu pair'e yazarken iki 256-bit write portu tüketir.
+
+## 16. İlk issue modeli (taslak)
+
+- **Integer issue:** 2 komut/çevrim temel (ALU0 + ALU1); 3-ALU çekirdekte 3 komut/çevrim üst hedef.
+- **FP issue:** 2 komut/çevrim hedef (FPU0 + FPU1); operand ve port çakışmaları halinde daha az.
+- **Matrix issue:** 1 ME512 komut/çevrim; latency çok çevrimli olabilir, pipeline throughput ayrıca belirlenir.
+- **Mixed issue:** Integer, FP ve Matrix komutları birbirinden bağımsızsa aynı çevrimde issue edilebilir.
+- **Load/store ve SPM:** execution issue'dan bağımsız kaynak sınıfıdır; ancak register portları, address generation ve memory bank çatışmaları toplam throughput'u sınırlar.
+- Issue sayıları komut bağımsızlığı, kaynak hazır olma, dependency ve port uygunluğu koşuluna bağlıdır; garanti edilen her-program throughput'u değildir.
+
+## 17. Register conflict / hazard kuralları
+
+1. Aynı çevrimde aynı register'a birden fazla yazma hedefi verilmez; arbitration veya issue rejection gerekir.
+2. Bir komutun yazacağı register, aynı çevrimde bağımlı komutun kaynak operandı olarak kullanılamaz; forwarding varsa bypass ile çözülür.
+3. RA/RB/RC/RD aynı fiziksel RA registerının görünümüdür; bir view'a yazma diğer view okumalarını günceller.
+4. MA pair kullanan ME512 komutu, pair'in iki fiziksel MA registerını komut tamamlanana veya pipeline'ın güvenli release noktasına kadar rezerve eder.
+5. SPM read/write port/bank conflict scheduler tarafından çözülür.
+6. Load-use, FP dependency, matrix dependency ve memory ordering kuralları pipeline/ISA ayrıntı belgesinde genişletilecektir.
+
+## 18. Açık karar / sonraki tasarım konusu
+
+- RA register bankının multiport maliyeti; banked/replicated/renamed alternatifleri.
+- FPU ve ALU operandlarının ortak RA portlarını nasıl kullanacağı; dedicated operand queue/bypass seçenekleri.
+- MA pair komutlarının register allocation ve ABI'de nasıl temsil edileceği.
+- SPM0/SPM1 fiziksel bank/port düzeni ve aynı cycle erişim.
+- ME512 accumulator/tiling ve matrix shape formatı.
+- Integer MUL/DIV ve FP DIV/SQRT latency/throughput.
+- Precise exception, branch recovery, interrupt/context-save semantiği.
