@@ -170,6 +170,8 @@ From the repository root:
 python "NEXUS CPU/tools/test_cpu_comparison_sim.py"
 python "NEXUS CPU/tools/cpu_comparison_sim.py"
 python "NEXUS CPU/tools/cpu_comparison_sim.py" --scale 2 --json
+python "NEXUS CPU/tools/cpu_comparison_sim.py" --ablation
+python "NEXUS CPU/tools/cpu_comparison_sim.py" --ablation --json
 ```
 
 The script is a research model, not a substitute for RTL simulation, gem5, vendor performance counters or physical silicon measurements.
