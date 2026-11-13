@@ -252,7 +252,7 @@ Memory komutlarının numeric OP atamaları Encoding belgesi §8.5–§8.6 ile e
 | 0x87 | XFER.START | MEMXFER |
 | 0x88 | XFER.WAIT | MEMXFER |
 
-MEMXFER, register bank XFER (0x85) ile aynı komut değildir. Kaynak/hedef L1–L4 domain'leri, RA içindeki byte adresleri ve RA içindeki byte uzunluğu ile CPU kontrollü kopyalama yapar. Synchronous XFER.MEM tamamlanana kadar bekler; XFER.START token üretir; XFER.WAIT token'ın tamamlanmasını bekler. Her iki uç için erişim izni, aralık ve sahiplik kontrolleri `NEXSUS-CPU-MEMORY-ACCESS-CONTROL-001.md` belgesindeki kurallara tabidir. MEMXFER için aday 52-bit payload alan eşlemesi Instruction Encoding §4.15'te tanımlıdır. Alan eşlemesi ve token edge-case davranışları §4.15'te tanımlanmıştır; maksimum transfer boyutu ve eşzamanlı token kapasitesi mikro-mimari aşamasında tamamlanacaktır. §4.14 yalnızca SYS/FENCE formatıdır.
+MEMXFER, register bank XFER (0x85) ile aynı komut değildir. Kaynak/hedef L1–L4 domain'leri, RA içindeki byte adresleri ve RA içindeki byte uzunluğu ile CPU kontrollü kopyalama yapar. Synchronous XFER.MEM tamamlanana kadar bekler; XFER.START token üretir; XFER.WAIT token'ın tamamlanmasını bekler. Her iki uç için erişim izni, aralık ve sahiplik kontrolleri `NEXSUS-CPU-MEMORY-ACCESS-CONTROL-001.md` belgesindeki kurallara tabidir. MEMXFER 52-bit payload alan eşlemesi ve token edge-case davranışları Instruction Encoding §4.15'te tanımlıdır; maksimum transfer boyutu ve eşzamanlı token kapasitesi mikro-mimari aşamasında tamamlanacaktır. §4.14 yalnızca SYS/FENCE formatıdır.
 
 ## 5.3 Little-endian bellek ve register-grup sıralaması
 
