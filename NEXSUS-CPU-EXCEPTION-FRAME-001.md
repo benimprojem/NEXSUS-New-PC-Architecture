@@ -149,7 +149,7 @@ SPM7 is the exception-entry temporary workspace. No additional ESCR register ban
 - SPM7 is 8 KiB per core, consistent with the SPM bank baseline.
 - The 8 KiB exception workspace is divided into eight 1 KiB slices, one slice for each minimum ECS nesting level.
 - Hardware selects the active slice from the ECS depth before the first handler instruction. Nested entry selects the next slice and cannot overwrite the outer handler's temporary values.
-- The active slice is directly addressable through the SPM7 exception window; the handler does not need to consume an RA register merely to locate its initial scratch storage.
+- The active slice is directly addressable through the SPM7 exception window; existing SPM.RD/SPM.WR operations can transfer supported register-bank values directly to/from SPM7 without using DA as an intermediate staging bank.
 - SPM7 exception slices are reserved while exception handling is active and are not simultaneously available to interrupted application code.
 - On IRET, the corresponding slice is released for reuse. Its contents are unspecified after release.
 - SPM7 is temporary bootstrap/spill workspace, not the persistent kernel exception stack and not a replacement for the software save frame on KESP.
