@@ -647,8 +647,9 @@ class AppRamController:
     """Independent App RAM instruction-source controller.
 
     Separate from SharedMemoryController: this controller serves instruction
-    fetches only. The current integrated CommandFetchModel remains a serialized
-    page-ready approximation until this shared controller is wired into it.
+    fetches only. Integrated CommandFetchModel instances submit instruction-page
+    requests here; downstream C0 -> CS -> EB staging delays remain modeled
+    separately as a pipeline approximation.
     """
     def __init__(self, bank_count: int = 8, beat_bytes: int = 8,
                  bytes_per_cycle: int = 32, first_beat_latency: int = 40,
@@ -745,6 +746,7 @@ class SharedMemoryController:
         self.bus_next_byte = 0
         self.rr_cursor = 0
         self.request_cycles = []
+        self.request_events = []
 
     @property
     def bus_next_cycle(self) -> int:
@@ -803,12 +805,23 @@ class SharedMemoryController:
             bus_complete = math.ceil(
                 (bus_start_byte + width) / self.aggregate_bytes_per_cycle
             )
+            service_complete_cycle = max(bank_complete, bus_complete)
             result[req_id] = {
                 "bank_wait": bank_wait,
                 "bus_wait": bus_wait,
                 "bus_service_cycles": bus_service_cycles,
-                "service_complete_cycle": max(bank_complete, bus_complete),
+                "service_complete_cycle": service_complete_cycle,
             }
+            self.request_events.append({
+                "request_id": str(req_id),
+                "core": int(req["core"]),
+                "address": address,
+                "width": width,
+                "request_cycle": cycle,
+                "bank_wait": bank_wait,
+                "bus_wait": bus_wait,
+                "service_complete_cycle": service_complete_cycle,
+            })
         self.rr_cursor = (start + 1) % len(core_ids)
         return result
 
@@ -1284,7 +1297,8 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                            "aggregate_dram_bytes_per_cycle": aggregate_dram_bandwidth,
                            "bank_busy_until": controller.bank_busy,
                            "bus_next_cycle": controller.bus_next_cycle,
-                           "request_cycles": sorted(set(controller.request_cycles))}}
+                           "request_cycles": sorted(set(controller.request_cycles)),
+                            "request_events": controller.request_events}}
 
 
 def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=None,
