@@ -99,6 +99,27 @@ jobs:
               print(f'{name}: baseline={row["baseline_cycles"]} proposed={row["proposed_cycles"]} '
                     f'saved={row["cycles_saved"]} ({row["improvement_percent"]}%)')
           PY
+
+      - name: Run INT and FP resource-count design-space sweep
+        run: |
+          python "NEXUS CPU/tools/cpu_comparison_sim.py" --resource-sweep --scale 1 --json > /tmp/nexus-resource-sweep.json
+          python - <<'PY'
+          import json
+          data = json.load(open("/tmp/nexus-resource-sweep.json", encoding="utf-8"))
+          assert len(data["results"]) == 20
+          assert len({row["total_ops"] for row in data["results"].values()}) == 1
+          for variant in data["results"].values():
+              assert all(row["ops_preserved"] for row in variant["kernels"].values())
+          print("INT/FP RESOURCE COUNT SWEEP")
+          for key, row in data["results"].items():
+              i64 = row["kernels"]["integer_throughput"]
+              i128 = row["kernels"]["integer128_throughput"]
+              fp = row["kernels"]["fp_throughput"]
+              print(f'{key}: INT64={i64["cycles"]} INT128={i128["cycles"]} FP64={fp["cycles"]} '
+                    f'unit_stalls={i64["execution_unit_blocked_op_cycles"]}/'
+                    f'{i128["execution_unit_blocked_op_cycles"]}/'
+                    f'{fp["execution_unit_blocked_op_cycles"]}')
+          PY
       - name: Run branch predictor sensitivity sweep
         run: |
           python "NEXUS CPU/tools/cpu_comparison_sim.py" --branch-sweep --scale 1 --json > /tmp/nexus-branch-sweep.json
@@ -149,4 +170,5 @@ jobs:
             /tmp/nexus-fetch-sweep.json
             /tmp/nexus-branch-sweep.json
             /tmp/nexus-normalized-8core.json
+            /tmp/nexus-resource-sweep.json
           if-no-files-found: ignore
