@@ -242,7 +242,7 @@ def build_composite_workload(scale: int = 1) -> Dict[str, List[Op]]:
         add_op(ops, "BR", label="CS branch", command_address=i*8)
     result["cs_branch"] = ops
 
-    # N) Repeated 2 KiB command loop (fits both P0 and conventional I-cache).
+    # N) Repeated 2 KiB command loop (fits one CS slot and conventional I-cache).
     ops = []
     for i in range(4096*n):
         add_op(ops, "INT", label="CS working set", command_address=(i % 256)*8)
@@ -1095,9 +1095,9 @@ def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=N
             "stall_counters": {k: sum(x["stalls"][k] for x in per_core)
                                for k in stall_keys},
             "memory_controller": simulation["controller"],
-            "spm_counters": {k: sum(x["spm"][k] for x in per_core)
+            "workspace_counters": {k: sum(x["spm"][k] for x in per_core)
                              for k in ("accesses", "bytes", "port_conflicts", "overflow", "fallback_bytes")},
-            "p0_counters": {
+            "codeflow_counters": {
                 "hits": sum(x["fetch"].hits for x in per_core if x["fetch"] is not None),
                 "refills": sum(x["fetch"].refills for x in per_core if x["fetch"] is not None),
                 "refill_bytes": sum(x["fetch"].refill_bytes for x in per_core if x["fetch"] is not None),
@@ -1116,7 +1116,7 @@ def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=N
                 "app_source_cycles": sum(x["fetch"].app_source_cycles for x in per_core if x["fetch"] is not None),
                 "code_slot_transfer_cycles": sum(x["fetch"].code_slot_cycles for x in per_core if x["fetch"] is not None),
                 "code_stream_transfer_cycles": sum(x["fetch"].code_stream_cycles for x in per_core if x["fetch"] is not None),
-                "mode": ("CodeFlow C0 -> CS -> EB (legacy PX/EB)" if p.name.startswith("NEXSUS CPU") and
+                "mode": ("CodeFlow C0 -> CS -> EB (legacy PX/SPM0)" if p.name.startswith("NEXSUS CPU") and
                          (nexus_features is None or nexus_features.get("p0", True))
                          else "conventional I-cache")
             },
@@ -1168,8 +1168,8 @@ def run_nexus_ablation(workloads: Dict[str, List[Op]], profile_dict: dict) -> di
     """Run the four controlled NEXSUS TW/CS combinations on identical work."""
     variants = {
         "N-FULL": {"spm": True, "p0": True},
-        "N-NO-SPM": {"spm": False, "p0": True},
-        "N-NO-P0": {"spm": True, "p0": False},
+        "N-NO-TW": {"spm": False, "p0": True},
+        "N-NO-CS": {"spm": True, "p0": False},
         "N-BASE": {"spm": False, "p0": False},
     }
     runs = {
@@ -1179,8 +1179,8 @@ def run_nexus_ablation(workloads: Dict[str, List[Op]], profile_dict: dict) -> di
     comparison = {}
     for kernel in workloads:
         full = runs["N-FULL"]["kernels"][kernel]
-        no_spm = runs["N-NO-SPM"]["kernels"][kernel]
-        no_p0 = runs["N-NO-P0"]["kernels"][kernel]
+        no_spm = runs["N-NO-TW"]["kernels"][kernel]
+        no_p0 = runs["N-NO-CS"]["kernels"][kernel]
         base = runs["N-BASE"]["kernels"][kernel]
         spm_gain = no_spm["cycles"] - full["cycles"]
         p0_gain = no_p0["cycles"] - full["cycles"]
@@ -1189,12 +1189,12 @@ def run_nexus_ablation(workloads: Dict[str, List[Op]], profile_dict: dict) -> di
             "ops_preserved": all(runs[n]["kernels"][kernel]["ops"] == full["ops"] for n in variants),
             "ops": full["ops"],
             "cycles": {n: runs[n]["kernels"][kernel]["cycles"] for n in variants},
-            "spm_cycles_saved_with_p0_on": spm_gain,
-            "p0_cycles_saved_with_spm_on": p0_gain,
+            "tw_cycles_saved_with_cs_on": spm_gain,
+            "cs_cycles_saved_with_tw_on": p0_gain,
             "combined_cycles_saved": combined_gain,
             "interaction_cycles": combined_gain - (spm_gain + p0_gain),
-            "spm_percent_vs_no_spm": round(100 * spm_gain / max(1, no_spm["cycles"]), 3),
-            "p0_percent_vs_no_p0": round(100 * p0_gain / max(1, no_p0["cycles"]), 3),
+            "tw_percent_vs_no_tw": round(100 * spm_gain / max(1, no_spm["cycles"]), 3),
+            "cs_percent_vs_no_cs": round(100 * p0_gain / max(1, no_p0["cycles"]), 3),
             "combined_percent_vs_base": round(100 * combined_gain / max(1, base["cycles"]), 3),
         }
     return {
@@ -1211,7 +1211,7 @@ def run_nexus_ablation(workloads: Dict[str, List[Op]], profile_dict: dict) -> di
             "p0_disabled": "32 KiB conventional instruction cache; 64-byte line; 32-cycle provisional refill",
             "spm2_enabled": "8 KiB task workspace; 2-cycle provisional access; one modeled port per core",
             "spm2_disabled": "Tagged TW accesses use normal cache/Data RAM path",
-            "scope": "TW task workspace and CS-to-EB instruction feed modeled; SPM1 and SPM3-SPM7 remain partially abstracted",
+            "scope": "TW task workspace and CS-to-EB instruction feed modeled; OW, CP0-CP3 and XW remain partially abstracted",
         },
     }
 
@@ -1237,7 +1237,7 @@ def run_p0_capacity_sweep(workloads, profile_dict, capacities_kb=(4, 8, 16, 32, 
             "total_cycles": run["total_cycles"],
             "total_ops": run["total_ops"],
             "kernels": {name: {"cycles": row["cycles"], "ops": row["ops"],
-                               "p0": row["p0_counters"]}
+                               "code_slots": row["codeflow_counters"]}
                         for name, row in run["kernels"].items()},
         }
     return {
@@ -1264,7 +1264,7 @@ def run_fetch_latency_sweep(workloads, conventional_latencies=(8, 16, 24, 32),
             kernel = run["kernels"]["cs_starvation"]
             rows[key][str(latency)] = {
                 "refill_latency_cycles": latency, "cycles": kernel["cycles"],
-                "ops": kernel["ops"], "fetch": kernel["p0_counters"],
+                "ops": kernel["ops"], "fetch": kernel["codeflow_counters"],
             }
     for latency in conventional_latencies:
         run = simulate_cpu(
@@ -1275,7 +1275,7 @@ def run_fetch_latency_sweep(workloads, conventional_latencies=(8, 16, 24, 32),
         kernel = run["kernels"]["cs_starvation"]
         rows["nexus_conventional"][str(latency)] = {
             "refill_latency_cycles": latency, "cycles": kernel["cycles"],
-            "ops": kernel["ops"], "fetch": kernel["p0_counters"],
+            "ops": kernel["ops"], "fetch": kernel["codeflow_counters"],
         }
     for latency in p0_latencies:
         run = simulate_cpu(
@@ -1288,7 +1288,7 @@ def run_fetch_latency_sweep(workloads, conventional_latencies=(8, 16, 24, 32),
         rows["nexus_p0"][str(latency)] = {
             "refill_latency_cycles": latency, "capacity_kb": p0_capacity_kb,
             "cycles": kernel["cycles"], "ops": kernel["ops"],
-            "fetch": kernel["p0_counters"],
+            "fetch": kernel["codeflow_counters"],
         }
     counts = {row["ops"] for group in rows.values() for row in group.values()}
     if len(counts) != 1:
@@ -1345,7 +1345,7 @@ def main():
         if args.json:
             print(json.dumps(result, indent=2))
         else:
-            print("NEXSUS P0 CAPACITY SENSITIVITY — PROVISIONAL MODEL")
+            print("NEXSUS CS CODE-SLOT CAPACITY SENSITIVITY — PROVISIONAL MODEL")
             for row in result["results"].values():
                 print(f'{row["capacity_kb"]:>2} KiB: cycles={row["total_cycles"]} ops={row["total_ops"]}')
         return
@@ -1369,8 +1369,8 @@ def main():
             print("PER-KERNEL EFFECTS")
             for kernel, row in result["kernels"].items():
                 print("{} full={} no-SPM={} no-P0={} base={} interaction={}".format(
-                    kernel, row["cycles"]["N-FULL"], row["cycles"]["N-NO-SPM"],
-                    row["cycles"]["N-NO-P0"], row["cycles"]["N-BASE"], row["interaction_cycles"]))
+                    kernel, row["cycles"]["N-FULL"], row["cycles"]["N-NO-TW"],
+                    row["cycles"]["N-NO-CS"], row["cycles"]["N-BASE"], row["interaction_cycles"]))
         return
     profiles = {}
     for key in ("amd_9950x3d2", "intel_xeon_698x", "apple_m6"):
