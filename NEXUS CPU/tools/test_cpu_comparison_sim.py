@@ -8,10 +8,10 @@ import cpu_comparison_sim as sim
 class DataRamMSHRTests(unittest.TestCase):
     def test_capacity_sweep_preserves_all_cold_loads_and_bounds_occupancy(self):
         result = sim.run_data_mshr_sweep(
-            sim.PROFILES["nexus_balanced_128"], capacities=(1, 2, 4, 8, 16, 32),
+            sim.PROFILES["nexus_balanced_128"], capacities=(1, 2, 4, 8, 16, 32, 64, 128),
             ops_per_core=32,
         )
-        self.assertEqual(set(result["results"]), {"1", "2", "4", "8", "16", "32"})
+        self.assertEqual(set(result["results"]), {"1", "2", "4", "8", "16", "32", "64", "128"})
         for capacity, row in result["results"].items():
             with self.subTest(capacity=capacity):
                 self.assertEqual(row["ops_retired"], 8 * 32)
@@ -19,7 +19,11 @@ class DataRamMSHRTests(unittest.TestCase):
                 self.assertTrue(all(value <= int(capacity)
                                     for value in row["max_outstanding_per_core"]))
                 self.assertIsNone(row["app_ram_controller"])
-        self.assertGreater(result["results"]["1"]["total_full_events"], 0)
+                self.assertEqual(row["total_full_cycles"], sum(row["full_cycles_per_core"]))
+                self.assertLessEqual(row["total_full_cycles"], row["total_blocked_request_attempts"])
+        self.assertGreater(result["results"]["1"]["total_blocked_request_attempts"], 0)
+        self.assertGreater(result["results"]["1"]["total_full_cycles"], 0)
+        self.assertEqual(result["results"]["128"]["total_full_cycles"], 0)
         self.assertGreaterEqual(
             result["results"]["1"]["cycles"], result["results"]["2"]["cycles"]
         )
