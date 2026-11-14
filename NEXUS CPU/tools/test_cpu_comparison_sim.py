@@ -576,8 +576,8 @@ class IntegratedCodeFlowTests(unittest.TestCase):
         self.assertEqual(fetch.app_beats, 512)  # requested page plus one-page lookahead
         self.assertEqual(fetch.app_bytes, 4096)  # cold page + lookahead
         self.assertEqual(fetch.c0_misses, 2)  # cold page + next-page lookahead
-        self.assertEqual(fetch.code_slot_cycles, 128)
-        self.assertEqual(fetch.code_stream_cycles, 128)
+        self.assertEqual(fetch.code_slot_cycles, 256)  # demand + lookahead
+        self.assertEqual(fetch.code_stream_cycles, 256)  # demand + lookahead
 
     def test_codeflow_beat_interval_changes_ready_cycle(self):
         ready_cycles = []
