@@ -619,7 +619,9 @@ class IntegratedCodeFlowTests(unittest.TestCase):
             self.assertIn(key, counters)
         self.assertEqual(counters["app_ram_beats"], 512)  # demand page + lookahead
         self.assertEqual(counters["app_ram_bytes"], 4096)  # demand page + lookahead
-        self.assertGreater(result["kernels"]["code"]["cycles"], 600)
+        # Integrated App RAM service overlaps the later C0->CS->EB stages;
+        # retain a lower-bound check without assuming serialized stage latency.
+        self.assertGreater(result["kernels"]["code"]["cycles"], 300)
 
 
 
@@ -850,9 +852,11 @@ class SharedAppRamIntegrationTests(unittest.TestCase):
         ready = core0.p0_pending[1]
         self.assertIsNotNone(core0.p0_pending)
         self.assertIsNone(core1.p0_pending)
-        self.assertFalse(core1.can_fetch(0, ready - 1))
+        app_ready = controller.inflight["core0:page0"]
+        self.assertLess(app_ready, ready)  # App RAM source completes before the EB page is ready.
+        self.assertFalse(core1.can_fetch(0, app_ready - 1))
         self.assertIsNone(core1.p0_pending)
-        self.assertFalse(core1.can_fetch(0, ready))
+        self.assertFalse(core1.can_fetch(0, app_ready))
         self.assertEqual(controller.accepted, 2)
         self.assertIsNotNone(core1.p0_pending)
 
