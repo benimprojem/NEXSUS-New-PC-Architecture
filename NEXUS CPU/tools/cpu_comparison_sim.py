@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""NEXSUS CPU comparison simulator — native-profile model v0.3.2-dev (PX pool + dual-bank SPM0 + page metadata)
+"""NEXSUS CPU comparison simulator — native-profile model v0.3.2-dev (CS pool + dual-bank EB + page metadata)
 
 This is an event/cycle-level teaching and design-space model, not RTL, gem5,
 or a vendor-certified replica. Unknown NEXSUS parameters are explicit inputs.
@@ -212,48 +212,48 @@ def build_composite_workload(scale: int = 1) -> Dict[str, List[Op]]:
         add_op(ops, "BR", label="independent branch stress")
     result["branch_stress"] = ops
 
-    # J) Dependent pointer chain repeatedly visits a 4 KiB SPM2-resident set.
+    # J) Dependent pointer chain repeatedly visits a 4 KiB TW-resident set.
     ops = []
     previous = None
     for i in range(512*n):
         previous = add_op(ops, "LOAD", () if previous is None else (previous,),
                           address=(i % 64) * 64, width=64,
-                          label="SPM2: dependent hot task working set")
-    result["spm_hot_workset"] = ops
+                          label="TW: dependent hot task working set")
+    result["tw_hot_workset"] = ops
 
-    # K) Dependent chain covers 16 KiB: half fits SPM2, half uses Data RAM.
+    # K) Dependent chain covers 16 KiB: half fits TW, half uses Data RAM.
     ops = []
     previous = None
     for i in range(512*n):
         previous = add_op(ops, "LOAD", () if previous is None else (previous,),
                           address=(i % 256) * 64, width=64,
-                          label="SPM2: dependent capacity sweep")
-    result["spm_capacity_sweep"] = ops
+                          label="TW: dependent capacity sweep")
+    result["tw_capacity_sweep"] = ops
 
     # L) Sequential command supply; one unique command address per operation.
     ops = []
     for i in range(2048*n):
-        add_op(ops, "INT", label="P0 sequential", command_address=i*8)
-    result["p0_sequential"] = ops
+        add_op(ops, "INT", label="CS sequential", command_address=i*8)
+    result["cs_sequential"] = ops
 
     # M) Branch-heavy command stream; branch recovery remains independently modeled.
     ops = []
     for i in range(2048*n):
-        add_op(ops, "BR", label="P0 branch", command_address=i*8)
-    result["p0_branch"] = ops
+        add_op(ops, "BR", label="CS branch", command_address=i*8)
+    result["cs_branch"] = ops
 
     # N) Repeated 2 KiB command loop (fits both P0 and conventional I-cache).
     ops = []
     for i in range(4096*n):
-        add_op(ops, "INT", label="P0 working set", command_address=(i % 256)*8)
-    result["p0_working_set"] = ops
+        add_op(ops, "INT", label="CS working set", command_address=(i % 256)*8)
+    result["cs_working_set"] = ops
 
-    # O) One sequential pass over 64 KiB of commands: exceeds the 16 KiB PX pool and 32 KiB reference I-cache.
+    # O) One sequential pass over 64 KiB of commands: exceeds the 16 KiB CS pool and 32 KiB reference I-cache.
     ops = []
-    # 8 KiB instructions = 64 KiB code: 4x the 16 KiB PX pool and 2x the 32 KiB reference I-cache.
+    # 8 KiB instructions = 64 KiB code: 4x the 16 KiB CS pool and 2x the 32 KiB reference I-cache.
     for i in range(8192*n):
-        add_op(ops, "INT", label="P0 starvation", command_address=i*8)
-    result["p0_starvation"] = ops
+        add_op(ops, "INT", label="CS starvation", command_address=i*8)
+    result["cs_starvation"] = ops
 
     return result
 
@@ -350,9 +350,9 @@ def build_cache_hierarchies(p: CoreProfile, core_count: int) -> List[CacheHierar
 
 
 def validate_px_page_descriptors(pages: List[dict]) -> bool:
-    """Validate PX Manager metadata; markers are never executable operations."""
+    """Validate CodeFlow Manager metadata; markers are never executable operations."""
     if not pages:
-        raise ValueError("PX code stream must contain at least one page")
+        raise ValueError("CodeFlow stream must contain at least one page")
     seen = set()
     for index, page in enumerate(pages):
         page_id = int(page["logical_page_id"])
@@ -370,25 +370,25 @@ def validate_px_page_descriptors(pages: List[dict]) -> bool:
             if page.get("stream_end", False) and not is_last:
                 raise ValueError("stream_end can only appear on the final code page")
             if is_last and not page.get("stream_end", False):
-                raise ValueError("a full final page requires stream_end metadata, not PX_END")
+                raise ValueError("a full final page requires stream_end metadata, not CF_END")
             if not is_last and int(pages[index + 1]["logical_page_id"]) != page_id + 1:
                 raise ValueError("full-page sequential continuation must name the next logical page")
-        elif marker == "PX_NEXT":
+        elif marker == "CF_NEXT":
             if is_last:
-                raise ValueError("PX_NEXT requires a following logical page")
+                raise ValueError("CF_NEXT requires a following logical page")
             next_id = int(page.get("next_logical_page_id", -1))
             if next_id != int(pages[index + 1]["logical_page_id"]):
-                raise ValueError("PX_NEXT target does not match the next logical page")
-        elif marker == "PX_END":
+                raise ValueError("CF_NEXT target does not match the next logical page")
+        elif marker == "CF_END":
             if not is_last:
-                raise ValueError("PX_END cannot precede another page in the same code stream")
+                raise ValueError("CF_END cannot precede another page in the same code stream")
         else:
-            raise ValueError("partial page requires PX_NEXT or PX_END metadata")
+            raise ValueError("partial page requires CF_NEXT or CF_END metadata")
     return True
 
 
 class CommandFetchModel:
-    """Conventional I-cache or PX P0-P7 pool feeding two 2-KiB SPM0 banks."""
+    """Conventional I-cache or CS0-CS7 pool feeding two 2-KiB EB banks."""
     def __init__(self, enabled: bool, p0_capacity_bytes: int = 16384,
                  conventional_capacity_bytes: int = 32768,
                  p0_refill_latency: int = 48, conventional_refill_latency: int = 8,
@@ -412,7 +412,7 @@ class CommandFetchModel:
         self.app_source_cycles = self.code_slot_cycles = self.code_stream_cycles = 0
         self.pool_initialized = False
         self.pool_refill_bytes = 0
-        self.p0_buffers = [None, None]  # SPM0-A/B, 2 KiB each
+        self.p0_buffers = [None, None]  # EB-A/B, 2 KiB each
         self.p0_pending = None
         self.pending = {}
         self.max_i_mshrs = 32
@@ -447,11 +447,11 @@ class CommandFetchModel:
             return None
         if valid_bytes == self.p0_buffer_bytes:
             return block + 1
-        if marker == "PX_END":
+        if marker == "CF_END":
             return None
-        if marker == "PX_NEXT":
+        if marker == "CF_NEXT":
             return int(descriptor.get("next_logical_page_id", block + 1))
-        raise ValueError(f"partial PX page {block} has no valid PX_NEXT/PX_END marker")
+        raise ValueError(f"partial code page {block} has no valid CF_NEXT/CF_END marker")
 
     def _validate_fetch_address(self, block: int, offset: int):
         descriptor = self.page_descriptors.get(block)
@@ -459,9 +459,9 @@ class CommandFetchModel:
             return
         valid_bytes = int(descriptor.get("valid_bytes", self.p0_buffer_bytes))
         if offset < 0 or offset >= valid_bytes:
-            raise ValueError(f"fetch into invalid/padding bytes of PX page {block}")
+            raise ValueError(f"fetch into invalid/padding bytes of code page {block}")
         if valid_bytes <= 0 or valid_bytes > self.p0_buffer_bytes or valid_bytes % 8:
-            raise ValueError(f"invalid valid_bytes/alignment for PX page {block}")
+            raise ValueError(f"invalid valid_bytes/alignment for code page {block}")
 
     def _pool_touch(self, block: int) -> bool:
         max_pages = max(1, self.capacity_bytes // self.p0_buffer_bytes)
@@ -545,7 +545,7 @@ class CommandFetchModel:
             if sequential and self.active_block is not None and block != self.active_block:
                 expected = self._next_logical_page(self.active_block)
                 if expected is None:
-                    raise ValueError(f"PX_END reached for page {self.active_block}; no sequential next page")
+                    raise ValueError(f"CF_END reached for page {self.active_block}; no sequential next page")
                 if block != expected:
                     raise ValueError(f"PX sequential transition expected logical page {expected}, got {block}")
             if block in self.p0_buffers:
@@ -831,11 +831,11 @@ def partition_dependency_components(ops: List[Op], core_count: int) -> List[List
         shard = []
         for new_seq, old_seq in enumerate(indices):
             op = ops[old_seq]
-            if op.label.startswith("P0 working set"):
+            if op.label.startswith("CS working set"):
                 command_pc = (new_seq % 256) * 8
-            elif op.label.startswith("P0 starvation"):
+            elif op.label.startswith("CS starvation"):
                 command_pc = new_seq * 8
-            elif op.label.startswith("P0 sequential") or op.label.startswith("P0 branch"):
+            elif op.label.startswith("CS sequential") or op.label.startswith("CS branch"):
                 command_pc = new_seq * 8
             else:
                 command_pc = op.command_address if op.command_address >= 0 else new_seq * 8
@@ -985,7 +985,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 mem_lat = 0
                 level = None
                 if op.kind in ("LOAD", "STORE", "ATOM"):
-                    is_spm2 = op.kind != "ATOM" and op.label.startswith("SPM2:")
+                    is_spm2 = op.kind != "ATOM" and op.label.startswith("TW:")
                     in_spm = 0 <= op.address and op.address + op.width <= 8192
                     if is_nexus and features["spm"] and is_spm2 and in_spm:
                         if st["spm_busy_until"] > cycle:
@@ -996,7 +996,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                         st["spm_busy_until"] = max(st["spm_busy_until"], cycle) + 1
                         st["spm"]["accesses"] += 1
                         st["spm"]["bytes"] += op.width
-                        level = "SPM2"
+                        level = "TW"
                     else:
                         if is_nexus and is_spm2:
                             if features["spm"] and not in_spm:
@@ -1116,7 +1116,7 @@ def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=N
                 "app_source_cycles": sum(x["fetch"].app_source_cycles for x in per_core if x["fetch"] is not None),
                 "code_slot_transfer_cycles": sum(x["fetch"].code_slot_cycles for x in per_core if x["fetch"] is not None),
                 "code_stream_transfer_cycles": sum(x["fetch"].code_stream_cycles for x in per_core if x["fetch"] is not None),
-                "mode": ("CodeFlow C0 -> CS -> EB (legacy PX/SPM0)" if p.name.startswith("NEXSUS CPU") and
+                "mode": ("CodeFlow C0 -> CS -> EB (legacy PX/EB)" if p.name.startswith("NEXSUS CPU") and
                          (nexus_features is None or nexus_features.get("p0", True))
                          else "conventional I-cache")
             },
@@ -1165,7 +1165,7 @@ def run_branch_predictor_sweep(workloads: Dict[str, List[Op]], profile_dict: dic
 
 
 def run_nexus_ablation(workloads: Dict[str, List[Op]], profile_dict: dict) -> dict:
-    """Run the four controlled NEXSUS SPM/P0 combinations on identical work."""
+    """Run the four controlled NEXSUS TW/CS combinations on identical work."""
     variants = {
         "N-FULL": {"spm": True, "p0": True},
         "N-NO-SPM": {"spm": False, "p0": True},
@@ -1198,7 +1198,7 @@ def run_nexus_ablation(workloads: Dict[str, List[Op]], profile_dict: dict) -> di
             "combined_percent_vs_base": round(100 * combined_gain / max(1, base["cycles"]), 3),
         }
     return {
-        "experiment": "NEXSUS SPM/P0 four-way ablation",
+        "experiment": "NEXSUS TW/CS four-way ablation",
         "clock_ghz": runs["N-FULL"]["clock_ghz"],
         "cores": runs["N-FULL"]["cores_configured"],
         "variants": {name: {"features": flags, "total_cycles": runs[name]["total_cycles"],
@@ -1207,20 +1207,20 @@ def run_nexus_ablation(workloads: Dict[str, List[Op]], profile_dict: dict) -> di
         "kernels": comparison,
         "full_runs": runs,
         "assumptions": {
-            "p0_enabled": "PX P0-P7: 8 x 2 KiB code pool; SPM0: 4 KiB as two 2 KiB ping-pong banks; 2 KiB refill modeled at 48 cycles (32 payload + 16 source/control overhead assumption)",
+            "p0_enabled": "CS0-CS7: 8 x 2 KiB code pool; EB: 4 KiB as two 2 KiB ping-pong banks; 2 KiB refill modeled at 48 cycles (32 payload + 16 source/control overhead assumption)",
             "p0_disabled": "32 KiB conventional instruction cache; 64-byte line; 32-cycle provisional refill",
             "spm2_enabled": "8 KiB task workspace; 2-cycle provisional access; one modeled port per core",
-            "spm2_disabled": "Tagged SPM2 accesses use normal cache/Data RAM path",
-            "scope": "SPM2 task workspace and PX-to-SPM0 instruction feed modeled; SPM1 and SPM3-SPM7 remain partially abstracted",
+            "spm2_disabled": "Tagged TW accesses use normal cache/Data RAM path",
+            "scope": "TW task workspace and CS-to-EB instruction feed modeled; SPM1 and SPM3-SPM7 remain partially abstracted",
         },
     }
 
 
 def run_p0_capacity_sweep(workloads, profile_dict, capacities_kb=(4, 8, 16, 32, 64),
                             refill_latency=48, pool_miss_latency=120):
-    """Single-core 64-KiB sequential code stream; vary only PX pool capacity."""
-    target = {"p0_starvation": workloads["p0_starvation"]}
-    last_page = (len(target["p0_starvation"]) * 8 - 1) // 2048
+    """Single-core 64-KiB sequential code stream; vary only CS pool capacity."""
+    target = {"cs_starvation": workloads["cs_starvation"]}
+    last_page = (len(target["cs_starvation"]) * 8 - 1) // 2048
     page_descriptors = {last_page: {"valid_bytes": 2048, "stream_end": True}}
     rows = {}
     for capacity_kb in capacities_kb:
@@ -1241,7 +1241,7 @@ def run_p0_capacity_sweep(workloads, profile_dict, capacities_kb=(4, 8, 16, 32, 
                         for name, row in run["kernels"].items()},
         }
     return {
-        "experiment": "NEXSUS PX pool capacity sensitivity sweep",
+        "experiment": "NEXSUS CS pool capacity sensitivity sweep",
         "profile": profile_dict["name"], "cores": 1,
         "same_workload_operation_count": next(iter(rows.values()))["total_ops"],
         "assumptions": "A 64-KiB sequential code stream; first pool pages staged at dispatch; later PX-pool misses pay the configured App-RAM source latency. Only pool capacity changes.",
@@ -1252,8 +1252,8 @@ def run_p0_capacity_sweep(workloads, profile_dict, capacities_kb=(4, 8, 16, 32, 
 def run_fetch_latency_sweep(workloads, conventional_latencies=(8, 16, 24, 32),
                             p0_latencies=(32, 34, 48, 64, 96), p0_capacity_kb=64):
     """Compare reference I-cache refill assumptions with NEXSUS P0 refill assumptions."""
-    target = {"p0_starvation": workloads["p0_starvation"]}
-    last_page = (len(target["p0_starvation"]) * 8 - 1) // 2048
+    target = {"cs_starvation": workloads["cs_starvation"]}
+    last_page = (len(target["cs_starvation"]) * 8 - 1) // 2048
     page_descriptors = {last_page: {"valid_bytes": 2048, "stream_end": True}}
     rows = {"amd_9950x3d2": {}, "intel_xeon_698x": {}, "apple_m6": {},
             "nexus_conventional": {}, "nexus_p0": {}}
@@ -1261,7 +1261,7 @@ def run_fetch_latency_sweep(workloads, conventional_latencies=(8, 16, 24, 32),
         for latency in conventional_latencies:
             run = simulate_cpu(target, PROFILES[key], 1,
                                {"conventional_refill_latency": latency})
-            kernel = run["kernels"]["p0_starvation"]
+            kernel = run["kernels"]["cs_starvation"]
             rows[key][str(latency)] = {
                 "refill_latency_cycles": latency, "cycles": kernel["cycles"],
                 "ops": kernel["ops"], "fetch": kernel["p0_counters"],
@@ -1272,7 +1272,7 @@ def run_fetch_latency_sweep(workloads, conventional_latencies=(8, 16, 24, 32),
             {"spm": True, "p0": False, "conventional_refill_latency": latency,
              "px_page_descriptors": page_descriptors},
         )
-        kernel = run["kernels"]["p0_starvation"]
+        kernel = run["kernels"]["cs_starvation"]
         rows["nexus_conventional"][str(latency)] = {
             "refill_latency_cycles": latency, "cycles": kernel["cycles"],
             "ops": kernel["ops"], "fetch": kernel["p0_counters"],
@@ -1284,7 +1284,7 @@ def run_fetch_latency_sweep(workloads, conventional_latencies=(8, 16, 24, 32),
              "p0_refill_latency": latency, "px_pool_miss_latency": 120,
              "px_page_descriptors": page_descriptors},
         )
-        kernel = run["kernels"]["p0_starvation"]
+        kernel = run["kernels"]["cs_starvation"]
         rows["nexus_p0"][str(latency)] = {
             "refill_latency_cycles": latency, "capacity_kb": p0_capacity_kb,
             "cycles": kernel["cycles"], "ops": kernel["ops"],
@@ -1295,11 +1295,11 @@ def run_fetch_latency_sweep(workloads, conventional_latencies=(8, 16, 24, 32),
         raise AssertionError(f"fetch sweep changed operation count: {counts}")
     return {
         "experiment": "Conventional instruction-cache vs NEXSUS P0 refill sensitivity",
-        "cores": 1, "kernel": "p0_starvation",
+        "cores": 1, "kernel": "cs_starvation",
         "operations_per_run": next(iter(counts)),
         "conventional_capacity_kb": 32,
         "p0_capacity_kb": p0_capacity_kb,
-        "assumptions": "Single-core 64-KiB sequential code stream; conventional I-cache uses bounded multi-line prefetch; PX pool is set to 64 KiB so the whole stream is resident and source misses do not confound PX-to-SPM0 transfer latency; only transfer latency varies within each path.",
+        "assumptions": "Single-core 64-KiB sequential code stream; conventional I-cache uses bounded multi-line prefetch; CS pool is set to 64 KiB so the whole stream is resident and source misses do not confound CS-to-EB transfer latency; only transfer latency varies within each path.",
         "results": rows,
     }
 
@@ -1310,11 +1310,11 @@ def main():
     ap.add_argument("--nexus-cores", type=int, default=8)
     ap.add_argument("--normalized-8core", action="store_true", help="run all four architectures with exactly eight active cores")
     ap.add_argument("--json", action="store_true")
-    ap.add_argument("--ablation", action="store_true", help="run four-way NEXSUS SPM/P0 ablation")
+    ap.add_argument("--ablation", action="store_true", help="run four-way NEXSUS Task Workspace / Code Slots ablation")
     ap.add_argument("--branch-sweep", action="store_true", help="compare NEXSUS predictor-off and compact predictor")
-    ap.add_argument("--p0-capacity-kb", type=int, default=16, help="PX P0-P7 code pool capacity in KiB; SPM0 is 4 KiB (2x2 KiB)")
-    ap.add_argument("--p0-refill-cycles", type=int, default=48, help="provisional 2-KiB PX-to-SPM0 refill latency")
-    ap.add_argument("--p0-sweep", action="store_true", help="run 4/8/16/32 KiB P0 capacity sweep")
+    ap.add_argument("--cs-capacity-kb", "--p0-capacity-kb", dest="p0_capacity_kb", type=int, default=16, help="CS0-CS7 code-slot capacity in KiB; EB is 4 KiB (2x2 KiB)")
+    ap.add_argument("--p0-refill-cycles", type=int, default=48, help="provisional 2-KiB CS-to-EB refill latency")
+    ap.add_argument("--cs-sweep", "--p0-sweep", dest="p0_sweep", action="store_true", help="run 4/8/16/32 KiB CS code-slot capacity sweep (legacy flag: --p0-sweep)")
     ap.add_argument("--fetch-sweep", action="store_true", help="compare conventional I-cache and P0 refill latency sensitivity")
     args = ap.parse_args()
     workloads = build_composite_workload(args.scale)
@@ -1363,7 +1363,7 @@ def main():
         if args.json:
             print(json.dumps(result, indent=2))
         else:
-            print("NEXSUS SPM/P0 FOUR-WAY ABLATION — PROVISIONAL MODEL")
+            print("NEXSUS TW/CS FOUR-WAY ABLATION — PROVISIONAL MODEL")
             for name, row in result["variants"].items():
                 print("{} cycles={} ops={}".format(name, row["total_cycles"], row["total_ops"]))
             print("PER-KERNEL EFFECTS")
@@ -1409,7 +1409,7 @@ def main():
                   f"{c['execution_unit_blocked_op_cycles']:10d} {c['frontend_limited_cycles']:9d} "
                   f"{c['rob_full_cycles']:8d} {c['branch_recovery_cycles']:10d} "
                   f"{c['memory_latency_exposure_cycles']:10d}")
-    print("*Simulated architecture profiles, not silicon measurements. Apple M6 heterogeneous cores are represented by a weighted homogeneous approximation; vendor-private microarchitecture details are assumptions. NEXSUS PX pool feeds SPM0-A/B (2x2 KiB).")
+    print("*Simulated architecture profiles, not silicon measurements. Apple M6 heterogeneous cores are represented by a weighted homogeneous approximation; vendor-private microarchitecture details are assumptions. NEXSUS CS pool feeds EB-A/B (2x2 KiB).")
 
 if __name__ == "__main__":
     main()
