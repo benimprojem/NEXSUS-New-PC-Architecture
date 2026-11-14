@@ -325,9 +325,9 @@ class CrossArchitectureComparisonTests(unittest.TestCase):
                                   (arch["RA"], arch["FA"], arch["DA"], arch["MA"])}, {32})
             self.assertEqual(results[key]["kernels"]["same_algorithm"]["ops"], 8)
             if key != "nexus_balanced_128":
-                self.assertEqual(results[key]["kernels"]["same_algorithm"]["p0_counters"]["mode"],
+                self.assertEqual(results[key]["kernels"]["same_algorithm"]["codeflow_counters"]["mode"],
                                  "conventional I-cache")
-                self.assertGreater(results[key]["kernels"]["same_algorithm"]["p0_counters"]["refills"], 0)
+                self.assertGreater(results[key]["kernels"]["same_algorithm"]["codeflow_counters"]["refills"], 0)
         self.assertEqual({r["total_ops"] for r in results.values()}, {8})
 
     def test_cs_starvation_stream_is_sequential_64kib_code(self):
@@ -357,7 +357,7 @@ class CrossArchitectureComparisonTests(unittest.TestCase):
         self.assertEqual({r["kernels"]["cs_starvation"]["ops"]
                           for r in sweep["results"].values()}, {2048})
         self.assertGreater(len({r["total_cycles"] for r in sweep["results"].values()}), 1)
-        misses = [sweep["results"][k]["kernels"]["cs_starvation"]["p0"]["pool_misses"]
+        misses = [sweep["results"][k]["kernels"]["cs_starvation"]["code_slots"]["pool_misses"]
                   for k in ("4", "8", "16", "32", "64")]
         self.assertTrue(all(misses[i] >= misses[i+1] for i in range(len(misses)-1)))
         self.assertGreater(misses[0], misses[-1])
@@ -386,7 +386,7 @@ class FourWayAblationTests(unittest.TestCase):
                       label="TW: ablation") for i in range(64)]
         result = sim.run_nexus_ablation({"small_spm_kernel": ops},
                                         sim.PROFILES["nexus_balanced_128"])
-        self.assertEqual(set(result["variants"]), {"N-FULL", "N-NO-SPM", "N-NO-P0", "N-BASE"})
+        self.assertEqual(set(result["variants"]), {"N-FULL", "N-NO-TW", "N-NO-CS", "N-BASE"})
         row = result["kernels"]["small_spm_kernel"]
         self.assertTrue(row["ops_preserved"])
         self.assertEqual(row["ops"], 64)
@@ -507,7 +507,7 @@ class CodeFlowMetadataTests(unittest.TestCase):
         ops = [sim.Op(0, "INT"), sim.Op(1, "INT")]
         self.assertEqual(len(ops), 2)
 
-    def test_tw0_fetch_uses_px_next_and_stops_prefetch_at_px_end(self):
+    def test_eb_ping_pong_uses_codeflow_next_and_stops_prefetch_at_px_end(self):
         fetch = sim.CommandFetchModel(True, page_descriptors={
             0: {"valid_bytes": 1024, "marker": "CF_NEXT", "next_logical_page_id": 1},
             1: {"valid_bytes": 512, "marker": "CF_END"},
@@ -593,7 +593,7 @@ class IntegratedCodeFlowTests(unittest.TestCase):
     def test_nexus_execution_report_exposes_codeflow_stage_counters(self):
         result = sim.simulate_cpu({"code": [sim.Op(0, "INT", command_address=0)]},
                                   sim.PROFILES["nexus_balanced_128"], 1, {"codeflow": True})
-        counters = result["kernels"]["code"]["p0_counters"]
+        counters = result["kernels"]["code"]["codeflow_counters"]
         for key in ("code_cache_misses", "app_ram_beats", "app_ram_bytes",
                     "app_source_cycles", "code_slot_transfer_cycles",
                     "code_stream_transfer_cycles"):
