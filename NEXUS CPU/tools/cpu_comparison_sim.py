@@ -1658,6 +1658,7 @@ def run_data_mshr_sweep(profile_dict: dict, capacities=(1, 2, 4, 8, 16, 32, 64, 
             "total_blocked_request_attempts": run["data_mshr"]["total_blocked_request_attempts"],
             "total_full_cycles": run["data_mshr"]["total_full_cycles"],
             "full_cycles_per_core": run["data_mshr"]["full_cycles_per_core"],
+            "app_ram_controller": run["app_controller"],
         }
 
     cold_rows = {}
