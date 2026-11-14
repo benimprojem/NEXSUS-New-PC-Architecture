@@ -54,6 +54,7 @@ class CoreProfile:
     branch_predictor: str = "modern_assumed"
     vector_bits: int = 128
     matrix_unit: str = "VEC"
+    execution_topology: dict = field(default_factory=dict)
 
 # Publicly documented or independently measured values are marked in docs.
 # Unpublished/uncertain values are conservative model assumptions, not claims.
