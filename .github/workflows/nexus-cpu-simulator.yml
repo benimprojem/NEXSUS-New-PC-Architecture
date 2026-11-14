@@ -31,9 +31,13 @@ jobs:
         run: |
           python -m py_compile "NEXUS CPU/tools/cpu_comparison_sim.py"
           python -m py_compile "NEXUS CPU/tools/test_cpu_comparison_sim.py"
+          python -m py_compile "NEXUS CPU/tools/l0i_px_pipeline_sim.py"
+          python -m py_compile "NEXUS CPU/tools/test_l0i_px_pipeline_sim.py"
       - name: Run regression tests
         working-directory: "NEXUS CPU/tools"
-        run: python test_cpu_comparison_sim.py
+        run: |
+          python test_cpu_comparison_sim.py
+          python test_l0i_px_pipeline_sim.py
       - name: Run comparison smoke test
         run: |
           python "NEXUS CPU/tools/cpu_comparison_sim.py" --scale 1 --json > /tmp/nexus-cpu-results.json
