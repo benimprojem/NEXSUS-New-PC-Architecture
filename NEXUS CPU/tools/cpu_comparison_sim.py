@@ -1038,10 +1038,12 @@ def partition_dependency_components(ops: List[Op], core_count: int) -> List[List
 def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                                aggregate_dram_bandwidth: int,
                                nexus_features=None) -> dict:
-    """Lockstep cores sharing one DRAM bank/bus controller.
+    """Lockstep cores with independent App RAM and Data RAM controllers.
 
     Per-core pipelines, ROBs and caches remain private approximations. All
-    cores advance on one global cycle and submit DRAM misses as a same-cycle batch.
+    cores advance on one global cycle. Instruction-page requests are admitted
+    by the separate AppRamController; data misses are batched through the
+    SharedMemoryController. Both timelines advance on the same global cycle.
     """
     features = {"spm": True, "p0": True, "codeflow": False}
     if nexus_features:
