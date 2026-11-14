@@ -162,6 +162,15 @@ jobs:
           assert data["results"]["1"]["total_blocked_request_attempts"] > 0
           assert data["results"]["1"]["total_full_cycles"] > 0
           assert data["results"]["128"]["total_full_cycles"] == 0
+          assert set(data["mixed_results"]) == expected
+          for capacity, row in data["mixed_results"].items():
+              assert row["ops_retired"] == 8 * data["mixed_workload"]["ops_per_core"], capacity
+              assert row["data_ram_requests"] == 8 * data["mixed_workload"]["load_ops_per_core"], capacity
+              assert all(value <= int(capacity) for value in row["max_outstanding_per_core"]), capacity
+              assert row["total_full_cycles"] == sum(row["full_cycles_per_core"]), capacity
+              assert row["total_full_cycles"] <= row["total_blocked_request_attempts"], capacity
+          assert data["mixed_results"]["1"]["total_full_cycles"] > 0
+          assert data["mixed_results"]["128"]["total_full_cycles"] == 0
           print("DATA RAM PER-CORE MSHR CAPACITY SWEEP")
           for capacity, row in data["results"].items():
               print(f'{capacity} entries/core: cycles={row["cycles"]} '
@@ -169,6 +178,13 @@ jobs:
                     f'full_cycles={row["total_full_cycles"]} '
                     f'blocked_retries={row["total_blocked_request_attempts"]} '
                     f'requests={row["data_ram_requests"]}')
+          print("MIXED COMPUTE/LOAD MSHR CAPACITY SWEEP")
+          for capacity, row in data["mixed_results"].items():
+              print(f'{capacity} entries/core: cycles={row["cycles"]} '
+                    f'max_outstanding={max(row["max_outstanding_per_core"])} '
+                    f'full_cycles={row["total_full_cycles"]} '
+                    f'blocked_retries={row["total_blocked_request_attempts"]} '
+                    f'loads={row["data_ram_requests"]} ops={row["ops_retired"]}')
           PY
       - name: Run branch predictor sensitivity sweep
         run: |
