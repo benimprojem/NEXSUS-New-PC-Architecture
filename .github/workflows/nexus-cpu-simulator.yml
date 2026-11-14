@@ -135,8 +135,9 @@ jobs:
               fp = row["kernels"]["fp_throughput"]
               fma = row["kernels"]["fma_throughput"]
               mixed = row["kernels"]["fp_fma_mixed"]
+              chain = row["kernels"]["fma_dependency_chain"]
               print(f'{key}: FP64={fp["cycles"]} FMA={fma["cycles"]} '
-                    f'MIXED={mixed["cycles"]} '
+                    f'FMA_CHAIN={chain["cycles"]} MIXED={mixed["cycles"]} '
                     f'unit_stalls={fp["execution_unit_blocked_op_cycles"]}/'
                     f'{fma["execution_unit_blocked_op_cycles"]}/'
                     f'{mixed["execution_unit_blocked_op_cycles"]}')
