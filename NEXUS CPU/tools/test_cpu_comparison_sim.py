@@ -641,6 +641,11 @@ class MixedWidthExecutionTopologyTests(unittest.TestCase):
         }
         result = sim.simulate_cpu(workloads, profile, 1)
         self.assertEqual(result["kernels"]["mixed"]["ops"], 3)
+        # The 128-bit op occupies both lanes; neither 64-bit op can issue beside it.
+        self.assertGreaterEqual(
+            result["kernels"]["mixed"]["stall_counters"]["execution_unit_blocked_op_cycles"],
+            2,
+        )
 
     def test_execution_sweep_preserves_work_and_reports_both_widths(self):
         workloads = sim.build_composite_workload(scale=1)
