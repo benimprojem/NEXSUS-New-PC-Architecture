@@ -669,6 +669,7 @@ class AppRamController:
         self.bank_conflicts = 0
         self.transferred_bytes = 0
         self.request_cycles = []
+        self.request_events = []
 
     def _bank(self, address: int) -> int:
         return (int(address) // self.beat_bytes) % self.bank_count
@@ -724,6 +725,16 @@ class AppRamController:
                 "accepted": True, "bank_count_touched": len(touched),
                 "ready_cycle": ready, "queue_occupancy": len(self.inflight),
             }
+            self.request_events.append({
+                "request_id": str(req_id),
+                "core": int(req["core"]),
+                "address": address,
+                "bytes": size,
+                "request_cycle": cycle,
+                "bank_count_touched": len(touched),
+                "ready_cycle": ready,
+                "queue_occupancy": len(self.inflight),
+            })
         self.rr_cursor = (start + 1) % len(cores)
         return result
 
@@ -1293,7 +1304,8 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                                 "queue_rejections": app_controller.rejected_queue_full,
                                 "bank_conflicts": app_controller.bank_conflicts,
                                 "transferred_bytes": app_controller.transferred_bytes,
-                                "request_cycles": sorted(set(app_controller.request_cycles))}
+                                "request_cycles": sorted(set(app_controller.request_cycles)),
+                                "request_events": app_controller.request_events}
                                if app_controller is not None else None),
             "controller": {"bank_count": p.bank_count,
                            "aggregate_dram_bytes_per_cycle": aggregate_dram_bandwidth,
