@@ -1027,8 +1027,8 @@ class EightCoreArchitectureScalingTests(unittest.TestCase):
             {"id": "data-load-1", "core": 1,
              "address": 0x9000, "width": 64},
         ])
-        self.assertEqual(data_first, reference_first)
-        self.assertEqual(data_second, reference_second)
+        self.assertEqual(data_first, reference_first["data-load-0"])
+        self.assertEqual(data_second, reference_second["data-load-1"])
 
         # Data RAM traffic must not consume App RAM queue slots or bus capacity.
         self.assertEqual(len(app.inflight), 1)
