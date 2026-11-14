@@ -1,6 +1,6 @@
 # NEXSUS CPU — Simülatör Mimarisi (SIM-001)
 
-## 1. Amaç
+## Adlandırma standardı\nTekil birime `0` eklenmez. Kanonik adlar ve eski SPMx uyumluluk karşılıkları [Adlandırma Kararı 001](NEXSUS-CPU-CODEFLOW-NAMING-001.md) belgesindedir. Yeni metinlerde EB, OW, TW, CP0–CP3 ve XW kullanılır.\n\n## 1. Amaç
 
 Simülatör, NEXSUS CPU önerilerini güncel AMD, Intel ve ARM referans profilleriyle aynı algoritma ve iş yüklerinde karşılaştırır. Bu çalışma gerçek silikon benchmark'ı, RTL simülasyonu veya üretici mikro mimarisinin birebir kopyası değildir; parametreleri açık bir çevrim/olay modelidir.
 
