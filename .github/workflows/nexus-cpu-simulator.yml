@@ -75,7 +75,6 @@ jobs:
       - name: Run normalized eight-core comparison
         run: |
           python "NEXUS CPU/tools/cpu_comparison_sim.py" --normalized-8core --scale 1 --json > /tmp/nexus-normalized-8core.json
-            /tmp/nexus-cross-arch-codeflow.json
           python - <<'PY'
           import json
           data = json.load(open("/tmp/nexus-normalized-8core.json", encoding="utf-8"))
