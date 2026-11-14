@@ -45,6 +45,22 @@ class SharedMemoryControllerTests(unittest.TestCase):
         ], bank_hash="low")
         self.assertEqual(separate_result["a"]["bank_wait"], 0)
         self.assertEqual(separate_result["b"]["bank_wait"], 0)
+        self.assertEqual(separate_result["a"]["service_complete_cycle"], 1)
+        self.assertEqual(separate_result["b"]["service_complete_cycle"], 1)
+
+    def test_unrelated_busy_bank_does_not_delay_independent_request(self):
+        controller = sim.SharedMemoryController(
+            bank_count=8, beat_bytes=8, aggregate_bytes_per_cycle=32
+        )
+        result = controller.reserve_batch(0, [
+            {"id": "bank0-a", "core": 0, "address": 0, "width": 8},
+            {"id": "bank0-b", "core": 1, "address": 64, "width": 8},
+            {"id": "bank1", "core": 2, "address": 8, "width": 8},
+        ], bank_hash="low")
+        self.assertEqual(result["bank0-a"]["service_complete_cycle"], 1)
+        self.assertEqual(result["bank0-b"]["service_complete_cycle"], 2)
+        self.assertEqual(result["bank1"]["bank_wait"], 0)
+        self.assertEqual(result["bank1"]["service_complete_cycle"], 1)
 
     def test_unaligned_wide_access_reserves_extra_bank_beat(self):
         controller = sim.SharedMemoryController(
