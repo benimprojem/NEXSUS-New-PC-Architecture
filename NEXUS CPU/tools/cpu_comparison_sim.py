@@ -665,8 +665,10 @@ class SharedMemoryController:
             beat_offset = address - first_beat_address
             beats = max(1, math.ceil((beat_offset + width) / self.beat_bytes))
             bank_wait = 0
+            touched_banks = set()
             for beat in range(beats):
                 bank = self._bank(first_beat_address + beat * self.beat_bytes, bank_hash)
+                touched_banks.add(bank)
                 bank_start = max(cycle, self.bank_busy[bank])
                 bank_wait = max(bank_wait, bank_start - cycle)
                 self.bank_busy[bank] = bank_start + 1
@@ -678,7 +680,10 @@ class SharedMemoryController:
                 1, math.ceil((bus_offset + width) / self.aggregate_bytes_per_cycle)
             )
             self.bus_next_byte = bus_start_byte + width
-            bank_complete = max(self.bank_busy) if self.bank_busy else cycle
+            # A request waits only for banks touched by its own beats.
+            # Unrelated busy banks must not destroy cross-bank parallelism.
+            bank_complete = max((self.bank_busy[bank] for bank in touched_banks),
+                                default=cycle)
             bus_complete = math.ceil(
                 (bus_start_byte + width) / self.aggregate_bytes_per_cycle
             )
