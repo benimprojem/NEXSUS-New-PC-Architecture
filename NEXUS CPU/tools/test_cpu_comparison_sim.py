@@ -20,17 +20,17 @@ class DataRamMSHRTests(unittest.TestCase):
                                     for value in row["max_outstanding_per_core"]))
                 self.assertIsNone(row["app_ram_controller"])
         self.assertGreater(result["results"]["1"]["total_full_events"], 0)
-        self.assertLessEqual(
+        self.assertGreaterEqual(
             result["results"]["1"]["cycles"], result["results"]["2"]["cycles"]
         )
 
     def test_per_core_mshrs_are_not_a_shared_global_pool(self):
-        ops = [
-            sim.Op(i, "LOAD", address=0x20000000 + i * 64, width=8,
+        # Each core owns a local sequence beginning at zero. Addresses
+        # are unique so every core issues one independent cold DRAM miss.
+        shards = [[
+            sim.Op(0, "LOAD", address=0x20000000 + core_id * 64, width=8,
                    label="independent core MSHR")
-            for i in range(8)
-        ]
-        shards = [[ops[i]] for i in range(8)]
+        ] for core_id in range(8)]
         profile = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
         run = sim.simulate_multicore_streams(
             shards, profile, 64,
