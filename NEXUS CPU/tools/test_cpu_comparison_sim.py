@@ -966,6 +966,52 @@ class EightCoreArchitectureScalingTests(unittest.TestCase):
         self.assertGreater(rows[1]["app_controller"]["queue_rejections"], 0)
         self.assertEqual(rows[32]["app_controller"]["queue_rejections"], 0)
 
+    def test_app_ram_and_data_ram_controllers_progress_independently(self):
+        app = sim.AppRamController(
+            bank_count=4, beat_bytes=8, bytes_per_cycle=16,
+            first_beat_latency=5, beat_interval=1, max_outstanding=1,
+        )
+        data = sim.SharedMemoryController(
+            bank_count=4, beat_bytes=8, aggregate_bytes_per_cycle=16,
+        )
+
+        app_first = app.reserve_batch(0, [
+            {"id": "instruction-page-0", "core": 0,
+             "address": 0x1000, "bytes": 64},
+        ])["instruction-page-0"]
+        data_first = data.reserve_batch(0, [
+            {"id": "data-load-0", "core": 0,
+             "address": 0x8000, "width": 64},
+        ])["data-load-0"]
+
+        self.assertTrue(app_first["accepted"])
+        self.assertIn("service_complete_cycle", data_first)
+        app_ready = app_first["ready_cycle"]
+        data_ready = data_first["service_complete_cycle"]
+        app_bus_after_first = app.bus_next_byte
+        data_bus_after_first = data.bus_next_byte
+
+        # App RAM is full, but that must not block an independent Data RAM miss.
+        app_rejected = app.reserve_batch(1, [
+            {"id": "instruction-page-1", "core": 1,
+             "address": 0x2000, "bytes": 64},
+        ])["instruction-page-1"]
+        data_second = data.reserve_batch(1, [
+            {"id": "data-load-1", "core": 1,
+             "address": 0x9000, "width": 64},
+        ])["data-load-1"]
+        self.assertFalse(app_rejected["accepted"])
+        self.assertIn("service_complete_cycle", data_second)
+        self.assertEqual(app.bus_next_byte, app_bus_after_first)
+        self.assertEqual(app.transferred_bytes, 64)
+        self.assertGreater(data.bus_next_byte, data_bus_after_first)
+
+        # Data RAM traffic must not consume App RAM queue slots or bus capacity.
+        self.assertEqual(len(app.inflight), 1)
+        self.assertEqual(app.inflight["instruction-page-0"], app_ready)
+        self.assertGreaterEqual(data_second["service_complete_cycle"], data_ready)
+        self.assertEqual(app.rejected_queue_full, 1)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
