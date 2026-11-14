@@ -429,7 +429,8 @@ class CommandFetchModel:
                  conventional_capacity_bytes: int = 32768,
                  p0_refill_latency: int = 48, conventional_refill_latency: int = 8,
                  p0_buffer_bytes: int = 2048, page_descriptors: dict | None = None,
-                 pool_miss_latency: int = 120, code_cache_bytes: int = 65536, app_first_beat_latency: int = 40, app_beat_interval: int = 1, c0_to_cs_bytes_per_cycle: int = 16, cs_to_eb_bytes_per_cycle: int = 16, codeflow_enabled: bool = False):
+                 pool_miss_latency: int = 120, code_cache_bytes: int = 65536, app_first_beat_latency: int = 40, app_beat_interval: int = 1, c0_to_cs_bytes_per_cycle: int = 16, cs_to_eb_bytes_per_cycle: int = 16, codeflow_enabled: bool = False,
+                 app_ram_controller=None, core_id: int = 0):
         self.enabled = enabled
         self.capacity_bytes = p0_capacity_bytes if enabled else conventional_capacity_bytes
         self.lines = LRU(self.capacity_bytes, 64)
@@ -437,6 +438,8 @@ class CommandFetchModel:
         self.p0_buffer_bytes = p0_buffer_bytes
         self.page_descriptors = {int(k): v for k, v in (page_descriptors or {}).items()}
         self.codeflow_enabled = codeflow_enabled
+        self.app_ram_controller = app_ram_controller
+        self.core_id = int(core_id)
         self.pool_miss_latency = pool_miss_latency  # legacy fallback
         self.code_cache_capacity_pages = max(1, code_cache_bytes // p0_buffer_bytes)
         self.code_cache_pages = OrderedDict()
@@ -541,7 +544,18 @@ class CommandFetchModel:
             else:
                 self.c0_misses += 1
                 beats = math.ceil(self.p0_buffer_bytes / 8)
-                source_delay = self.app_first_beat_latency + max(0, beats - 1) * self.app_beat_interval + 1
+                if self.app_ram_controller is not None:
+                    request_id = f"core{self.core_id}:page{block}"
+                    admission = self.app_ram_controller.reserve_batch(cycle, [{
+                        "id": request_id, "core": self.core_id,
+                        "address": block * self.p0_buffer_bytes,
+                        "bytes": self.p0_buffer_bytes,
+                    }])[request_id]
+                    if not admission["accepted"]:
+                        return
+                    source_delay = max(0, admission["ready_cycle"] - cycle)
+                else:
+                    source_delay = self.app_first_beat_latency + max(0, beats - 1) * self.app_beat_interval + 1
                 self.app_beats += beats
                 self.app_bytes += self.p0_buffer_bytes
                 self.app_source_cycles += source_delay
@@ -1041,6 +1055,8 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 app_beat_interval=int(features.get("app_beat_interval", 1)),
                 c0_to_cs_bytes_per_cycle=int(features.get("c0_to_cs_bytes_per_cycle", 16)),
                 cs_to_eb_bytes_per_cycle=int(features.get("cs_to_eb_bytes_per_cycle", 16)),
+                app_ram_controller=app_controller if bool(features.get("codeflow", False)) else None,
+                core_id=core_id,
                 conventional_capacity_bytes=int(features.get("conventional_icache_kb", 32)) * 1024,
                 conventional_refill_latency=int(features.get("conventional_refill_latency", 8)),
             )
@@ -1053,6 +1069,15 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 conventional_refill_latency=int(features.get("conventional_refill_latency", 32)),
             )
     pending_fills = []
+    # App RAM instruction fetches use a separate controller from Data RAM.
+    app_controller = AppRamController(
+        bank_count=int(features.get("app_bank_count", 8)),
+        beat_bytes=int(features.get("app_beat_bytes", 8)),
+        bytes_per_cycle=int(features.get("app_bytes_per_cycle", 32)),
+        first_beat_latency=int(features.get("app_first_beat_latency", 40)),
+        beat_interval=int(features.get("app_beat_interval", 1)),
+        max_outstanding=int(features.get("app_max_outstanding", 16)),
+    ) if is_nexus and bool(features.get("codeflow", False)) else None
     controller = SharedMemoryController(
         bank_count=p.bank_count, beat_bytes=p.bank_beat_bytes,
         aggregate_bytes_per_cycle=aggregate_dram_bandwidth)
@@ -1228,6 +1253,13 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
         totals = [f"{st['retired']}/{len(st['ops'])}" for st in states]
         raise RuntimeError(f"multicore simulation did not drain at cycle {cycle}: {totals}")
     return {"cycles": cycle, "cores": states,
+            "app_controller": ({"bank_count": app_controller.bank_count,
+                                "max_outstanding": app_controller.max_outstanding,
+                                "accepted": app_controller.accepted,
+                                "queue_rejections": app_controller.rejected_queue_full,
+                                "bank_conflicts": app_controller.bank_conflicts,
+                                "transferred_bytes": app_controller.transferred_bytes}
+                               if app_controller is not None else None),
             "controller": {"bank_count": p.bank_count,
                            "aggregate_dram_bytes_per_cycle": aggregate_dram_bandwidth,
                            "bank_busy_until": controller.bank_busy,
@@ -1262,6 +1294,7 @@ def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=N
             "stall_counters": {k: sum(x["stalls"][k] for x in per_core)
                                for k in stall_keys},
             "memory_controller": simulation["controller"],
+            "app_ram_controller": simulation["app_controller"],
             "workspace_counters": {k: sum(x["spm"][k] for x in per_core)
                              for k in ("accesses", "bytes", "port_conflicts", "overflow", "fallback_bytes")},
             "codeflow_counters": {
