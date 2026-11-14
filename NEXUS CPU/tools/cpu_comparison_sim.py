@@ -854,9 +854,14 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
     Per-core pipelines, ROBs and caches remain private approximations. All
     cores advance on one global cycle and submit DRAM misses as a same-cycle batch.
     """
-    features = {"spm": True, "p0": True, "codeflow": False}
+    features = {"task_workspace": True, "code_slots": True, "codeflow": False}
     if nexus_features:
         features.update(nexus_features)
+        # Canonical public feature names; legacy internal keys remain an implementation detail.
+        if "task_workspace" in nexus_features:
+            features["spm"] = bool(nexus_features["task_workspace"])
+        if "code_slots" in nexus_features:
+            features["p0"] = bool(nexus_features["code_slots"])
     is_nexus = p.name.startswith("NEXSUS CPU")
     states = []
     for shard in shards:
@@ -1116,7 +1121,7 @@ def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=N
                 "app_source_cycles": sum(x["fetch"].app_source_cycles for x in per_core if x["fetch"] is not None),
                 "code_slot_transfer_cycles": sum(x["fetch"].code_slot_cycles for x in per_core if x["fetch"] is not None),
                 "code_stream_transfer_cycles": sum(x["fetch"].code_stream_cycles for x in per_core if x["fetch"] is not None),
-                "mode": ("CodeFlow C0 -> CS -> EB (legacy PX/SPM0)" if p.name.startswith("NEXSUS CPU") and
+                "mode": ("CodeFlow C0 -> CS -> EB" if p.name.startswith("NEXSUS CPU") and
                          (nexus_features is None or nexus_features.get("p0", True))
                          else "conventional I-cache")
             },
@@ -1168,8 +1173,8 @@ def run_nexus_ablation(workloads: Dict[str, List[Op]], profile_dict: dict) -> di
     """Run the four controlled NEXSUS TW/CS combinations on identical work."""
     variants = {
         "N-FULL": {"spm": True, "p0": True},
-        "N-NO-TW": {"spm": False, "p0": True},
-        "N-NO-CS": {"spm": True, "p0": False},
+        "N-NO-TW": {"task_workspace": False, "p0": True},
+        "N-NO-CS": {"spm": True, "code_slots": False},
         "N-BASE": {"spm": False, "p0": False},
     }
     runs = {
