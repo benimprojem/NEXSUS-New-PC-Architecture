@@ -775,5 +775,59 @@ class FMAResourceSweepTests(unittest.TestCase):
 
 
 
+class AppRamControllerTests(unittest.TestCase):
+    def test_app_ram_controller_has_independent_bounded_queue(self):
+        ctrl = sim.AppRamController(first_beat_latency=10, max_outstanding=1)
+        first = ctrl.reserve_batch(0, [
+            {"id": "code0", "core": 0, "address": 0x1000, "bytes": 8},
+        ])
+        second = ctrl.reserve_batch(0, [
+            {"id": "code1", "core": 1, "address": 0x2000, "bytes": 8},
+        ])
+        self.assertTrue(first["code0"]["accepted"])
+        self.assertFalse(second["code1"]["accepted"])
+        self.assertEqual(second["code1"]["reason"], "queue_full")
+        self.assertEqual((ctrl.accepted, ctrl.rejected_queue_full), (1, 1))
+
+    def test_app_ram_independent_banks_do_not_conflict(self):
+        ctrl = sim.AppRamController(bytes_per_cycle=64, first_beat_latency=4)
+        result = ctrl.reserve_batch(0, [
+            {"id": "bank0", "core": 0, "address": 0x0000, "bytes": 8},
+            {"id": "bank1", "core": 1, "address": 0x0008, "bytes": 8},
+        ])
+        self.assertTrue(result["bank0"]["accepted"])
+        self.assertTrue(result["bank1"]["accepted"])
+        self.assertEqual(ctrl.bank_conflicts, 0)
+        self.assertEqual(result["bank0"]["ready_cycle"], result["bank1"]["ready_cycle"])
+
+    def test_app_ram_same_bank_conflict_is_local(self):
+        ctrl = sim.AppRamController(bytes_per_cycle=64, first_beat_latency=4)
+        result = ctrl.reserve_batch(0, [
+            {"id": "same0", "core": 0, "address": 0x0000, "bytes": 8},
+            {"id": "same1", "core": 1, "address": 0x0040, "bytes": 8},
+        ])
+        self.assertTrue(result["same0"]["accepted"])
+        self.assertTrue(result["same1"]["accepted"])
+        self.assertGreaterEqual(ctrl.bank_conflicts, 1)
+        self.assertGreater(result["same1"]["ready_cycle"], result["same0"]["ready_cycle"])
+
+    def test_app_ram_completion_releases_queue_slot(self):
+        ctrl = sim.AppRamController(first_beat_latency=5, max_outstanding=1)
+        first = ctrl.reserve_batch(0, [
+            {"id": "first", "core": 0, "address": 0, "bytes": 8},
+        ])
+        ready = first["first"]["ready_cycle"]
+        ctrl.complete(ready - 1)
+        blocked = ctrl.reserve_batch(ready - 1, [
+            {"id": "blocked", "core": 1, "address": 8, "bytes": 8},
+        ])
+        self.assertFalse(blocked["blocked"]["accepted"])
+        ctrl.complete(ready)
+        admitted = ctrl.reserve_batch(ready, [
+            {"id": "next", "core": 1, "address": 8, "bytes": 8},
+        ])
+        self.assertTrue(admitted["next"]["accepted"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
