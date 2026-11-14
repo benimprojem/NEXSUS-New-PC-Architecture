@@ -120,6 +120,24 @@ jobs:
                     f'{i128["execution_unit_blocked_op_cycles"]}/'
                     f'{fp["execution_unit_blocked_op_cycles"]}')
           PY
+
+      - name: Run FP64 and dedicated FMA lane topology sweep
+        run: |
+          python "NEXUS CPU/tools/cpu_comparison_sim.py" --fma-sweep --scale 1 --json > /tmp/nexus-fma-sweep.json
+          python - <<'PY'
+          import json
+          data = json.load(open("/tmp/nexus-fma-sweep.json", encoding="utf-8"))
+          assert set(data["results"]) == {"FP6_FMA2", "FP6_FMA4", "FP8_FMA2", "FP8_FMA4"}
+          for variant in data["results"].values():
+              assert all(row["ops_preserved"] for row in variant["kernels"].values())
+          print("FP64 / FMA RESOURCE SWEEP")
+          for key, row in data["results"].items():
+              fp = row["kernels"]["fp_throughput"]
+              fma = row["kernels"]["fma_throughput"]
+              print(f'{key}: FP64={fp["cycles"]} FMA={fma["cycles"]} '
+                    f'unit_stalls={fp["execution_unit_blocked_op_cycles"]}/'
+                    f'{fma["execution_unit_blocked_op_cycles"]}')
+          PY
       - name: Run branch predictor sensitivity sweep
         run: |
           python "NEXUS CPU/tools/cpu_comparison_sim.py" --branch-sweep --scale 1 --json > /tmp/nexus-branch-sweep.json
