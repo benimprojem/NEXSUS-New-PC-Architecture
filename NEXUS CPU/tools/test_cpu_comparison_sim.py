@@ -946,6 +946,7 @@ class EightCoreArchitectureScalingTests(unittest.TestCase):
         shards = sim.partition_dependency_components(workload, 8)
         profile = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
         rows = {}
+        data_request_signatures = {}
         for depth in (1, 2, 4, 8, 16, 32):
             result = sim.simulate_multicore_streams(
                 shards, profile, 64,
@@ -953,7 +954,18 @@ class EightCoreArchitectureScalingTests(unittest.TestCase):
                  "codeflow": True, "app_max_outstanding": depth},
             )
             app = result["app_controller"]
+            data = result["controller"]
             rows[depth] = result
+            data_request_signatures[depth] = sorted(
+                (event["core"], event["address"], event["width"])
+                for event in data["request_events"]
+            )
+            self.assertEqual(len(app["request_events"]), app["accepted"])
+            self.assertTrue(all(
+                event["request_cycle"] <= event["ready_cycle"]
+                and event["bytes"] > 0
+                for event in app["request_events"]
+            ), depth)
             self.assertEqual(sum(core["retired"] for core in result["cores"]), 1024)
             self.assertEqual(app["max_outstanding"], depth)
             self.assertGreaterEqual(app["accepted"], 8)
@@ -962,6 +974,12 @@ class EightCoreArchitectureScalingTests(unittest.TestCase):
         self.assertEqual(
             {sum(core["retired"] for core in row["cores"]) for row in rows.values()},
             {1024},
+        )
+        # App RAM queue depth may shift global timing, but it must not alter
+        # which Data RAM misses the identical workload generates.
+        self.assertEqual(
+            {tuple(signature) for signature in data_request_signatures.values()},
+            {tuple(data_request_signatures[1])},
         )
         self.assertGreater(rows[1]["app_controller"]["queue_rejections"], 0)
         self.assertEqual(rows[32]["app_controller"]["queue_rejections"], 0)
