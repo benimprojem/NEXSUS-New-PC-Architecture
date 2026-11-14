@@ -142,6 +142,29 @@ jobs:
                     f'{fma["execution_unit_blocked_op_cycles"]}/'
                     f'{mixed["execution_unit_blocked_op_cycles"]}')
           PY
+      - name: Run Data RAM per-core MSHR capacity sweep
+        run: |
+          python "NEXUS CPU/tools/cpu_comparison_sim.py" --mshr-sweep --json > /tmp/nexus-data-mshr-sweep.json
+          python - <<'PY'
+          import json
+          data = json.load(open("/tmp/nexus-data-mshr-sweep.json", encoding="utf-8"))
+          expected = {"1", "2", "4", "8", "16", "32"}
+          assert set(data["results"]) == expected
+          assert data["cores"] == 8
+          assert data["same_cold_load_workload"]
+          assert data["app_ram_and_data_ram_controllers_independent"]
+          for capacity, row in data["results"].items():
+              assert row["ops_retired"] == 8 * data["ops_per_core"], capacity
+              assert row["data_ram_requests"] == row["ops_retired"], capacity
+              assert all(value <= int(capacity) for value in row["max_outstanding_per_core"]), capacity
+          assert data["results"]["1"]["total_full_events"] > 0
+          print("DATA RAM PER-CORE MSHR CAPACITY SWEEP")
+          for capacity, row in data["results"].items():
+              print(f'{capacity} entries/core: cycles={row["cycles"]} '
+                    f'max_outstanding={max(row["max_outstanding_per_core"])} '
+                    f'full_events={row["total_full_events"]} '
+                    f'requests={row["data_ram_requests"]}')
+          PY
       - name: Run branch predictor sensitivity sweep
         run: |
           python "NEXUS CPU/tools/cpu_comparison_sim.py" --branch-sweep --scale 1 --json > /tmp/nexus-branch-sweep.json
@@ -188,6 +211,7 @@ jobs:
           name: nexus-cpu-comparison-results
           path: |
             /tmp/nexus-cpu-results.json
+            /tmp/nexus-data-mshr-sweep.json
             /tmp/nexus-cs-sweep.json
             /tmp/nexus-fetch-sweep.json
             /tmp/nexus-branch-sweep.json
