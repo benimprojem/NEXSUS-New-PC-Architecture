@@ -30,16 +30,25 @@ class PipelineTests(unittest.TestCase):
         slow=sim.Pipeline(sim.Config(app_beat_interval=4)).run(pages)
         self.assertGreater(slow.cycles,fast.cycles)
 
-    def test_overlapped_stages_beat_serial_pipeline(self):
+    def test_overlapped_stages_reduce_time_vs_serial_service_sum(self):
         pages=sim.make_pages(16,tasks=4)
-        overlapped=sim.Pipeline(sim.Config(allow_overlap=True)).run(pages)
-        serial=sim.Pipeline(sim.Config(allow_overlap=False)).run(pages)
-        self.assertEqual(overlapped.pages_completed,16)
-        self.assertEqual(serial.pages_completed,16)
-        self.assertLess(overlapped.cycles,serial.cycles)
-        self.assertGreater(overlapped.app_stage_busy_cycles,0)
-        self.assertGreater(overlapped.l0i_px_stage_busy_cycles,0)
-        self.assertGreater(overlapped.px_spm_stage_busy_cycles,0)
+        result=sim.Pipeline(sim.Config()).run(pages)
+        serial_service_sum=(result.app_stage_busy_cycles+
+            result.l0i_px_stage_busy_cycles+result.px_spm_stage_busy_cycles)
+        self.assertEqual(result.pages_completed,16)
+        self.assertLess(result.cycles,serial_service_sum)
+        events={}
+        for event in result.timeline:
+            key=(event.get("task"),event.get("page"))
+            events.setdefault(key,{})[event["event"]]=event["cycle"]
+        app_start=events[("T1",0)]["APP_READ_START"]
+        app_ready=events[("T1",0)]["C0_READY"]
+        c0cs_start=events[("T0",0)]["C0_CS_START"]
+        cs_ready=events[("T0",0)]["CS_READY"]
+        self.assertLess(max(app_start,c0cs_start),min(app_ready,cs_ready))
+        self.assertGreater(result.app_stage_busy_cycles,0)
+        self.assertGreater(result.l0i_px_stage_busy_cycles,0)
+        self.assertGreater(result.px_spm_stage_busy_cycles,0)
 
     def test_pipeline_queues_remain_bounded_and_report_backpressure(self):
         cfg=sim.Config(app_queue_depth=2,l0i_px_queue_depth=1,px_spm_queue_depth=1)
