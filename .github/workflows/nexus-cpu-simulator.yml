@@ -84,6 +84,21 @@ jobs:
           assert len({row["total_ops"] for row in data.values()}) == 1
           print("PASS: normalized 8-core run, same operation count across all four architectures.")
           PY
+      - name: Run mixed-width INT and FP execution topology sweep
+        run: |
+          python "NEXUS CPU/tools/cpu_comparison_sim.py" --execution-sweep --scale 1 --json > /tmp/nexus-execution-sweep.json
+          python - <<'PY'
+          import json
+          data = json.load(open("/tmp/nexus-execution-sweep.json", encoding="utf-8"))
+          assert data["experiment"] == "NEXSUS mixed-width INT and six-lane FP execution topology"
+          assert data["kernels"]["integer_throughput"]["ops_preserved"]
+          assert data["kernels"]["integer128_throughput"]["ops"] == 256
+          assert data["kernels"]["fp_throughput"]["ops_preserved"]
+          print("MIXED-WIDTH EXECUTION TOPOLOGY")
+          for name, row in data["kernels"].items():
+              print(f'{name}: baseline={row["baseline_cycles"]} proposed={row["proposed_cycles"]} '
+                    f'saved={row["cycles_saved"]} ({row["improvement_percent"]}%)')
+          PY
       - name: Run branch predictor sensitivity sweep
         run: |
           python "NEXUS CPU/tools/cpu_comparison_sim.py" --branch-sweep --scale 1 --json > /tmp/nexus-branch-sweep.json
