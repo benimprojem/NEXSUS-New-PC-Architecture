@@ -466,10 +466,12 @@ class CommandFetchModel:
     def _pool_touch(self, block: int) -> bool:
         max_pages = max(1, self.capacity_bytes // self.p0_buffer_bytes)
         if not self.pool_initialized:
-            # OS launch-time staging: fill the available PX pool with the first
-            # logical pages before the task is dispatched.
-            for page in range(block, block + max_pages):
-                self.pool_pages[page] = None
+            # Legacy mode assumes OS launch-time staging. Integrated CodeFlow
+            # mode starts cold: the first demanded page must traverse App RAM,
+            # C0, Code Slot and EB like every later nonresident page.
+            if not self.codeflow_enabled:
+                for page in range(block, block + max_pages):
+                    self.pool_pages[page] = None
             self.pool_initialized = True
         if block in self.pool_pages:
             self.pool_hits += 1
