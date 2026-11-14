@@ -31,7 +31,8 @@ Bu bileşenler araştırma ve tasarım önerileridir; tamamlanmış veya silikon
 - [Memory Bank Topology](NEXUS%20CPU/NEXSUS-CPU-MEMORY-BANK-TOPOLOGY-001.md)
 - [OS / CodeFlow / Context Interface](NEXUS%20CPU/NEXSUS-CPU-OS-PX-CONTEXT-INTERFACE-001.md)
 - [CodeFlow Manager ve Code Slot havuzu](NEXUS%20CPU/NEXSUS-CPU-PX-MANAGER-001.md)
-- [Code-path naming decision](NEXUS%20CPU/NEXSUS-CPU-CODEFLOW-NAMING-001.md)
+- [CodeFlow ve çalışma alanları adlandırma standardı](NEXUS%20CPU/NEXSUS-CPU-CODEFLOW-NAMING-001.md) — tekil birimde suffix yok; EB, OW, TW, CP ve XW ayrımı
+- [Adlandırma standardı regresyon testi](NEXUS%20CPU/tools/test_nexus_naming_standard.py)
 
 ### CPU — simülasyon ve doğrulama
 - [Karşılaştırma simülatörü](NEXUS%20CPU/tools/cpu_comparison_sim.py)
