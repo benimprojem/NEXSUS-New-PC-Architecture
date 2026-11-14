@@ -27,6 +27,20 @@ class DataRamMSHRTests(unittest.TestCase):
         self.assertGreaterEqual(
             result["results"]["1"]["cycles"], result["results"]["2"]["cycles"]
         )
+        self.assertEqual(result["mixed_workload"]["pattern"],
+                         "1 independent cold LOAD followed by 3 independent INT operations")
+        self.assertEqual(set(result["mixed_results"]), set(result["results"]))
+        for capacity, row in result["mixed_results"].items():
+            with self.subTest(mixed_capacity=capacity):
+                self.assertEqual(row["ops_retired"], 8 * 32 * 4)
+                self.assertEqual(row["data_ram_requests"], 8 * 32)
+                self.assertIsNone(row["app_ram_controller"])
+                self.assertTrue(all(value <= int(capacity)
+                                    for value in row["max_outstanding_per_core"]))
+                self.assertEqual(row["total_full_cycles"], sum(row["full_cycles_per_core"]))
+                self.assertLessEqual(row["total_full_cycles"], row["total_blocked_request_attempts"])
+        self.assertGreater(result["mixed_results"]["1"]["total_full_cycles"], 0)
+        self.assertEqual(result["mixed_results"]["128"]["total_full_cycles"], 0)
 
     def test_dependent_load_chain_does_not_need_extra_mshrs(self):
         shards = []
