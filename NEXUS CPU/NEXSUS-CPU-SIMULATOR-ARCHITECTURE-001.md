@@ -4,7 +4,7 @@
 **Status:** Simulator design proposal; timing and baseline profiles are configurable, not hardware claims  
 **Scope:** Functional and cycle-level behavioral simulation of NEXSUS CPU, plus a fair conventional-CPU comparison framework
 
-## 1. Goal
+## Naming baseline\nCanonical CodeFlow and workspace names (including the rule that singleton resources have no numeric suffix) are defined in [Naming Decision 001](NEXSUS-CPU-CODEFLOW-NAMING-001.md). New text uses EB, OW, TW, CP0–CP3 and XW; SPMx remains legacy compatibility notation.\n\n## 1. Goal
 
 Build a reproducible simulator that executes the same algorithmic workloads on:
 1. a configurable conventional/reference CPU model; and
@@ -40,7 +40,7 @@ It models:
 - NEXSUS architectural registers RA/FA/DA/MA and their views/pairs;
 - ISA instruction semantics and precise faults;
 - P0 command-buffer/refill behavior at the architectural boundary;
-- SPM0–SPM7 roles, ownership and access permissions;
+- EB, OW, TW, CP0–CP3 and XW roles, ownership and access permissions;
 - App RAM and Data RAM address spaces;
 - L1–L4 domain permissions, ownership and visibility;
 - task architectural state and context save/restore;
@@ -64,7 +64,7 @@ It models, as configurable resources:
 - L1–L4 domains and physical bank groups;
 - per-bank queues, local arbitration, port direction and turnaround;
 - wide-access parent/child tracking and all-or-none multi-bank admission;
-- SPM access bandwidth/latency;
+- workspace access bandwidth/latency;
 - task switch, context save/restore and SPM residency;
 - IRQ pending/acceptance, exception entry/exit and handler execution;
 - Fabric/MEMXFER traffic and transfer completion.
@@ -113,7 +113,7 @@ The initial architectural resource map includes:
 - RA0–RA31, FA0–FA31, DA0–DA31 and MA0–MA31;
 - 2 ALUs, at least 2 FPUs and one ME512 per core as the current baseline proposal;
 - P0 64-bit command records and 512-bit peak refill interface target;
-- SPM0 2 KiB; SPM1–SPM7 8 KiB each with their defined roles and permissions;
+- EB 2 × 2 KiB banks; OW 8 KiB; TW 8 KiB; CP0–CP3 (4 × 8 KiB); XW 8 KiB, each with defined roles/permissions;
 - separate App RAM and Data RAM paths;
 - L1 private 128 KiB/core, L2 shared per 2 cores 1 MiB, L3 shared per 4 cores 8 MiB, L4 shared per 8+ cores 64 MiB as current proposed capacities;
 - 8 banks × 64-bit per bank group as a recommended topology baseline, not physical freeze;
