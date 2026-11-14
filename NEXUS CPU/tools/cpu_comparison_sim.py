@@ -1603,20 +1603,36 @@ def run_fma_resource_sweep(workloads: Dict[str, List[Op]], profile_dict: dict,
 
 def run_data_mshr_sweep(profile_dict: dict, capacities=(1, 2, 4, 8, 16, 32, 64, 128),
                         ops_per_core=128) -> dict:
-    """Sweep per-core Data RAM MSHR capacity on identical cold-load traffic."""
+    """Sweep per-core Data RAM MSHRs on cold-load and mixed compute/load traces."""
     if ops_per_core < 1:
         raise ValueError("ops_per_core must be positive")
     profile = profile_from_dict(profile_dict)
-    ops = [
+
+    cold_shards = partition_dependency_components([
         Op(i, "LOAD", address=0x10000000 + i * profile.line_bytes,
            width=8, label="Data RAM MSHR cold miss")
         for i in range(ops_per_core * 8)
-    ]
-    shards = partition_dependency_components(ops, 8)
-    rows = {}
-    for capacity in capacities:
-        if int(capacity) < 1:
-            raise ValueError("MSHR capacity must be at least one")
+    ], 8)
+
+    # One independent cold LOAD followed by three independent INT operations.
+    # This exposes memory-level parallelism without making every instruction a LOAD.
+    mixed_ops_per_core = ops_per_core * 4
+    mixed_shards = []
+    for core_id in range(8):
+        shard = []
+        for seq in range(mixed_ops_per_core):
+            if seq % 4 == 0:
+                shard.append(Op(
+                    seq, "LOAD",
+                    address=(0x50000000 + core_id * 0x1000000
+                             + (seq // 4) * profile.line_bytes),
+                    width=8, label="mixed MSHR cold load",
+                ))
+            else:
+                shard.append(Op(seq, "INT", label="independent mixed compute"))
+        mixed_shards.append(shard)
+
+    def run_capacity(shards, expected_ops, expected_requests, capacity, workload_name):
         run = simulate_multicore_streams(
             shards, profile, int(profile_dict.get("dram_bytes_per_cycle", 32)),
             {"task_workspace": False, "code_slots": False,
@@ -1625,11 +1641,14 @@ def run_data_mshr_sweep(profile_dict: dict, capacities=(1, 2, 4, 8, 16, 32, 64, 
         total_ops = sum(core["retired"] for core in run["cores"])
         request_count = len(run["controller"]["request_events"])
         max_outstanding = run["data_mshr"]["max_outstanding_per_core"]
-        if total_ops != len(ops) or request_count != total_ops:
-            raise AssertionError("MSHR sweep lost operations or Data RAM requests")
+        if total_ops != expected_ops or request_count != expected_requests:
+            raise AssertionError(
+                f"{workload_name} MSHR sweep lost work or requests: "
+                f"retired={total_ops}/{expected_ops}, requests={request_count}/{expected_requests}"
+            )
         if any(value > int(capacity) for value in max_outstanding):
             raise AssertionError("per-core MSHR occupancy exceeded configured capacity")
-        rows[str(capacity)] = {
+        return {
             "capacity_per_core": int(capacity),
             "cycles": run["cycles"],
             "ops_retired": total_ops,
@@ -1639,19 +1658,40 @@ def run_data_mshr_sweep(profile_dict: dict, capacities=(1, 2, 4, 8, 16, 32, 64, 
             "total_blocked_request_attempts": run["data_mshr"]["total_blocked_request_attempts"],
             "total_full_cycles": run["data_mshr"]["total_full_cycles"],
             "full_cycles_per_core": run["data_mshr"]["full_cycles_per_core"],
-            "app_ram_controller": run["app_controller"],
         }
+
+    cold_rows = {}
+    mixed_rows = {}
+    for capacity in capacities:
+        if int(capacity) < 1:
+            raise ValueError("MSHR capacity must be at least one")
+        cold_rows[str(capacity)] = run_capacity(
+            cold_shards, ops_per_core * 8, ops_per_core * 8,
+            capacity, "cold-load",
+        )
+        mixed_rows[str(capacity)] = run_capacity(
+            mixed_shards, mixed_ops_per_core * 8, (mixed_ops_per_core // 4) * 8,
+            capacity, "mixed compute/load",
+        )
+
     return {
         "experiment": "NEXSUS per-core Data RAM MSHR capacity sweep",
         "cores": 8,
         "ops_per_core": ops_per_core,
         "same_cold_load_workload": True,
+        "mixed_workload": {
+            "ops_per_core": mixed_ops_per_core,
+            "load_ops_per_core": mixed_ops_per_core // 4,
+            "compute_ops_per_core": mixed_ops_per_core - mixed_ops_per_core // 4,
+            "pattern": "1 independent cold LOAD followed by 3 independent INT operations",
+        },
         "app_ram_and_data_ram_controllers_independent": True,
         "counter_definitions": {
             "total_blocked_request_attempts": "A request remains blocked for one cycle and is counted again if retried next cycle.",
             "total_full_cycles": "Per-core cycles in which at least one request was blocked by a full MSHR pool; multiple blocked requests on one core in one cycle count once."
         },
-        "results": rows,
+        "results": cold_rows,
+        "mixed_results": mixed_rows,
         "assumptions": (
             "Each MSHR entry tracks one outstanding Data RAM demand miss per core "
             "until its fill completes. MSHR capacity is per-core, not shared; the "
