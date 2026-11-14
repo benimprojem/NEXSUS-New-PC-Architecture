@@ -765,7 +765,7 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
             selected_slots = None
             topology = getattr(p, "execution_topology", {}) or {}
             if resource == "FP" and op.kind == "FMA":
-                fma_count = min(len(slots), max(0, int(topology.get("FMA_LANES", 0))))
+                fma_count = min(len(slots), max(0, int(topology.get("FMA_LANES", len(slots)))))
                 slot = next((i for i in range(fma_count) if slots[i] <= cycle), None)
                 selected_slots = [slot] if slot is not None else None
             elif resource == "INT" and op.exec_width_bits >= 128 and topology.get("INT128_PAIRS"):
@@ -1023,7 +1023,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 topology = getattr(p, "execution_topology", {}) or {}
                 selected_slots = None
                 if resource == "FP" and op.kind == "FMA":
-                    fma_count = min(len(slots), max(0, int(topology.get("FMA_LANES", 0))))
+                    fma_count = min(len(slots), max(0, int(topology.get("FMA_LANES", len(slots)))))
                     slot_index = next((i for i in range(fma_count) if slots[i] <= cycle), None)
                     selected_slots = [slot_index] if slot_index is not None else None
                 elif resource == "INT" and op.exec_width_bits >= 128 and topology.get("INT128_PAIRS"):
