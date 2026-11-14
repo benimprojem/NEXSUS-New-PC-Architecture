@@ -759,7 +759,7 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
                 stalls["issue_width_blocked_op_cycles"] += 1
                 continue
             kind = op.kind
-            exec_kind = p.matrix_unit if kind == "ME512" else kind
+            exec_kind = "FP" if kind == "FMA" else (p.matrix_unit if kind == "ME512" else kind)
             resource = "FP" if exec_kind == "FMA" else ("LOAD" if exec_kind == "LOAD" else ("STORE" if exec_kind == "STORE" else exec_kind))
             slots = unit_busy.get(resource, [])
             selected_slots = None
@@ -1017,7 +1017,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 if issued_now >= p.issue:
                     st["stalls"]["issue_width_blocked_op_cycles"] += 1
                     continue
-                exec_kind = p.matrix_unit if op.kind == "ME512" else op.kind
+                exec_kind = "FP" if op.kind == "FMA" else (p.matrix_unit if op.kind == "ME512" else op.kind)
                 resource = "FP" if exec_kind == "FMA" else ("LOAD" if exec_kind == "LOAD" else ("STORE" if exec_kind == "STORE" else exec_kind))
                 slots = st["unit_busy"].get(resource, [])
                 topology = getattr(p, "execution_topology", {}) or {}
