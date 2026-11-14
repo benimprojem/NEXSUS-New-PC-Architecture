@@ -5,6 +5,43 @@ import unittest
 import cpu_comparison_sim as sim
 
 
+class DataRamMSHRTests(unittest.TestCase):
+    def test_capacity_sweep_preserves_all_cold_loads_and_bounds_occupancy(self):
+        result = sim.run_data_mshr_sweep(
+            sim.PROFILES["nexus_balanced_128"], capacities=(1, 2, 4, 8, 16, 32),
+            ops_per_core=32,
+        )
+        self.assertEqual(set(result["results"]), {"1", "2", "4", "8", "16", "32"})
+        for capacity, row in result["results"].items():
+            with self.subTest(capacity=capacity):
+                self.assertEqual(row["ops_retired"], 8 * 32)
+                self.assertEqual(row["data_ram_requests"], 8 * 32)
+                self.assertTrue(all(value <= int(capacity)
+                                    for value in row["max_outstanding_per_core"]))
+                self.assertIsNone(row["app_ram_controller"])
+        self.assertGreater(result["results"]["1"]["total_full_events"], 0)
+        self.assertLessEqual(
+            result["results"]["1"]["cycles"], result["results"]["2"]["cycles"]
+        )
+
+    def test_per_core_mshrs_are_not_a_shared_global_pool(self):
+        ops = [
+            sim.Op(i, "LOAD", address=0x20000000 + i * 64, width=8,
+                   label="independent core MSHR")
+            for i in range(8)
+        ]
+        shards = [[ops[i]] for i in range(8)]
+        profile = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        run = sim.simulate_multicore_streams(
+            shards, profile, 64,
+            {"task_workspace": False, "code_slots": False, "data_mshr_entries": 1},
+        )
+        self.assertEqual([core["retired"] for core in run["cores"]], [1] * 8)
+        self.assertEqual(run["data_mshr"]["max_outstanding_per_core"], [1] * 8)
+        self.assertEqual(run["data_mshr"]["total_full_events"], 0)
+        self.assertEqual(len(run["controller"]["request_events"]), 8)
+
+
 class BandwidthPolicyTests(unittest.TestCase):
     def test_bandwidth_is_shared_without_static_per_core_quota(self):
         profile = sim.PROFILES["nexus_balanced_128"]

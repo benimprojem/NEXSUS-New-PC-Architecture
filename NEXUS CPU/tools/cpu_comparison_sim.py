@@ -1086,12 +1086,15 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
             "next_frontend": 0, "frontend_blocked_until": 0, "retired": 0, "last_pc": None,
             "max_rob": 0, "hits": {"L1":0,"L2":0,"L3":0,"L4":0,"DRAM":0},
             "branch_misses": 0, "branch_number": 0,
+            "mshr_inflight": [],
+            "mshr_max_outstanding": 0, "mshr_full_events": 0,
             "stalls": {"dependency_blocked_op_cycles": 0,
                        "issue_width_blocked_op_cycles": 0,
                        "execution_unit_blocked_op_cycles": 0,
                        "frontend_limited_cycles": 0, "rob_full_cycles": 0,
                        "branch_recovery_cycles": 0,
-                       "memory_latency_exposure_cycles": 0}
+                       "memory_latency_exposure_cycles": 0,
+                       "data_mshr_full_events": 0}
         })
     cache_hierarchies = build_cache_hierarchies(p, len(states))
     for core_id, st in enumerate(states):
@@ -1137,6 +1140,12 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
         for _, core_id, address, level in completed_fills:
             states[core_id]["cache"].fill(address, level)
         pending_memory = []
+        mshr_capacity = features.get("data_mshr_entries")
+        mshr_reserved_this_cycle = [0] * len(states)
+        # MSHR entries are released only after the corresponding data fill completes.
+        if mshr_capacity is not None:
+            for st in states:
+                st["mshr_inflight"] = [ready for ready in st["mshr_inflight"] if ready > cycle]
         # Phase 1: complete and retire all cores at the same global cycle.
         for core_id, st in enumerate(states):
             ops = st["ops"]
@@ -1239,6 +1248,13 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                                 st["spm"]["overflow"] += 1
                             st["spm"]["fallback_bytes"] += op.width
                         mem_lat, level = st["cache"].probe(op.address)
+                        if level == "DRAM" and mshr_capacity is not None:
+                            outstanding = len(st["mshr_inflight"]) + mshr_reserved_this_cycle[core_id]
+                            if outstanding >= int(mshr_capacity):
+                                st["mshr_full_events"] += 1
+                                st["stalls"]["data_mshr_full_events"] += 1
+                                continue
+                            mshr_reserved_this_cycle[core_id] += 1
                         st["hits"][level] += 1
                 item = {"core": core_id, "seq": seq, "slot": slot,
                         "latency": max(p.latency.get(exec_kind, 1) *
@@ -1282,6 +1298,11 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 )
                 latency = max(latency, p.dram_lat + service_delay)
             st["ready_at"][seq] = cycle + latency
+            if item["request_id"] is not None and mshr_capacity is not None:
+                st["mshr_inflight"].append(cycle + latency)
+                st["mshr_max_outstanding"] = max(
+                    st["mshr_max_outstanding"], len(st["mshr_inflight"])
+                )
             if item["memory"]:
                 pending_fills.append((cycle + latency, item["core"], st["ops"][seq].address, item["level"]))
                 st["stalls"]["memory_latency_exposure_cycles"] += max(0, latency - 1)
@@ -1298,6 +1319,12 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
         totals = [f"{st['retired']}/{len(st['ops'])}" for st in states]
         raise RuntimeError(f"multicore simulation did not drain at cycle {cycle}: {totals}")
     return {"cycles": cycle, "cores": states,
+            "data_mshr": {
+                "capacity_per_core": (int(mshr_capacity) if mshr_capacity is not None else None),
+                "max_outstanding_per_core": [st["mshr_max_outstanding"] for st in states],
+                "full_events_per_core": [st["mshr_full_events"] for st in states],
+                "total_full_events": sum(st["mshr_full_events"] for st in states),
+            },
             "app_controller": ({"bank_count": app_controller.bank_count,
                                 "max_outstanding": app_controller.max_outstanding,
                                 "accepted": app_controller.accepted,
@@ -1343,6 +1370,7 @@ def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=N
             "stall_counters": {k: sum(x["stalls"][k] for x in per_core)
                                for k in stall_keys},
             "memory_controller": simulation["controller"],
+            "data_mshr": simulation["data_mshr"],
             "app_ram_controller": simulation["app_controller"],
             "workspace_counters": {k: sum(x["spm"][k] for x in per_core)
                              for k in ("accesses", "bytes", "port_conflicts", "overflow", "fallback_bytes")},
@@ -1562,6 +1590,59 @@ def run_fma_resource_sweep(workloads: Dict[str, List[Op]], profile_dict: dict,
 
 
 
+def run_data_mshr_sweep(profile_dict: dict, capacities=(1, 2, 4, 8, 16, 32),
+                        ops_per_core=128) -> dict:
+    """Sweep per-core Data RAM MSHR capacity on identical cold-load traffic."""
+    if ops_per_core < 1:
+        raise ValueError("ops_per_core must be positive")
+    profile = profile_from_dict(profile_dict)
+    ops = [
+        Op(i, "LOAD", address=0x10000000 + i * profile.line_bytes,
+           width=8, label="Data RAM MSHR cold miss")
+        for i in range(ops_per_core * 8)
+    ]
+    shards = partition_dependency_components(ops, 8)
+    rows = {}
+    for capacity in capacities:
+        if int(capacity) < 1:
+            raise ValueError("MSHR capacity must be at least one")
+        run = simulate_multicore_streams(
+            shards, profile, int(profile_dict.get("dram_bytes_per_cycle", 32)),
+            {"task_workspace": False, "code_slots": False,
+             "data_mshr_entries": int(capacity)},
+        )
+        total_ops = sum(core["retired"] for core in run["cores"])
+        request_count = len(run["controller"]["request_events"])
+        max_outstanding = run["data_mshr"]["max_outstanding_per_core"]
+        if total_ops != len(ops) or request_count != total_ops:
+            raise AssertionError("MSHR sweep lost operations or Data RAM requests")
+        if any(value > int(capacity) for value in max_outstanding):
+            raise AssertionError("per-core MSHR occupancy exceeded configured capacity")
+        rows[str(capacity)] = {
+            "capacity_per_core": int(capacity),
+            "cycles": run["cycles"],
+            "ops_retired": total_ops,
+            "data_ram_requests": request_count,
+            "max_outstanding_per_core": max_outstanding,
+            "total_full_events": run["data_mshr"]["total_full_events"],
+            "app_ram_controller": run["app_controller"],
+        }
+    return {
+        "experiment": "NEXSUS per-core Data RAM MSHR capacity sweep",
+        "cores": 8,
+        "ops_per_core": ops_per_core,
+        "same_cold_load_workload": True,
+        "app_ram_and_data_ram_controllers_independent": True,
+        "results": rows,
+        "assumptions": (
+            "Each MSHR entry tracks one outstanding Data RAM demand miss per core "
+            "until its fill completes. MSHR capacity is per-core, not shared; the "
+            "Data RAM bank/bus controller remains shared. App RAM instruction fetch "
+            "uses its own independent controller. Results are simulator estimates."
+        ),
+    }
+
+
 def run_branch_predictor_sweep(workloads: Dict[str, List[Op]], profile_dict: dict) -> dict:
     """Compare NEXSUS predictor-off and compact-predictor assumptions on identical traces."""
     target = {name: workloads[name] for name in ("scalar_control", "pointer_graph", "branch_stress")}
@@ -1746,8 +1827,20 @@ def main():
     ap.add_argument("--execution-sweep", action="store_true", help="compare baseline and mixed-width NEXSUS INT/FP resources")
     ap.add_argument("--resource-sweep", action="store_true", help="sweep per-core INT/FP unit counts with fixed workloads")
     ap.add_argument("--fma-sweep", action="store_true", help="compare 2/4 FMA lanes with 6/8 total FP64 lanes")
+    ap.add_argument("--mshr-sweep", action="store_true", help="sweep per-core Data RAM MSHR capacities 1/2/4/8/16/32")
     args = ap.parse_args()
     workloads = build_composite_workload(args.scale)
+    if args.mshr_sweep:
+        result = run_data_mshr_sweep(PROFILES["nexus_balanced_128"])
+        if args.json:
+            print(json.dumps(result, indent=2))
+        else:
+            print("NEXSUS DATA RAM MSHR CAPACITY SWEEP")
+            for name, row in result["results"].items():
+                print(f"{name} entries/core: cycles={row['cycles']} "
+                      f"max={max(row['max_outstanding_per_core'])} "
+                      f"full-events={row['total_full_events']}")
+        return
     if args.fma_sweep:
         result = run_fma_resource_sweep(workloads, PROFILES["nexus_balanced_128"])
         if args.json:
