@@ -868,7 +868,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
         states.append({
             "ops": shard, "cache": None, "fetch": None,
             "spm_busy_until": 0,
-            "spm": {"accesses": 0, "bytes": 0, "port_conflicts": 0, "overflow": 0, "fallback_bytes": 0},
+            "task_workspace": {"accesses": 0, "bytes": 0, "port_conflicts": 0, "overflow": 0, "fallback_bytes": 0},
             "ready_at": [0] * len(shard), "done": [False] * len(shard),
             "issued": [False] * len(shard), "dispatched": [False] * len(shard),
             "rob": deque(), "unit_busy": {k: [0] * v for k, v in p.units.items()},
@@ -1130,7 +1130,7 @@ def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=N
     total_cycles = sum(v["cycles"] for v in results.values())
     total_ops = sum(v["ops"] for v in results.values())
     return {"cpu": p.name, "cores_configured": cores, "clock_ghz": p.frequency_ghz,
-            "nexus_features": ({"spm": True, "p0": True, "p0_capacity_kb": 16, "spm0_kb": 4, "spm0_bank_kb": 2, "p0_refill_latency": 48, "branch_predictor": p.branch_predictor} if nexus_features is None else nexus_features) if p.name.startswith("NEXSUS CPU") else None,
+            "nexus_features": ({"task_workspace": True, "code_slots": True, "p0_capacity_kb": 16, "eb_kb": 4, "eb_bank_kb": 2, "p0_refill_latency": 48, "branch_predictor": p.branch_predictor} if nexus_features is None else nexus_features) if p.name.startswith("NEXSUS CPU") else None,
             "register_architecture": ({"RA": {"count": 32, "width_bits": 64}, "FA": {"count": 32, "width_bits": 64}, "DA": {"count": 32, "width_bits": 64}, "MA": {"count": 32, "width_bits": 256}, "selector_bits": 5, "total_physical_bytes": 1792} if p.name.startswith("NEXSUS CPU") else None),
             "cpu_ram_reference_clock_ghz": p.frequency_ghz,
             "aggregate_dram_bytes_per_cycle": aggregate_dram_bandwidth,
@@ -1148,7 +1148,7 @@ def run_branch_predictor_sweep(workloads: Dict[str, List[Op]], profile_dict: dic
         profile = dict(profile_dict)
         profile["branch_predictor"] = mode
         runs[mode] = simulate_cpu(target, profile, profile.get("core_count", 8),
-                                  {"spm": True, "p0": True, "p0_capacity_kb": 16,
+                                  {"task_workspace": True, "code_slots": True, "p0_capacity_kb": 16,
                                    "p0_refill_latency": 48, "spm0_kb": 4,
                                    "spm0_bank_kb": 2})
     rows = {}
@@ -1172,10 +1172,10 @@ def run_branch_predictor_sweep(workloads: Dict[str, List[Op]], profile_dict: dic
 def run_nexus_ablation(workloads: Dict[str, List[Op]], profile_dict: dict) -> dict:
     """Run the four controlled NEXSUS TW/CS combinations on identical work."""
     variants = {
-        "N-FULL": {"spm": True, "p0": True},
-        "N-NO-TW": {"task_workspace": False, "p0": True},
-        "N-NO-CS": {"spm": True, "code_slots": False},
-        "N-BASE": {"spm": False, "p0": False},
+        "N-FULL": {"task_workspace": True, "code_slots": True},
+        "N-NO-TW": {"task_workspace": False, "code_slots": True},
+        "N-NO-CS": {"task_workspace": True, "code_slots": False},
+        "N-BASE": {"task_workspace": False, "code_slots": False},
     }
     runs = {
         name: simulate_cpu(workloads, profile_dict, max(8, profile_dict.get("core_count", 8)), flags)
@@ -1231,7 +1231,7 @@ def run_p0_capacity_sweep(workloads, profile_dict, capacities_kb=(4, 8, 16, 32, 
     for capacity_kb in capacities_kb:
         run = simulate_cpu(
             target, profile_dict, 1,
-            {"spm": True, "p0": True, "p0_capacity_kb": capacity_kb,
+            {"task_workspace": True, "code_slots": True, "p0_capacity_kb": capacity_kb,
              "p0_refill_latency": refill_latency, "px_pool_miss_latency": pool_miss_latency,
              "px_page_descriptors": page_descriptors},
         )
@@ -1274,7 +1274,7 @@ def run_fetch_latency_sweep(workloads, conventional_latencies=(8, 16, 24, 32),
     for latency in conventional_latencies:
         run = simulate_cpu(
             target, PROFILES["nexus_balanced_128"], 1,
-            {"spm": True, "p0": False, "conventional_refill_latency": latency,
+            {"task_workspace": True, "code_slots": False, "conventional_refill_latency": latency,
              "px_page_descriptors": page_descriptors},
         )
         kernel = run["kernels"]["cs_starvation"]
@@ -1285,7 +1285,7 @@ def run_fetch_latency_sweep(workloads, conventional_latencies=(8, 16, 24, 32),
     for latency in p0_latencies:
         run = simulate_cpu(
             target, PROFILES["nexus_balanced_128"], 1,
-            {"spm": True, "p0": True, "p0_capacity_kb": p0_capacity_kb,
+            {"task_workspace": True, "code_slots": True, "p0_capacity_kb": p0_capacity_kb,
              "p0_refill_latency": latency, "px_pool_miss_latency": 120,
              "px_page_descriptors": page_descriptors},
         )
@@ -1383,7 +1383,7 @@ def main():
     for key in ("nexus_balanced_128",):
         profiles[key] = simulate_cpu(
             workloads, PROFILES[key], max(8, args.nexus_cores),
-            {"spm": True, "p0": True, "codeflow": True, "p0_capacity_kb": args.p0_capacity_kb,
+            {"task_workspace": True, "code_slots": True, "codeflow": True, "p0_capacity_kb": args.p0_capacity_kb,
              "p0_refill_latency": args.p0_refill_cycles},
         )
     if args.json:
