@@ -7,7 +7,8 @@ Bu klasör, İngilizce ana teknik belgelerin Türkçe karşılıklarını içeri
 ## CPU belgeleri
 
 ### Kod yolu / CodeFlow
-- [CodeFlow adlandırma kararı](NEXSUS-CPU-CODEFLOW-NAMING-001.md)
+- [CodeFlow ve çalışma alanları adlandırma standardı](NEXSUS-CPU-CODEFLOW-NAMING-001.md) — tekil birimde sayı eki yok
+- [Adlandırma standardı testi](../NEXUS%20CPU/tools/test_nexus_naming_standard.py)
 - [CodeFlow Manager ve kod yuvası havuzu](NEXSUS-CPU-PX-MANAGER-001.md)
 - [OS / CodeFlow / Context arayüzü](NEXSUS-CPU-OS-PX-CONTEXT-INTERFACE-001.md)
 
