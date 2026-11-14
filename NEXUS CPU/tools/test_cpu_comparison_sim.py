@@ -574,7 +574,7 @@ class IntegratedCodeFlowTests(unittest.TestCase):
         self.assertFalse(fetch.can_fetch(8 * 2048, ready - 1))
         fetch.complete(ready)
         self.assertTrue(fetch.can_fetch(8 * 2048, ready))
-        self.assertEqual(fetch.app_beats, 256)
+        self.assertEqual(fetch.app_beats, 512)  # requested page plus one-page lookahead
         self.assertEqual(fetch.app_bytes, 2048)
         self.assertEqual(fetch.c0_misses, 1)
         self.assertEqual(fetch.code_slot_cycles, 128)
@@ -600,7 +600,7 @@ class IntegratedCodeFlowTests(unittest.TestCase):
                     "app_source_cycles", "code_slot_transfer_cycles",
                     "code_stream_transfer_cycles"):
             self.assertIn(key, counters)
-        self.assertEqual(counters["app_ram_beats"], 256)
+        self.assertEqual(counters["app_ram_beats"], 512)  # demand page + lookahead
         self.assertEqual(counters["app_ram_bytes"], 2048)
         self.assertGreater(result["kernels"]["code"]["cycles"], 600)
 
