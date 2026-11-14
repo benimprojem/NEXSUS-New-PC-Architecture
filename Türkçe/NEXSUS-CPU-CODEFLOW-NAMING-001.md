@@ -1,39 +1,50 @@
-# NEXSUS CPU Kod Yolu Terimleri — Adlandırma Kararı 001
+# NEXSUS CPU — CodeFlow ve Çalışma Alanları Adlandırma Standardı (Karar 001)
 
-Durum: önerilen kanonik terimler (uygulama kimlikleri geriye dönük uyumlu kalır)
+Durum: kanonik terimler; eski kimlikler kaynak/tarihsel bağlamlarda uyumludur.
 
-## Kanonik adlar
-
-| Eski ad | Mimari ad | Kısa simge | Sorumluluk |
-|---|---|---|---|
-| PX Manager | CodeFlow Manager (Kod Akış Yöneticisi) | CFM | OS görev/sayfa koordinasyonu ve güvenli sayfa yaşam döngüsü |
-| PX P0–P7 | Code Slots (Kod Yuvaları) | CS0–CS7 | Eşit, dinamik tahsisli sekiz adet 2 KiB yürütülebilir sayfa yuvası |
-| L0I | Code Cache (Kod Önbelleği) | C0 | 64 KiB görev bazlı App RAM hazırlama/önbellekleme alanı |
-| SPM0 | Execution Buffer (Yürütme Tamponu) | EB0 | CPU kod çalışma alanı; iki adet 2 KiB ping-pong bankası |
-| PX → SPM0 | Code Stream (Kod Akışı) | CST | Sayfanın pasif yürütme bankasına aktarılması |
-| PX_NEXT | Code-Flow Continue (Kod Akışı Devamı) | CF_NEXT | Yönetici tarafından yorumlanan devam metaverisi |
-| PX_END | Code-Flow End (Kod Akışı Sonu) | CF_END | Yönetici tarafından yorumlanan kod akışı sonu metaverisi |
-
-## Geriye dönük uyumluluk
-
-PX, P0–P7, L0I, SPM0, PX_NEXT ve PX_END mevcut kaynak kodunda, simülasyon çıktılarında ve tarihsel belgelerde geçerliliğini korur. Yukarıdaki adlar açıklayıcı eş adlardır; kırıcı bir yeniden adlandırma değildir. Yeni metinlerde ilk kullanımda kanonik ad ve eski simge birlikte yazılır: **Code Cache (C0; eski L0I)**.
-
-CS0 varsayılan aktif yuva değildir. Tüm Code Slot'lar eşittir; komut getirimi herhangi bir eşlenmiş yuvadan yapılabilir. Code Cache (C0) hazırlama alanıdır, doğrudan yürütülemez. Execution Buffer (EB0) aktif kod çalışma alanıdır; register görüntülerini tutmaz.
+## Adlandırma kuralı
+**Tek örnek varsa sonuna sayı eklenmez.** Sayısal ek yalnızca bağımsız adreslenebilir birden fazla örnek olduğunda kullanılır. Örnek: tek `Execution Buffer`; sekiz `Code Slot CS0–CS7`; dört `Context Pool CP0–CP3`.
 
 ## Kod yolu
 
-```text
-App RAM -> Code Cache C0 (L0I, 64 KiB)
-        -> Code Slots CS0–CS7 (PX, 8 x 2 KiB)
-        -> Execution Buffer EB0 (SPM0, 2 x 2 KiB)
+| Eski kimlik | Kanonik ad | Simge | Görev |
+|---|---|---|---|
+| PX Manager | CodeFlow Manager (Kod Akış Yöneticisi) | CFM | OS görev/sayfa koordinasyonu ve güvenli sayfa yaşam döngüsü |
+| PX P0–P7 | Code Slots (Kod Yuvaları) | CS0–CS7 | Eşit, dinamik tahsisli sekiz adet 2 KiB yürütülebilir sayfa yuvası |
+| L0I | Code Cache (Kod Önbelleği) | C0 | 64 KiB görev bazlı App RAM hazırlama/önbellekleme |
+| SPM0 | Execution Buffer (Yürütme Tamponu) | EB | CPU'nun kod çalışma alanı; 2 × 2 KiB ping-pong bankası |
+| PX → SPM0 | Code Stream Transfer (Kod Akışı Aktarımı) | CST | Pasif yürütme bankasına aktarım |
+| PX_NEXT | Code-Flow Continue (Kod Akışı Devamı) | CF_NEXT | Yalnızca yönetici metaverisi |
+| PX_END | Code-Flow End (Kod Akışı Sonu) | CF_END | Yalnızca yönetici metaverisi |
+
+## Eski SPM çalışma alanları — ayrı amaçlar, ayrı isimler
+
+| Eski adres/ad | Kanonik ad | Simge | Kapasite | Amaç |
+|---|---|---|---:|---|
+| SPM1 | OS Workspace (OS Çalışma Alanı) | OW | 8 KiB | OS/kernel çalışma verisi ve kontrolü |
+| SPM2 | Task Workspace (Görev Çalışma Alanı) | TW | 8 KiB | Aktif kullanıcı/görev yerel verisi |
+| SPM3–SPM6 | Context Pool (Bağlam Havuzu) | CP0–CP3 | 4 × 8 KiB | Korunan görev context görüntüleri; görev kimliği değil havuz girdileri |
+| SPM7 | Exception Workspace (İstisna Çalışma Alanı) | XW | 8 KiB | Exception/interrupt giriş scratch alanı ve handler çalışma alanı |
+
+Bunlar tek bir genel bellek sınıfı değildir: sahiplik, yetki, yaşam süresi ve save/restore kuralları farklıdır. Eski SPMx adları mevcut belgeler, kaynak ve geçmiş simülasyon kayıtları için uyumluluk etiketi olarak kalır; yeni mimari metinlerde kanonik ad kullanılmalıdır.
+
+## Kanonik kod yolu
+
+```
+App RAM -> Code Cache C0 (eski L0I, 64 KiB)
+        -> Code Slots CS0–CS7 (eski PX, 8 × 2 KiB)
+        -> Execution Buffer EB (eski SPM0, 2 × 2 KiB bank)
 ```
 
-App RAM temel tasarımı tek 64-bit okuma hattıdır. Code Cache görev/sayfa bazlı ve ardışık olmayan kaynak adreslerinden doldurulabilir. Üç aktarım kuyruğı bağımsızdır; veri geçerliliği, sahiplik ve geri basınç koşulları sağlandığında örtüşebilir.
+App RAM temel tasarımı tek 64-bit okuma hattıdır. C0 görev/sayfa bazlı, ardışık olmayan kaynak adreslerinden doldurulabilir. App RAM→C0, C0→CS ve CS→EB bağımsız kuyruklardır; geçerlilik, sahiplik ve backpressure koşullarıyla örtüşebilir.
+
+## Uyumluluk ve kullanım
+- Eski PX/P0–P7/L0I/SPM0–SPM7 kimlikleri silinmez veya sessizce başka anlama çevrilmez.
+- Yeni metinde önce kanonik ad, ilk kullanımda eski kimlik parantez içinde yazılır.
+- Tek bir birime `0` eklenmez; indeks yalnızca çoğul örneklerde kullanılır.
+- CS0 varsayılan aktif yuva değildir; tüm Code Slot'lar eşittir.
+- C0 hazırlama/önbellek alanıdır, doğrudan yürütülmez. EB CPU kod tamponudur; register/context görüntüsü tutmaz.
+- CP0–CP3 havuz konumlarıdır; görev kimliği context'in hangi havuzda bulunduğundan bağımsızdır.
 
 ## Adlandırma gerekçesi
-
-- **CodeFlow**, opak PX adından farklı olarak görev bazlı kod sayfası yaşam döngüsünü anlatır.
-- **Code Slot**, görev kimliği veya öncelik ima etmeden fiziksel sayfa yuvasını tanımlar.
-- **Code Cache**, artımlı doldurma ve yeniden kullanım amacını anlatır.
-- **Execution Buffer**, CPU'nun son kod çalışma alanını register/context belleğinden ayırır.
-- **Code Stream**, metaveriyi komut baytları gibi göstermeden aktarım/devam kavramını adlandırır.
+CodeFlow sayfa yaşam döngüsünü; Code Slot fiziksel yerleşimi; Code Cache hazırlama/yeniden kullanımı; Execution Buffer son kod çalışma alanını anlatır. OS Workspace, Task Workspace, Context Pool ve Exception Workspace eski SPM bölgelerini görevlerine göre açıkça ayırır.
