@@ -733,6 +733,8 @@ CPU ile ilgili teknik belgeler `NEXUS CPU/` klasöründe merkezi olarak tutulur.
 - [Full Architecture Benchmark](NEXUS%20CPU/NEXSUS-CPU-FULL-ARCHITECTURE-BENCHMARK-001.md) — Shared workload suite and fair comparison plan for current AMD Zen 5, Intel Xeon Redwood Cove+, Apple ARM M6, and NEXSUS.
 - [First Full Simulation Results](NEXUS%20CPU/NEXSUS-CPU-SIMULATION-RESULTS-001.md) — Four-architecture and normalized 8-core results, PX/SPM0 refill and capacity sweeps, branch-predictor sensitivity, and model limitations.
 - [CPU Comparison Simulator source](NEXUS%20CPU/tools/cpu_comparison_sim.py) — v0.3.2 davranışsal/çevrim modeli; PX çift banka, PX_NEXT/PX_END, branch sweep, SIMD/AMX/ME512, atomics, IRQ servis proxy'si ve 4 mimari profili.
+- [L0I/PX/SPM0 Pipeline Simulator](NEXUS%20CPU/tools/l0i_px_pipeline_sim.py) — görev bazlı App RAM → L0I → PX → SPM0 çevrim/olay modeli; ayrı aktarım kuyrukları, 64-bit lane parametreleri ve SPM0 A/B.
+- [L0I Pipeline Regression Tests](NEXUS%20CPU/tools/test_l0i_px_pipeline_sim.py) — L0I/PX/SPM0 aktarım, sayfa hizası, görev kaynak adresleri ve lane-beat duyarlılığı testleri.
 - [CPU Simulator Architecture](NEXUS%20CPU/NEXSUS-CPU-SIMULATOR-ARCHITECTURE-001.md) — NEXSUS, güncel AMD/Intel/ARM referansları, native/8-core karşılaştırma ve PX/SPM0/ME512 test altyapısı.
 
 ### Exception ve kesme sistemi
