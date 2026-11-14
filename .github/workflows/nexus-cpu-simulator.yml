@@ -103,7 +103,7 @@ jobs:
           rows = list(data["results"].values())
           assert len({row["total_ops"] for row in rows}) == 1
           assert len({row["total_cycles"] for row in rows}) > 1, "CS capacity must affect code-page miss cost"
-          misses = {row["kernels"]["cs_starvation"]["p0"]["pool_misses"] for row in rows}
+          misses = {row["kernels"]["cs_starvation"]["code_slots"]["pool_misses"] for row in rows}
           assert len(misses) > 1, misses
           print("CS CODE-SLOT CAPACITY SENSITIVITY")
           for row in data["results"].values():
