@@ -192,6 +192,14 @@ def build_composite_workload(scale: int = 1) -> Dict[str, List[Op]]:
         add_op(ops, "FMA", label="independent fused multiply-add throughput")
     result["fma_throughput"] = ops
 
+    # G3) Concurrent FP64 + FMA issue pressure. Equal independent streams
+    # expose whether the FMA subset competes with ordinary FP execution.
+    ops = []
+    for i in range(256*n):
+        add_op(ops, "FP", label="mixed FP64/FMA ordinary FP stream")
+        add_op(ops, "FMA", label="mixed FP64/FMA fused stream")
+    result["fp_fma_mixed"] = ops
+
     # H) Independent vector throughput. This is a generic vector-unit test;
     # it is not yet a faithful ME512 matrix instruction model.
     ops = []
@@ -1328,7 +1336,8 @@ def run_fma_resource_sweep(workloads: Dict[str, List[Op]], profile_dict: dict,
                            fp_counts=(6, 8), fma_counts=(2, 4)) -> dict:
     """Compare dedicated FMA issue capacity; FMA lanes are a subset of FP lanes."""
     target = {name: workloads[name] for name in (
-        "fp_throughput", "fma_throughput", "numeric_tile", "scalar_control"
+        "fp_throughput", "fma_throughput", "fp_fma_mixed",
+        "numeric_tile", "scalar_control"
     )}
     expected_ops = {name: len(ops) for name, ops in target.items()}
     rows = {}
