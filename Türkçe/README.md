@@ -13,6 +13,7 @@ Bu klasör, İngilizce ana teknik belgelerin Türkçe karşılıklarını içeri
 
 ### Simülasyon
 - [Simülatör mimarisi](NEXSUS-CPU-SIMULATOR-ARCHITECTURE-001.md)
+- [Birleşik CPU + CodeFlow karşılaştırma testi](NEXSUS-CPU-CROSS-ARCH-CODEFLOW-001.md)
 
 ## İngilizce ana belgeler
 
