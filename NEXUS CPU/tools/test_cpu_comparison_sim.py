@@ -181,10 +181,10 @@ class ReferenceCacheTopologyTests(unittest.TestCase):
         self.assertEqual(caches[1].probe(0x6000)[1], "L3")
 
 
-class SpmP0ModelTests(unittest.TestCase):
-    def test_spm2_enabled_hits_local_store_and_preserves_work(self):
+class WorkspaceCodeSlotModelTests(unittest.TestCase):
+    def test_tw2_enabled_hits_local_store_and_preserves_work(self):
         workloads = {"hot": [sim.Op(i, "LOAD", address=(i % 32)*64, width=64,
-                                     label="SPM2: hot") for i in range(256)]}
+                                     label="TW: hot") for i in range(256)]}
         p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
         shards = sim.partition_dependency_components(workloads["hot"], 8)
         full = sim.simulate_multicore_streams(shards, p, 32, {"spm": True, "p0": True})
@@ -193,9 +193,9 @@ class SpmP0ModelTests(unittest.TestCase):
         self.assertEqual(sum(x["spm"]["accesses"] for x in full["cores"]), 256)
         self.assertEqual(sum(x["spm"]["fallback_bytes"] for x in off["cores"]), 256*64)
 
-    def test_spm2_capacity_overflow_falls_back_without_dropping_accesses(self):
+    def test_tw2_capacity_overflow_falls_back_without_dropping_accesses(self):
         ops = [sim.Op(i, "LOAD", address=(i % 256)*64, width=64,
-                      label="SPM2: capacity") for i in range(512)]
+                      label="TW: capacity") for i in range(512)]
         p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
         shards = sim.partition_dependency_components(ops, 8)
         result = sim.simulate_multicore_streams(shards, p, 32, {"spm": True, "p0": True})
@@ -204,7 +204,7 @@ class SpmP0ModelTests(unittest.TestCase):
         self.assertEqual(sum(x["overflow"] for x in counters), 256)
         self.assertEqual(sum(x["fallback_bytes"] for x in counters), 256*64)
 
-    def test_p0_and_conventional_fetch_paths_both_retire_same_work(self):
+    def test_cs_and_conventional_fetch_paths_both_retire_same_work(self):
         ops = [sim.Op(i, "INT", command_address=(i % 2048)*8) for i in range(1024)]
         p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
         shards = sim.partition_dependency_components(ops, 8)
@@ -217,7 +217,7 @@ class SpmP0ModelTests(unittest.TestCase):
         self.assertGreater(p0_wait, 0)
         self.assertGreater(conventional_wait, 0)
 
-    def test_p0_capacity_and_refill_parameters_are_explicit(self):
+    def test_cs_capacity_and_refill_parameters_are_explicit(self):
         p0 = sim.CommandFetchModel(True)
         conventional = sim.CommandFetchModel(False)
         self.assertEqual(p0.capacity_bytes, 16384)
@@ -225,12 +225,12 @@ class SpmP0ModelTests(unittest.TestCase):
         self.assertEqual(conventional.lines.capacity, 32768 // 64)
         self.assertEqual((p0.refill_latency, conventional.refill_latency), (48, 8))
     
-    def test_spm2_reduces_dependent_hot_chain_latency(self):
+    def test_tw2_reduces_dependent_hot_chain_latency(self):
         ops = []
         previous = None
         for i in range(256):
             previous = sim.add_op(ops, "LOAD", () if previous is None else (previous,),
-                                  address=(i % 64)*64, width=64, label="SPM2: dependent")
+                                  address=(i % 64)*64, width=64, label="TW: dependent")
         p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
         shards = sim.partition_dependency_components(ops, 8)
         on = sim.simulate_multicore_streams(shards, p, 32, {"spm": True, "p0": True})
@@ -248,7 +248,7 @@ class SpmP0ModelTests(unittest.TestCase):
         self.assertTrue(fetch.lines.lookup(1))
         self.assertEqual(fetch.refill_bytes, 17*64)
 
-    def test_spm0_ping_pong_prefetches_next_2k_page(self):
+    def test_tw0_ping_pong_prefetches_next_2k_page(self):
         fetch = sim.CommandFetchModel(True)
         self.assertFalse(fetch.can_fetch(0, 0))
         fetch.complete(48)
@@ -278,7 +278,7 @@ class SpmP0ModelTests(unittest.TestCase):
         self.assertTrue(fetch.can_fetch(6144, 192))
         self.assertEqual(fetch.active_block, 3)
 
-    def test_px_pool_has_eight_2k_slots_and_spm0_has_two_2k_banks(self):
+    def test_codeflow_pool_has_eight_2k_slots_and_spm0_has_two_2k_banks(self):
         p0 = sim.CommandFetchModel(True)
         conventional = sim.CommandFetchModel(False)
         self.assertEqual(p0.capacity_bytes, 16 * 1024)
@@ -330,16 +330,16 @@ class CrossArchitectureComparisonTests(unittest.TestCase):
                 self.assertGreater(results[key]["kernels"]["same_algorithm"]["p0_counters"]["refills"], 0)
         self.assertEqual({r["total_ops"] for r in results.values()}, {8})
 
-    def test_p0_starvation_stream_is_sequential_64kib_code(self):
-        workload = sim.build_composite_workload(scale=1)["p0_starvation"]
+    def test_cs_starvation_stream_is_sequential_64kib_code(self):
+        workload = sim.build_composite_workload(scale=1)["cs_starvation"]
         self.assertEqual(len(workload), 8192)
         self.assertEqual(workload[0].command_address, 0)
         self.assertEqual(workload[-1].command_address, (8192 - 1) * 8)
         self.assertTrue(all(workload[i].command_address + 8 == workload[i+1].command_address
                             for i in range(len(workload)-1)))
 
-    def test_p0_starvation_partition_keeps_sequential_local_code_addresses(self):
-        workload = sim.build_composite_workload(scale=1)["p0_starvation"]
+    def test_cs_starvation_partition_keeps_sequential_local_code_addresses(self):
+        workload = sim.build_composite_workload(scale=1)["cs_starvation"]
         shards = sim.partition_dependency_components(workload, 1)
         addresses = [op.command_address for op in shards[0]]
         self.assertEqual(len(addresses), 8192)
@@ -348,22 +348,22 @@ class CrossArchitectureComparisonTests(unittest.TestCase):
         self.assertTrue(all(addresses[i] + 8 == addresses[i+1]
                             for i in range(len(addresses)-1)))
 
-    def test_p0_capacity_is_configurable_and_sweep_preserves_work(self):
-        workloads = {"p0_starvation": [sim.Op(i, "INT", command_address=i*8)
+    def test_cs_capacity_is_configurable_and_sweep_preserves_work(self):
+        workloads = {"cs_starvation": [sim.Op(i, "INT", command_address=i*8)
                                        for i in range(2048)]}
         sweep = sim.run_p0_capacity_sweep(workloads, sim.PROFILES["nexus_balanced_128"])
         self.assertEqual(set(sweep["results"]), {"4", "8", "16", "32", "64"})
         self.assertEqual({r["total_ops"] for r in sweep["results"].values()}, {2048})
-        self.assertEqual({r["kernels"]["p0_starvation"]["ops"]
+        self.assertEqual({r["kernels"]["cs_starvation"]["ops"]
                           for r in sweep["results"].values()}, {2048})
         self.assertGreater(len({r["total_cycles"] for r in sweep["results"].values()}), 1)
-        misses = [sweep["results"][k]["kernels"]["p0_starvation"]["p0"]["pool_misses"]
+        misses = [sweep["results"][k]["kernels"]["cs_starvation"]["p0"]["pool_misses"]
                   for k in ("4", "8", "16", "32", "64")]
         self.assertTrue(all(misses[i] >= misses[i+1] for i in range(len(misses)-1)))
         self.assertGreater(misses[0], misses[-1])
 
     def test_fetch_latency_sweep_preserves_same_command_workload(self):
-        workloads = {"p0_starvation": [
+        workloads = {"cs_starvation": [
             sim.Op(i, "INT", label="P0 starvation", command_address=(i % 2048)*8)
             for i in range(128)
         ]}
@@ -383,7 +383,7 @@ class CrossArchitectureComparisonTests(unittest.TestCase):
 class FourWayAblationTests(unittest.TestCase):
     def test_four_profiles_preserve_operation_count_and_report_interaction(self):
         ops = [sim.Op(i, "LOAD", address=(i % 8)*64, width=64,
-                      label="SPM2: ablation") for i in range(64)]
+                      label="TW: ablation") for i in range(64)]
         result = sim.run_nexus_ablation({"small_spm_kernel": ops},
                                         sim.PROFILES["nexus_balanced_128"])
         self.assertEqual(set(result["variants"]), {"N-FULL", "N-NO-SPM", "N-NO-P0", "N-BASE"})
@@ -477,12 +477,12 @@ class IRQWorkloadTests(unittest.TestCase):
         self.assertIn("IRQ", sim.PROFILES["nexus_balanced_128"]["units"])
 
 
-class PXMetadataTests(unittest.TestCase):
+class CodeFlowMetadataTests(unittest.TestCase):
     def test_full_pages_auto_continue_and_partial_final_uses_px_end(self):
         pages = [
             {"logical_page_id": 0, "valid_bytes": 2048},
             {"logical_page_id": 1, "valid_bytes": 2048},
-            {"logical_page_id": 2, "valid_bytes": 704, "marker": "PX_END"},
+            {"logical_page_id": 2, "valid_bytes": 704, "marker": "CF_END"},
         ]
         self.assertTrue(sim.validate_px_page_descriptors(pages))
 
@@ -499,18 +499,18 @@ class PXMetadataTests(unittest.TestCase):
 
     def test_partial_intermediate_page_uses_px_next_without_instruction_slot(self):
         pages = [
-            {"logical_page_id": 0, "valid_bytes": 1536, "marker": "PX_NEXT",
+            {"logical_page_id": 0, "valid_bytes": 1536, "marker": "CF_NEXT",
              "next_logical_page_id": 1},
-            {"logical_page_id": 1, "valid_bytes": 512, "marker": "PX_END"},
+            {"logical_page_id": 1, "valid_bytes": 512, "marker": "CF_END"},
         ]
         self.assertTrue(sim.validate_px_page_descriptors(pages))
         ops = [sim.Op(0, "INT"), sim.Op(1, "INT")]
         self.assertEqual(len(ops), 2)
 
-    def test_spm0_fetch_uses_px_next_and_stops_prefetch_at_px_end(self):
+    def test_tw0_fetch_uses_px_next_and_stops_prefetch_at_px_end(self):
         fetch = sim.CommandFetchModel(True, page_descriptors={
-            0: {"valid_bytes": 1024, "marker": "PX_NEXT", "next_logical_page_id": 1},
-            1: {"valid_bytes": 512, "marker": "PX_END"},
+            0: {"valid_bytes": 1024, "marker": "CF_NEXT", "next_logical_page_id": 1},
+            1: {"valid_bytes": 512, "marker": "CF_END"},
         })
         self.assertFalse(fetch.can_fetch(0, 0))
         fetch.complete(48)
@@ -519,11 +519,11 @@ class PXMetadataTests(unittest.TestCase):
         self.assertFalse(fetch.can_fetch(2048, 49))
         fetch.complete(96)
         self.assertTrue(fetch.can_fetch(2048, 96))
-        self.assertIsNone(fetch.p0_pending)  # PX_END suppresses next-page prefetch.
+        self.assertIsNone(fetch.p0_pending)  # CF_END suppresses next-page prefetch.
         with self.assertRaises(ValueError):
             fetch.can_fetch(2048 + 512, 97)  # No padding fetch past valid_bytes.
         with self.assertRaises(ValueError):
-            fetch.can_fetch(4096, 97)  # PX_END cannot continue sequentially.
+            fetch.can_fetch(4096, 97)  # CF_END cannot continue sequentially.
 
     def test_partial_page_without_marker_is_rejected(self):
         with self.assertRaises(ValueError):
@@ -531,23 +531,23 @@ class PXMetadataTests(unittest.TestCase):
                 {"logical_page_id": 0, "valid_bytes": 1024},
             ])
 
-    def test_px_end_cannot_have_a_following_page(self):
+    def test_codeflow_end_cannot_have_a_following_page(self):
         with self.assertRaises(ValueError):
             sim.validate_px_page_descriptors([
-                {"logical_page_id": 0, "valid_bytes": 1024, "marker": "PX_END"},
-                {"logical_page_id": 1, "valid_bytes": 8, "marker": "PX_END"},
+                {"logical_page_id": 0, "valid_bytes": 1024, "marker": "CF_END"},
+                {"logical_page_id": 1, "valid_bytes": 8, "marker": "CF_END"},
             ])
 
-    def test_px_next_requires_valid_next_page_and_alignment(self):
+    def test_codeflow_next_requires_valid_next_page_and_alignment(self):
         with self.assertRaises(ValueError):
             sim.validate_px_page_descriptors([
-                {"logical_page_id": 0, "valid_bytes": 1024, "marker": "PX_NEXT",
+                {"logical_page_id": 0, "valid_bytes": 1024, "marker": "CF_NEXT",
                  "next_logical_page_id": 2},
-                {"logical_page_id": 1, "valid_bytes": 8, "marker": "PX_END"},
+                {"logical_page_id": 1, "valid_bytes": 8, "marker": "CF_END"},
             ])
         with self.assertRaises(ValueError):
             sim.validate_px_page_descriptors([
-                {"logical_page_id": 0, "valid_bytes": 1025, "marker": "PX_END"},
+                {"logical_page_id": 0, "valid_bytes": 1025, "marker": "CF_END"},
             ])
 
 class WorkloadPartitionTests(unittest.TestCase):
