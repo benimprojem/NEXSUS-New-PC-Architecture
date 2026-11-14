@@ -279,3 +279,18 @@ The reference I-cache model now uses a bounded 16-line sequential prefetch windo
 The PX pool model stages the first pages up to the configured pool capacity at task dispatch. A page that is not resident incurs a configurable 120-cycle provisional App-RAM source-miss penalty plus the PX-to-SPM0 transfer. This makes 4/8/16/32-KiB pool capacity affect actual miss counts and modeled cycles. The 120-cycle source delay is an assumption for sensitivity, not a measured NEXSUS hardware latency.
 
 The CI run checks that pool capacity changes both miss counts and cycles while preserving the same operation count. The separate PX-to-SPM0 refill sweep uses a 64-KiB pool to keep the entire code stream resident and isolates 32, 34 and 48-cycle bank-transfer cases from App-RAM source misses.
+
+
+## Cross-architecture + CodeFlow suite (separate-layer report)
+
+A combined runner is available at `tools/run_cross_arch_codeflow_suite.py`. It executes the same composite logical workload on AMD, Intel, Apple ARM and NEXSUS CPU profiles, then runs the NEXSUS code-feed model at App RAM beat intervals 1/2/4/8.
+
+**Important:** CPU execution and CodeFlow pipeline results are currently separate layers in the report. The CodeFlow cycle count is not yet added to each CPU's total execution cycles; a shared instruction-fetch/scheduler integration is future work. This separation avoids presenting unintegrated front-end latency as an end-to-end result.
+
+Run:
+
+```bash
+python run_cross_arch_codeflow_suite.py --scale 1 --pages 64 --tasks 4 --json
+```
+
+CI validates operation-count parity across the four CPU models and page completion parity across CodeFlow beat profiles. See the Turkish counterpart in `Türkçe/NEXSUS-CPU-CROSS-ARCH-CODEFLOW-001.md`.
