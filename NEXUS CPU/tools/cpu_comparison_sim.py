@@ -492,8 +492,27 @@ class CommandFetchModel:
                 return  # do not overwrite a bank still consumed by sequential fetch
             self.active_block = None  # branch redirect abandons the old sequential stream
         pool_hit = self._pool_touch(block)
-        source_delay = 0 if pool_hit else self.pool_miss_latency
-        self.p0_pending = (block, cycle + self.refill_latency + source_delay, bank)
+        source_delay = code_slot_delay = stream_delay = 0
+        if not pool_hit:
+            if block in self.code_cache_pages:
+                self.c0_hits += 1
+                self.code_cache_pages.move_to_end(block)
+            else:
+                self.c0_misses += 1
+                beats = math.ceil(self.p0_buffer_bytes / 8)
+                source_delay = self.app_first_beat_latency + max(0, beats - 1) * self.app_beat_interval + 1
+                self.app_beats += beats
+                self.app_bytes += self.p0_buffer_bytes
+                self.app_source_cycles += source_delay
+                self.code_cache_pages[block] = None
+                if len(self.code_cache_pages) > self.code_cache_capacity_pages:
+                    self.code_cache_pages.popitem(last=False)
+            code_slot_delay = self.c0_to_cs_cycles
+            stream_delay = self.cs_to_eb_cycles
+            self.code_slot_cycles += code_slot_delay
+            self.code_stream_cycles += stream_delay
+        ready_cycle = cycle + self.refill_latency + source_delay + code_slot_delay + stream_delay
+        self.p0_pending = (block, ready_cycle, bank)
         self.prefetches += 1
         self.refills += 1
         self.refill_bytes += self.p0_buffer_bytes
