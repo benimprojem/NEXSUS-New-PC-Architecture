@@ -350,3 +350,7 @@ python test_l0i_px_pipeline_sim.py
 ```
 
 The default `app_beat_interval=1` is a baseline sensitivity assumption, not a frozen hardware guarantee. The first-beat latency, transfer rates and queue depth remain configurable. This first implementation is a pipeline model; it is not yet coupled to the full CPU instruction scheduler or the vendor comparison kernels. CI compiles and runs the dedicated regression suite.
+
+
+## Canonical terminology
+New explanatory text uses **CodeFlow Manager (CFM)**, **Code Slots CS0–CS7** (legacy PX P0–P7), **Code Cache C0** (legacy L0I), **Execution Buffer EB0** (legacy SPM0), and **Code Stream (CST)**. Existing symbols remain backward-compatible. See [NEXSUS-CPU-CODEFLOW-NAMING-001](NEXSUS-CPU-CODEFLOW-NAMING-001.md) for the naming decision.
