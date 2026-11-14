@@ -854,7 +854,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
     Per-core pipelines, ROBs and caches remain private approximations. All
     cores advance on one global cycle and submit DRAM misses as a same-cycle batch.
     """
-    features = {"task_workspace": True, "code_slots": True, "codeflow": False}
+    features = {"spm": True, "p0": True, "codeflow": False}
     if nexus_features:
         features.update(nexus_features)
         # Canonical public feature names; legacy internal keys remain an implementation detail.
@@ -868,7 +868,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
         states.append({
             "ops": shard, "cache": None, "fetch": None,
             "spm_busy_until": 0,
-            "task_workspace": {"accesses": 0, "bytes": 0, "port_conflicts": 0, "overflow": 0, "fallback_bytes": 0},
+            "spm": {"accesses": 0, "bytes": 0, "port_conflicts": 0, "overflow": 0, "fallback_bytes": 0},
             "ready_at": [0] * len(shard), "done": [False] * len(shard),
             "issued": [False] * len(shard), "dispatched": [False] * len(shard),
             "rob": deque(), "unit_busy": {k: [0] * v for k, v in p.units.items()},
