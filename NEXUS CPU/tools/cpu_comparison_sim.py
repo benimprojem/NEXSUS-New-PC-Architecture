@@ -186,6 +186,12 @@ def build_composite_workload(scale: int = 1) -> Dict[str, List[Op]]:
         add_op(ops, "FP", label="independent floating-point throughput")
     result["fp_throughput"] = ops
 
+    # G2) Dedicated fused multiply-add workload.
+    ops = []
+    for i in range(512*n):
+        add_op(ops, "FMA", label="independent fused multiply-add throughput")
+    result["fma_throughput"] = ops
+
     # H) Independent vector throughput. This is a generic vector-unit test;
     # it is not yet a faithful ME512 matrix instruction model.
     ops = []
@@ -754,11 +760,15 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
                 continue
             kind = op.kind
             exec_kind = p.matrix_unit if kind == "ME512" else kind
-            resource = "LOAD" if exec_kind == "LOAD" else ("STORE" if exec_kind == "STORE" else exec_kind)
+            resource = "FP" if exec_kind == "FMA" else ("LOAD" if exec_kind == "LOAD" else ("STORE" if exec_kind == "STORE" else exec_kind))
             slots = unit_busy.get(resource, [])
             selected_slots = None
             topology = getattr(p, "execution_topology", {}) or {}
-            if resource == "INT" and op.exec_width_bits >= 128 and topology.get("INT128_PAIRS"):
+            if resource == "FP" and op.kind == "FMA":
+                fma_count = min(len(slots), max(0, int(topology.get("FMA_LANES", 0))))
+                slot = next((i for i in range(fma_count) if slots[i] <= cycle), None)
+                selected_slots = [slot] if slot is not None else None
+            elif resource == "INT" and op.exec_width_bits >= 128 and topology.get("INT128_PAIRS"):
                 selected_slots = next(
                     (pair for pair in topology["INT128_PAIRS"]
                      if all(index < len(slots) and slots[index] <= cycle for index in pair)),
@@ -1008,11 +1018,15 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                     st["stalls"]["issue_width_blocked_op_cycles"] += 1
                     continue
                 exec_kind = p.matrix_unit if op.kind == "ME512" else op.kind
-                resource = "LOAD" if exec_kind == "LOAD" else ("STORE" if exec_kind == "STORE" else exec_kind)
+                resource = "FP" if exec_kind == "FMA" else ("LOAD" if exec_kind == "LOAD" else ("STORE" if exec_kind == "STORE" else exec_kind))
                 slots = st["unit_busy"].get(resource, [])
                 topology = getattr(p, "execution_topology", {}) or {}
                 selected_slots = None
-                if resource == "INT" and op.exec_width_bits >= 128 and topology.get("INT128_PAIRS"):
+                if resource == "FP" and op.kind == "FMA":
+                    fma_count = min(len(slots), max(0, int(topology.get("FMA_LANES", 0))))
+                    slot_index = next((i for i in range(fma_count) if slots[i] <= cycle), None)
+                    selected_slots = [slot_index] if slot_index is not None else None
+                elif resource == "INT" and op.exec_width_bits >= 128 and topology.get("INT128_PAIRS"):
                     selected_slots = next(
                         (pair for pair in topology["INT128_PAIRS"]
                          if all(index < len(slots) and slots[index] <= cycle for index in pair)),
@@ -1309,6 +1323,56 @@ def run_execution_resource_count_sweep(workloads: Dict[str, List[Op]], profile_d
     }
 
 
+
+def run_fma_resource_sweep(workloads: Dict[str, List[Op]], profile_dict: dict,
+                           fp_counts=(6, 8), fma_counts=(2, 4)) -> dict:
+    """Compare dedicated FMA issue capacity; FMA lanes are a subset of FP lanes."""
+    target = {name: workloads[name] for name in (
+        "fp_throughput", "fma_throughput", "numeric_tile", "scalar_control"
+    )}
+    expected_ops = {name: len(ops) for name, ops in target.items()}
+    rows = {}
+    for fp_count in fp_counts:
+        for fma_count in fma_counts:
+            if fma_count > fp_count:
+                continue
+            profile = dict(profile_dict)
+            profile["units"] = {**profile_dict["units"], "INT": 8, "FP": fp_count}
+            profile["execution_topology"] = {
+                "INT128_PAIRS": [[0, 1], [2, 3]], "FMA_LANES": fma_count,
+            }
+            run = simulate_cpu(target, profile, 8,
+                               {"task_workspace": False, "code_slots": False})
+            key = f"FP{fp_count}_FMA{fma_count}"
+            kernels = {}
+            for name, row in run["kernels"].items():
+                kernels[name] = {
+                    "ops": row["ops"], "ops_preserved": row["ops"] == expected_ops[name],
+                    "cycles": row["cycles"], "ipc": row["aggregate_ipc"],
+                    "execution_unit_blocked_op_cycles": row["stall_counters"]["execution_unit_blocked_op_cycles"],
+                    "dependency_blocked_op_cycles": row["stall_counters"]["dependency_blocked_op_cycles"],
+                    "issue_width_blocked_op_cycles": row["stall_counters"]["issue_width_blocked_op_cycles"],
+                }
+            rows[key] = {"fp64_lanes_per_core": fp_count, "fma_lanes_per_core": fma_count,
+                         "total_cycles": run["total_cycles"], "total_ops": run["total_ops"],
+                         "kernels": kernels}
+    if any(not row["ops_preserved"] for variant in rows.values()
+           for row in variant["kernels"].values()):
+        raise AssertionError("FMA sweep changed logical operation count")
+    return {
+        "experiment": "NEXSUS FP64 and dedicated FMA lane topology sweep",
+        "cores": 8, "fp_counts": list(fp_counts), "fma_counts": list(fma_counts),
+        "same_logical_workload": expected_ops, "results": rows,
+        "assumptions": (
+            "FMA lanes are a physical subset of FP64 lanes and share the same FP slot "
+            "availability array. FMA operations can issue only on the first FMA_LANES "
+            "FP slots; ordinary FP operations can issue on any FP slot. Other resources "
+            "and eight-core scheduling remain fixed. Simulator estimates, not silicon."
+        ),
+    }
+
+
+
 def run_branch_predictor_sweep(workloads: Dict[str, List[Op]], profile_dict: dict) -> dict:
     """Compare NEXSUS predictor-off and compact-predictor assumptions on identical traces."""
     target = {name: workloads[name] for name in ("scalar_control", "pointer_graph", "branch_stress")}
@@ -1492,8 +1556,20 @@ def main():
     ap.add_argument("--fetch-sweep", action="store_true", help="compare conventional I-cache and P0 refill latency sensitivity")
     ap.add_argument("--execution-sweep", action="store_true", help="compare baseline and mixed-width NEXSUS INT/FP resources")
     ap.add_argument("--resource-sweep", action="store_true", help="sweep per-core INT/FP unit counts with fixed workloads")
+    ap.add_argument("--fma-sweep", action="store_true", help="compare 2/4 FMA lanes with 6/8 total FP64 lanes")
     args = ap.parse_args()
     workloads = build_composite_workload(args.scale)
+    if args.fma_sweep:
+        result = run_fma_resource_sweep(workloads, PROFILES["nexus_balanced_128"])
+        if args.json:
+            print(json.dumps(result, indent=2))
+        else:
+            print("NEXSUS FP64/FMA RESOURCE SWEEP")
+            for name, row in result["results"].items():
+                fp = row["kernels"]["fp_throughput"]
+                fma = row["kernels"]["fma_throughput"]
+                print(f"{name}: FP64={fp['cycles']} FMA={fma['cycles']} stalls={fp['execution_unit_blocked_op_cycles']}/{fma['execution_unit_blocked_op_cycles']}")
+        return
     if args.resource_sweep:
         result = run_execution_resource_count_sweep(workloads, PROFILES["nexus_balanced_128"])
         if args.json:
