@@ -21,6 +21,7 @@ class Op:
     width: int = 8
     label: str = ""
     command_address: int = -1
+    exec_width_bits: int = 64
 
 @dataclass
 class CoreProfile:
@@ -92,7 +93,8 @@ PROFILES = {
         "name": "NEXSUS CPU / 8-core proposed architecture",
         "core_count": 8, "core_type": "uniform", "frontend": 8,
         "dispatch": 8, "issue": 10, "retire": 8, "rob": 128,
-        "units": {"INT": 2, "FP": 2, "VEC": 2, "LOAD": 8, "STORE": 4, "BR": 2, "CTX": 1, "ATOM": 1, "ME512": 1, "IRQ": 1},
+        "units": {"INT": 8, "FP": 6, "VEC": 2, "LOAD": 8, "STORE": 4, "BR": 2, "CTX": 1, "ATOM": 1, "ME512": 1, "IRQ": 1},
+        "execution_topology": {"INT128_PAIRS": [[0, 1], [2, 3]]},
         "latency": {"INT": 1, "FP": 3, "VEC": 2, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 4, "ME512": 4, "IRQ": 6},
         "l1_kb": 128, "l2_kb": 1024, "l3_kb": 8192, "l4_kb": 65536,
         "l1_lat": 2, "l2_lat": 8, "l3_lat": 24, "l4_lat": 64, "dram_lat": 120,
@@ -101,10 +103,12 @@ PROFILES = {
     }
 }
 
-def add_op(ops: List[Op], kind: str, deps=(), address=0, width=8, label="", command_address=None):
+def add_op(ops: List[Op], kind: str, deps=(), address=0, width=8, label="", command_address=None,
+           exec_width_bits=64):
     seq = len(ops)
     pc = -1 if command_address is None else command_address
-    ops.append(Op(seq, kind, tuple(dict.fromkeys(deps)), address, width, label, pc))
+    ops.append(Op(seq, kind, tuple(dict.fromkeys(deps)), address, width, label, pc,
+                  exec_width_bits))
     return seq
 
 def build_composite_workload(scale: int = 1) -> Dict[str, List[Op]]:
@@ -167,6 +171,13 @@ def build_composite_workload(scale: int = 1) -> Dict[str, List[Op]]:
     for i in range(512*n):
         add_op(ops, "INT", label="independent integer throughput")
     result["integer_throughput"] = ops
+
+    # F2) Independent 128-bit integer throughput for mixed-width ALU testing.
+    ops = []
+    for i in range(256*n):
+        add_op(ops, "INT", label="independent 128-bit integer throughput",
+               exec_width_bits=128)
+    result["integer128_throughput"] = ops
 
     # G) Independent FP throughput: isolates floating-point execution resources.
     ops = []
@@ -744,8 +755,21 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
             exec_kind = p.matrix_unit if kind == "ME512" else kind
             resource = "LOAD" if exec_kind == "LOAD" else ("STORE" if exec_kind == "STORE" else exec_kind)
             slots = unit_busy.get(resource, [])
-            slot = next((i for i,t in enumerate(slots) if t <= cycle), None)
-            if slot is None:
+            selected_slots = None
+            topology = getattr(p, "execution_topology", {}) or {}
+            if resource == "INT" and op.exec_width_bits >= 128 and topology.get("INT128_PAIRS"):
+                selected_slots = next(
+                    (pair for pair in topology["INT128_PAIRS"]
+                     if all(index < len(slots) and slots[index] <= cycle for index in pair)),
+                    None,
+                )
+            elif resource == "INT" and topology.get("INT128_PAIRS"):
+                slot = next((i for i,t in enumerate(slots) if t <= cycle), None)
+                selected_slots = [slot] if slot is not None else None
+            else:
+                slot = next((i for i,t in enumerate(slots) if t <= cycle), None)
+                selected_slots = [slot] if slot is not None else None
+            if not selected_slots:
                 stalls["execution_unit_blocked_op_cycles"] += 1
                 continue
             vector_factor = (max(1, math.ceil(op.width * 8 / p.vector_bits))
@@ -774,7 +798,8 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
                     bus_cycles = max(1, math.ceil(op.width / max(1, p.dram_bytes_per_cycle)))
                     dram_next_cycle = bus_start + bus_cycles
                     latency = max(latency, wait + mem_lat, bus_wait + mem_lat + bus_cycles)
-            slots[slot] = cycle + 1
+            for slot_index in selected_slots:
+                slots[slot_index] = cycle + 1
             issued[seq] = True
             ready_at[seq] = cycle + latency
             if kind in ("LOAD", "STORE", "ATOM"):
@@ -1140,6 +1165,66 @@ def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=N
             "aggregate_ipc": round(total_ops/max(1,total_cycles),3),
             "time_ms_at_configured_clock": round(total_cycles/(p.frequency_ghz*1e6),6)}
 
+def run_execution_topology_sweep(workloads: Dict[str, List[Op]], profile_dict: dict) -> dict:
+    """Compare baseline execution resources with the proposed mixed-width NEXSUS topology."""
+    target = {name: workloads[name] for name in (
+        "integer_throughput", "integer128_throughput", "fp_throughput",
+        "numeric_tile", "streaming", "scalar_control"
+    )}
+    variants = {
+        "baseline_2INT_2FP": {
+            "units": {**profile_dict["units"], "INT": 2, "FP": 2},
+            "execution_topology": {},
+        },
+        "proposed_2x128_plus_4x64_INT__6x64_FP": {
+            "units": {**profile_dict["units"], "INT": 8, "FP": 6},
+            "execution_topology": {"INT128_PAIRS": [[0, 1], [2, 3]]},
+        },
+    }
+    runs = {}
+    for name, config in variants.items():
+        profile = dict(profile_dict)
+        profile["units"] = config["units"]
+        profile["execution_topology"] = config["execution_topology"]
+        runs[name] = simulate_cpu(
+            target, profile, 8,
+            {"task_workspace": True, "code_slots": True, "codeflow": True,
+             "p0_capacity_kb": 16, "p0_refill_latency": 48},
+        )
+    rows = {}
+    for kernel in target:
+        base = runs["baseline_2INT_2FP"]["kernels"][kernel]
+        proposed = runs["proposed_2x128_plus_4x64_INT__6x64_FP"]["kernels"][kernel]
+        rows[kernel] = {
+            "ops_preserved": base["ops"] == proposed["ops"],
+            "ops": base["ops"],
+            "baseline_cycles": base["cycles"],
+            "proposed_cycles": proposed["cycles"],
+            "cycles_saved": base["cycles"] - proposed["cycles"],
+            "improvement_percent": round(
+                100 * (base["cycles"] - proposed["cycles"]) / max(1, base["cycles"]), 2
+            ),
+            "baseline_int_fp_unit_stalls": base["stall_counters"]["execution_unit_blocked_op_cycles"],
+            "proposed_int_fp_unit_stalls": proposed["stall_counters"]["execution_unit_blocked_op_cycles"],
+        }
+    return {
+        "experiment": "NEXSUS mixed-width INT and six-lane FP execution topology",
+        "cores": 8,
+        "variants": {
+            name: {"units": config["units"], "execution_topology": config["execution_topology"],
+                   "total_cycles": run["total_cycles"], "total_ops": run["total_ops"]}
+            for name, (config, run) in zip(variants.keys(), zip(variants.values(), runs.values()))
+        },
+        "kernels": rows,
+        "assumptions": (
+            "INT has eight 64-bit issue lanes. Lanes 0-1 and 2-3 are paired into two 128-bit-capable "
+            "physical units; each pair can instead issue two independent 64-bit operations. "
+            "INT128 ops reserve both lanes of one pair for one cycle. FP has six independent 64-bit lanes. "
+            "FMA and IEEE binary128 are not modeled. Frontend/dispatch/issue limits remain unchanged."
+        ),
+    }
+
+
 def run_branch_predictor_sweep(workloads: Dict[str, List[Op]], profile_dict: dict) -> dict:
     """Compare NEXSUS predictor-off and compact-predictor assumptions on identical traces."""
     target = {name: workloads[name] for name in ("scalar_control", "pointer_graph", "branch_stress")}
@@ -1321,8 +1406,19 @@ def main():
     ap.add_argument("--p0-refill-cycles", type=int, default=48, help="provisional 2-KiB CS-to-EB refill latency")
     ap.add_argument("--cs-sweep", "--p0-sweep", dest="p0_sweep", action="store_true", help="run 4/8/16/32 KiB CS code-slot capacity sweep (legacy flag: --p0-sweep)")
     ap.add_argument("--fetch-sweep", action="store_true", help="compare conventional I-cache and P0 refill latency sensitivity")
+    ap.add_argument("--execution-sweep", action="store_true", help="compare baseline and mixed-width NEXSUS INT/FP resources")
     args = ap.parse_args()
     workloads = build_composite_workload(args.scale)
+    if args.execution_sweep:
+        result = run_execution_topology_sweep(workloads, PROFILES["nexus_balanced_128"])
+        if args.json:
+            print(json.dumps(result, indent=2))
+        else:
+            print("NEXSUS MIXED-WIDTH EXECUTION TOPOLOGY SWEEP")
+            for name, row in result["kernels"].items():
+                print(f'{name}: baseline={row["baseline_cycles"]} proposed={row["proposed_cycles"]} '
+                      f'saved={row["cycles_saved"]} ({row["improvement_percent"]}%)')
+        return
     if args.normalized_8core:
         normalized = {}
         for key in ("amd_9950x3d2", "intel_xeon_698x", "apple_m6", "nexus_balanced_128"):
