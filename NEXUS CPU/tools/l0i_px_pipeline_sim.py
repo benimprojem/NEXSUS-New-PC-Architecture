@@ -191,7 +191,7 @@ class Pipeline:
             if self.spm_remaining<=0 and self.spm[self.active_bank] is None and self.spm[1-self.active_bank] is None:
                 self.counters["stalls_spm_not_ready"]+=1
             if self.counters["pages_completed"]>=total:
-                return Result(cycle+1,total,**self.counters,timeline=self.timeline)
+                summary=dict(self.counters)\n                summary["pages_completed"]=total\n                return Result(cycle+1,**summary,timeline=self.timeline)
         raise TimeoutError(f"pipeline did not complete {total} pages within {max_cycles} cycles")
 
 def make_pages(count:int, tasks:int=2, page_bytes:int=PAGE, stride:int=0x5000)->List[Page]:
