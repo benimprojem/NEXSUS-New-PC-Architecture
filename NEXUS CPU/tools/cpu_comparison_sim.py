@@ -192,6 +192,16 @@ def build_composite_workload(scale: int = 1) -> Dict[str, List[Op]]:
         add_op(ops, "FMA", label="independent fused multiply-add throughput")
     result["fma_throughput"] = ops
 
+    # G2b) Serial dependency chain: isolates FMA latency from issue throughput.
+    ops = []
+    previous = None
+    for i in range(256*n):
+        previous = add_op(
+            ops, "FMA", () if previous is None else (previous,),
+            label="dependent fused multiply-add chain",
+        )
+    result["fma_dependency_chain"] = ops
+
     # G3) Concurrent FP64 + FMA issue pressure. Equal independent streams
     # expose whether the FMA subset competes with ordinary FP execution.
     ops = []
@@ -1336,8 +1346,8 @@ def run_fma_resource_sweep(workloads: Dict[str, List[Op]], profile_dict: dict,
                            fp_counts=(6, 8), fma_counts=(2, 4)) -> dict:
     """Compare dedicated FMA issue capacity; FMA lanes are a subset of FP lanes."""
     target = {name: workloads[name] for name in (
-        "fp_throughput", "fma_throughput", "fp_fma_mixed",
-        "numeric_tile", "scalar_control"
+        "fp_throughput", "fma_throughput", "fma_dependency_chain",
+        "fp_fma_mixed", "numeric_tile", "scalar_control"
     )}
     expected_ops = {name: len(ops) for name, ops in target.items()}
     rows = {}
