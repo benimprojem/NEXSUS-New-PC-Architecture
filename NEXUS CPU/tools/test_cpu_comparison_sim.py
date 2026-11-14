@@ -623,6 +623,11 @@ class MixedWidthExecutionTopologyTests(unittest.TestCase):
         self.assertEqual(profile["units"]["FP"], 6)
         self.assertEqual(profile["execution_topology"]["INT128_PAIRS"], [[0, 1], [2, 3]])
 
+    def test_partition_preserves_128_bit_operation_width(self):
+        ops = [sim.Op(0, "INT", exec_width_bits=128)]
+        shards = sim.partition_dependency_components(ops, 1)
+        self.assertEqual(shards[0][0].exec_width_bits, 128)
+
     def test_128_bit_int_reserves_two_64_bit_lanes(self):
         profile = dict(sim.PROFILES["nexus_balanced_128"])
         profile["units"] = {**profile["units"], "INT": 2, "FP": 2}
