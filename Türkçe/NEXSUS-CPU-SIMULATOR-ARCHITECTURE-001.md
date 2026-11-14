@@ -17,7 +17,7 @@ Simülatör, NEXSUS CPU önerilerini güncel AMD, Intel ve ARM referans profille
 ```text
 App RAM -> Code Cache C0 (L0I, 64 KiB)
         -> Code Slots CS0–CS7 (PX, 8 x 2 KiB)
-        -> Execution Buffer EB0 (SPM0, 2 x 2 KiB)
+        -> Execution Buffer EB (SPM0, 2 x 2 KiB)
 ```
 
 C0 görev/sayfa kimliğiyle artımlı doldurulur. App RAM kaynakları ardışık olmayabilir. Üç bağımsız aktarım kuyruğu:
@@ -60,6 +60,8 @@ Varsayılan beat aralığı 1 cycle yalnızca baz duyarlılık varsayımıdır; 
 - in-flight aktarım C0 kaynağını evict edemez;
 - CF_NEXT/CF_END komut baytı değildir;
 - EB0 bankası tüm geçerli baytlar tamamlanmadan READY/ACTIVE olmaz.
+
+Bağımsız L0I/PX pipeline modeli kuyruk ve olay-zaman çizelgesi deneyleri için korunur. Ayrıca karşılaştırma CPU scheduler'ı artık NEXSUS dispatch işlemini CodeFlow sayfa hazır durumuna bağlar; App RAM → C0, C0 → CS ve CS → EB gecikmeleri aynı global çevrim döngüsüne eklenir. Fetch raporu C0 hit/miss, App RAM beat/byte/kaynak çevrimi, Code Slot aktarım çevrimi, Code Stream aktarım çevrimi, pool ve dispatch bekleme sayaçlarını verir. Entegrasyon, sayfa hazır olmasını esas alan kontrollü/seri bir yaklaşım modelidir (tam eşzamanlı RTL pipeline değildir); overlap/arbitration ayrıntıları için bağımsız pipeline, CPU yürütmesine etkisi için CPU modeli kullanılır. Regresyon testleri hazır olma çevrimi, beat aralığı duyarlılığı ve dispatch bloklamasını doğrular.
 
 ## 6. Test ve kanıt sınırı
 
