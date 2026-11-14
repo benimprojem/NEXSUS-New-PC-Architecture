@@ -586,7 +586,7 @@ class IntegratedCodeFlowTests(unittest.TestCase):
             fetch.can_fetch(0, 0)
             ready = 48 + 40 + 255 * interval + 1 + 128 + 128
             fetch.complete(ready)
-            self.assertTrue(fetch.can_fetch(0, ready)
+            self.assertTrue(fetch.can_fetch(0, ready))
             ready_cycles.append(ready)
         self.assertEqual(ready_cycles, [600, 1365])
 
