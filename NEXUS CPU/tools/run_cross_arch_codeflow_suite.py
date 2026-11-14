@@ -24,7 +24,7 @@ def run(scale=1, pages=64, tasks=4):
     return {
       "model_notice":"Architectural simulation, not physical silicon measurements.",
       "execution_model":"same composite workload across AMD/Intel/ARM/NEXSUS profiles",
-      "codeflow_model":"NEXSUS-only task-aware AppRAM->C0->CS->EB pipeline; reported separately, not yet coupled per instruction to CPU execution",
+      "codeflow_model":"NEXSUS CPU cycles include dispatch gating on integrated AppRAM->C0->CS->EB page readiness; detailed queue/overlap pipeline sweep is supplementary and separately reported",
       "same_logical_ops_all_architectures":same_ops,
       "architecture_results":arch,
       "codeflow_beat_interval_sweep":cf,
