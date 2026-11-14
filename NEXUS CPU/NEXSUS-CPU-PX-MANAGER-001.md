@@ -291,3 +291,7 @@ The simulator must model queue capacity, service width, source latency, arbitrat
 ### 12.5 Replacement and task isolation
 
 L0I entries are tagged by task/code-region identity and generation, with logical page/chunk range and valid-byte information. Replacement must not evict data referenced by an in-flight PX transfer. Shared immutable code may be deduplicated only when executable identity and permissions match; otherwise task ownership remains isolated. A stale generation must never satisfy a new task's request.
+
+
+## Canonical terminology
+New explanatory text uses **CodeFlow Manager (CFM)**, **Code Slots CS0–CS7** (legacy PX P0–P7), **Code Cache C0** (legacy L0I), **Execution Buffer EB0** (legacy SPM0), and **Code Stream (CST)**. Existing symbols remain backward-compatible. See [NEXSUS-CPU-CODEFLOW-NAMING-001](NEXSUS-CPU-CODEFLOW-NAMING-001.md) for the naming decision.
