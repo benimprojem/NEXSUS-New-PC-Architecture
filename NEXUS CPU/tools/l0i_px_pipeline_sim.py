@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cycle/event model for NEXSUS AppRAM -> L0I -> PX -> SPM0 code streaming.
+"""Cycle/event model for NEXSUS App RAM -> C0 -> CS -> EB code streaming.
 
 This is a configurable architecture model, not RTL or measured silicon.
 The default App RAM beat interval is 1 cycle ONLY as a baseline assumption;
@@ -13,8 +13,8 @@ from dataclasses import dataclass, asdict
 from typing import Deque, Dict, List, Optional, Tuple
 
 PAGE = 2048
-L0I_BYTES = 64 * 1024
-PX_SLOTS = 8
+C0_BYTES = 64 * 1024
+CS_SLOTS = 8
 SPM_BANKS = 2
 
 @dataclass
@@ -34,13 +34,15 @@ class Config:
     app_queue_depth: int = 4
     l0i_to_px_bytes_per_cycle: int = 16
     px_to_spm_bytes_per_cycle: int = 16
-    l0i_capacity_bytes: int = L0I_BYTES
-    px_slot_count: int = PX_SLOTS
+    l0i_capacity_bytes: int = C0_BYTES
+    px_slot_count: int = CS_SLOTS
     page_bytes: int = PAGE
     spm_bank_bytes: int = PAGE
     l0i_hit_latency: int = 1
     px_hit_latency: int = 1
     allow_overlap: bool = True
+    l0i_px_queue_depth: int = 4
+    px_spm_queue_depth: int = 4
 
 @dataclass
 class Result:
@@ -58,10 +60,16 @@ class Result:
     spm_bank_swaps: int
     stalls_spm_not_ready: int
     slot_evictions: int
+    app_stage_busy_cycles: int
+    l0i_px_stage_busy_cycles: int
+    px_spm_stage_busy_cycles: int
+    app_backpressure_cycles: int
+    l0i_px_backpressure_cycles: int
+    px_spm_backpressure_cycles: int
     timeline: List[dict]
 
 class Pipeline:
-    """Three independently scheduled queues and a two-bank SPM0 consumer."""
+    """Three independently scheduled queues and a two-bank EB consumer."""
     def __init__(self, config: Config):
         self.c = config
         self.app_q: Deque[Page] = deque()
@@ -86,7 +94,10 @@ class Pipeline:
         self.counters = dict(app_bytes_read=0, app_beats=0, l0i_hits=0,
             l0i_misses=0, px_hits=0, px_misses=0, app_queue_peak=0,
             l0i_px_queue_peak=0, px_spm_queue_peak=0, spm_bank_swaps=0,
-            stalls_spm_not_ready=0, slot_evictions=0, pages_completed=0)
+            stalls_spm_not_ready=0, slot_evictions=0, pages_completed=0,
+            app_stage_busy_cycles=0, l0i_px_stage_busy_cycles=0,
+            px_spm_stage_busy_cycles=0, app_backpressure_cycles=0,
+            l0i_px_backpressure_cycles=0, px_spm_backpressure_cycles=0)
 
     def _cache_insert(self, cache, order, key, page, cap):
         if key in cache:
@@ -112,13 +123,15 @@ class Pipeline:
         if not pages: raise ValueError("at least one code page is required")
         if any(p.valid_bytes<=0 or p.valid_bytes>self.c.page_bytes or p.valid_bytes%8 for p in pages):
             raise ValueError("page valid_bytes must be 8-byte aligned and within page size")
+        if min(self.c.app_queue_depth,self.c.l0i_px_queue_depth,self.c.px_spm_queue_depth)<=0:
+            raise ValueError("pipeline queue depths must be positive")
         if self.c.app_lane_bytes != 8:
             raise ValueError("baseline App RAM instruction lane is exactly 64-bit (8 bytes)")
         self.pages=pages
         total=len(pages)
         # Demand-driven: enqueue page requests; bounded App RAM request queue.
         for cycle in range(max_cycles):
-            # SPM0 CPU consumer: consume current bank's valid instruction bytes.
+            # EB CPU consumer: consume current bank's valid instruction bytes.
             if self.spm_remaining>0:
                 self.spm_remaining-=8
             if self.spm_remaining<=0:
@@ -129,61 +142,79 @@ class Pipeline:
                     self.active_bank=other
                     self.spm_remaining=self.spm[self.active_bank].valid_bytes
                     self.counters["spm_bank_swaps"]+=1
-            # Start/complete PX -> inactive SPM0 refill.
+            # Start/complete CS -> inactive EB refill.
             if self.pxspm_active is not None and cycle>=self.pxspm_done_cycle:
                 p=self.pxspm_active
                 bank=1-self.active_bank
                 self.spm[bank]=p
-                self.timeline.append({"cycle":cycle,"event":"SPM0_READY","task":p.task,"page":p.logical_id,"bank":bank})
+                self.timeline.append({"cycle":cycle,"event":"EB_READY","task":p.task,"page":p.logical_id,"bank":bank})
                 self.pxspm_active=None
                 self.counters["pages_completed"]+=1
-            if self.pxspm_active is None and self.pxspm_q:
+            px_bank=1-self.active_bank
+            px_bank_available=self.spm[px_bank] is None
+            if self.pxspm_q and not px_bank_available:
+                self.counters["px_spm_backpressure_cycles"]+=1
+            if (self.pxspm_active is None and self.pxspm_q and px_bank_available
+                    and (self.c.allow_overlap or (self.l0px_active is None and self.app_active is None))):
                 p=self.pxspm_q.popleft()
                 self.pxspm_active=p
                 self.pxspm_done_cycle=cycle+self._transfer_duration(p.valid_bytes,self.c.px_to_spm_bytes_per_cycle)
-                self.timeline.append({"cycle":cycle,"event":"PX_SPM0_START","task":p.task,"page":p.logical_id})
-            # L0I -> PX independent queue; select page/task request.
-            if self.l0px_active is not None and cycle>=self.l0px_done_cycle:
+                self.counters["px_spm_stage_busy_cycles"]+=self._transfer_duration(p.valid_bytes,self.c.px_to_spm_bytes_per_cycle)
+                self.timeline.append({"cycle":cycle,"event":"CS_EB_START","task":p.task,"page":p.logical_id})
+            # C0 -> CS independent queue; select page/task request.
+            if (self.l0px_active is not None and cycle>=self.l0px_done_cycle
+                    and len(self.pxspm_q)<self.c.px_spm_queue_depth):
                 p=self.l0px_active; key=(p.task,p.logical_id)
                 self._cache_insert(self.px,self.px_order,key,p,self.c.px_slot_count)
                 self.pxspm_q.append(p)
-                self.timeline.append({"cycle":cycle,"event":"PX_READY","task":p.task,"page":p.logical_id})
+                self.timeline.append({"cycle":cycle,"event":"CS_READY","task":p.task,"page":p.logical_id})
                 self.l0px_active=None
-            if self.l0px_active is None and self.l0px_q:
+            if self.l0px_active is not None and cycle>=self.l0px_done_cycle and len(self.pxspm_q)>=self.c.px_spm_queue_depth:
+                self.counters["l0i_px_backpressure_cycles"]+=1
+            if (self.l0px_active is None and self.l0px_q
+                    and (self.c.allow_overlap or (self.pxspm_active is None and self.app_active is None))):
                 p=self.l0px_q.popleft()
                 self.l0px_active=p
                 self.l0px_done_cycle=cycle+self._transfer_duration(p.valid_bytes,self.c.l0i_to_px_bytes_per_cycle)
-                self.timeline.append({"cycle":cycle,"event":"L0I_PX_START","task":p.task,"page":p.logical_id})
-            # App RAM -> L0I chunks/page, bounded queue. Existing L0I hit bypasses App RAM.
+                self.counters["l0i_px_stage_busy_cycles"]+=self._transfer_duration(p.valid_bytes,self.c.l0i_to_px_bytes_per_cycle)
+                self.timeline.append({"cycle":cycle,"event":"C0_CS_START","task":p.task,"page":p.logical_id})
+            # App RAM -> C0 chunks/page, bounded queue. Existing C0 hit bypasses App RAM.
             while self.page_index<total and len(self.app_q)<self.c.app_queue_depth:
                 p=pages[self.page_index]; self.page_index+=1
                 key=(p.task,p.logical_id)
                 if key in self.l0i:
                     self.counters["l0i_hits"]+=1
                     self.l0px_q.append(self.l0i[key])
-                    self.timeline.append({"cycle":cycle,"event":"L0I_HIT","task":p.task,"page":p.logical_id})
+                    self.timeline.append({"cycle":cycle,"event":"C0_HIT","task":p.task,"page":p.logical_id})
                 elif key in self.px:
                     self.counters["px_hits"]+=1
                     self.pxspm_q.append(self.px[key])
-                    self.timeline.append({"cycle":cycle,"event":"PX_HIT","task":p.task,"page":p.logical_id})
+                    self.timeline.append({"cycle":cycle,"event":"CS_HIT","task":p.task,"page":p.logical_id})
                 else:
                     self.counters["l0i_misses"]+=1
                     self.counters["px_misses"]+=1
                     self.app_q.append(p)
                     self.timeline.append({"cycle":cycle,"event":"APP_REQUEST","task":p.task,"page":p.logical_id,"source":p.source_address})
-            if self.app_active is not None and cycle>=self.app_done_cycle:
+            if (self.app_active is not None and cycle>=self.app_done_cycle
+                    and len(self.l0px_q)<self.c.l0i_px_queue_depth):
                 p=self.app_active; key=(p.task,p.logical_id)
                 self._cache_insert(self.l0i,self.l0i_order,key,p,max(1,self.c.l0i_capacity_bytes//self.c.page_bytes))
                 self.l0px_q.append(p)
-                self.timeline.append({"cycle":cycle,"event":"L0I_READY","task":p.task,"page":p.logical_id})
+                self.timeline.append({"cycle":cycle,"event":"C0_READY","task":p.task,"page":p.logical_id})
                 self.app_active=None
-            if self.app_active is None and self.app_q:
+            if self.app_active is not None and cycle>=self.app_done_cycle and len(self.l0px_q)>=self.c.l0i_px_queue_depth:
+                self.counters["app_backpressure_cycles"]+=1
+            if (self.app_active is None and self.app_q
+                    and (self.c.allow_overlap or (self.l0px_active is None and self.pxspm_active is None))):
                 p=self.app_q.popleft(); self.app_active=p
                 self.app_done_cycle=cycle+self._app_duration(p)
+                self.counters["app_stage_busy_cycles"]+=self._app_duration(p)
                 beats=(p.valid_bytes+self.c.app_lane_bytes-1)//self.c.app_lane_bytes
                 self.counters["app_bytes_read"]+=p.valid_bytes
                 self.counters["app_beats"]+=beats
                 self.timeline.append({"cycle":cycle,"event":"APP_READ_START","task":p.task,"page":p.logical_id,"beats":beats})
+            if self.page_index<total and len(self.app_q)>=self.c.app_queue_depth:
+                self.counters["app_backpressure_cycles"]+=1
             self.counters["app_queue_peak"]=max(self.counters["app_queue_peak"],len(self.app_q))
             self.counters["l0i_px_queue_peak"]=max(self.counters["l0i_px_queue_peak"],len(self.l0px_q))
             self.counters["px_spm_queue_peak"]=max(self.counters["px_spm_queue_peak"],len(self.pxspm_q))
