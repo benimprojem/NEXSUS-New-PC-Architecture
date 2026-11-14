@@ -187,8 +187,8 @@ class WorkspaceCodeSlotModelTests(unittest.TestCase):
                                      label="TW: hot") for i in range(256)]}
         p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
         shards = sim.partition_dependency_components(workloads["hot"], 8)
-        full = sim.simulate_multicore_streams(shards, p, 32, {"spm": True, "p0": True})
-        off = sim.simulate_multicore_streams(shards, p, 32, {"spm": False, "p0": True})
+        full = sim.simulate_multicore_streams(shards, p, 32, {"task_workspace": True, "code_slots": True})
+        off = sim.simulate_multicore_streams(shards, p, 32, {"task_workspace": False, "p0": True})
         self.assertEqual(sum(len(x) for x in shards), 256)
         self.assertEqual(sum(x["spm"]["accesses"] for x in full["cores"]), 256)
         self.assertEqual(sum(x["spm"]["fallback_bytes"] for x in off["cores"]), 256*64)
@@ -209,7 +209,7 @@ class WorkspaceCodeSlotModelTests(unittest.TestCase):
         p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
         shards = sim.partition_dependency_components(ops, 8)
         p0 = sim.simulate_multicore_streams(shards, p, 32, {"spm": True, "p0": True})
-        conventional = sim.simulate_multicore_streams(shards, p, 32, {"spm": True, "p0": False})
+        conventional = sim.simulate_multicore_streams(shards, p, 32, {"spm": True, "code_slots": False})
         self.assertEqual(sum(x["retired"] for x in p0["cores"]), 1024)
         self.assertEqual(sum(x["retired"] for x in conventional["cores"]), 1024)
         p0_wait = sum(x["fetch"].wait_cycles for x in p0["cores"])
@@ -278,7 +278,7 @@ class WorkspaceCodeSlotModelTests(unittest.TestCase):
         self.assertTrue(fetch.can_fetch(6144, 192))
         self.assertEqual(fetch.active_block, 3)
 
-    def test_codeflow_pool_has_eight_2k_slots_and_spm0_has_two_2k_banks(self):
+    def test_code_slots_and_execution_buffer_have_expected_capacity(self):
         p0 = sim.CommandFetchModel(True)
         conventional = sim.CommandFetchModel(False)
         self.assertEqual(p0.capacity_bytes, 16 * 1024)
