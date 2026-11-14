@@ -1020,6 +1020,15 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
         if "code_slots" in nexus_features:
             features["p0"] = bool(nexus_features["code_slots"])
     is_nexus = p.name.startswith("NEXSUS CPU")
+    # App RAM instruction fetches use a separate controller from Data RAM.
+    app_controller = AppRamController(
+        bank_count=int(features.get("app_bank_count", 8)),
+        beat_bytes=int(features.get("app_beat_bytes", 8)),
+        bytes_per_cycle=int(features.get("app_bytes_per_cycle", 32)),
+        first_beat_latency=int(features.get("app_first_beat_latency", 40)),
+        beat_interval=int(features.get("app_beat_interval", 1)),
+        max_outstanding=int(features.get("app_max_outstanding", 16)),
+    ) if is_nexus and bool(features.get("codeflow", False)) else None
     states = []
     for shard in shards:
         states.append({
@@ -1069,15 +1078,6 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 conventional_refill_latency=int(features.get("conventional_refill_latency", 32)),
             )
     pending_fills = []
-    # App RAM instruction fetches use a separate controller from Data RAM.
-    app_controller = AppRamController(
-        bank_count=int(features.get("app_bank_count", 8)),
-        beat_bytes=int(features.get("app_beat_bytes", 8)),
-        bytes_per_cycle=int(features.get("app_bytes_per_cycle", 32)),
-        first_beat_latency=int(features.get("app_first_beat_latency", 40)),
-        beat_interval=int(features.get("app_beat_interval", 1)),
-        max_outstanding=int(features.get("app_max_outstanding", 16)),
-    ) if is_nexus and bool(features.get("codeflow", False)) else None
     controller = SharedMemoryController(
         bank_count=p.bank_count, beat_bytes=p.bank_beat_bytes,
         aggregate_bytes_per_cycle=aggregate_dram_bandwidth)
