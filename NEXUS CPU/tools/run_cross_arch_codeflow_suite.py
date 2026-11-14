@@ -14,7 +14,8 @@ def run(scale=1, pages=64, tasks=4):
     arch={}
     for key in ("amd_9950x3d2","intel_xeon_698x","apple_m6","nexus_balanced_128"):
         arch[key]=cpu.simulate_cpu(workloads,cpu.PROFILES[key],
-            8 if key=="nexus_balanced_128" else None)
+            8 if key=="nexus_balanced_128" else None,
+            {"codeflow": True} if key=="nexus_balanced_128" else None)
     cf={}
     for beat in (1,2,4,8):
         cfg=codeflow.Config(app_beat_interval=beat)
