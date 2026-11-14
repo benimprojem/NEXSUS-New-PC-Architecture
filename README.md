@@ -21,7 +21,6 @@ Bu bileşenler araştırma ve tasarım önerileridir; tamamlanmış veya silikon
 ## Belgeler
 
 ### Genel mimari
-- [NEXSUS sistem mimarisi](NEXSUS-SYSTEM-ARCHITECTURE.md) *(ana sistem belgesi varsa)*
 - [CPU belgeleri ve tasarım kayıtları](NEXUS%20CPU/)
 - [Türkçe belge merkezi](Türkçe/README.md)
 
