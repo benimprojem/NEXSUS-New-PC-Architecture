@@ -713,6 +713,24 @@ class FMAResourceSweepTests(unittest.TestCase):
         four = result["results"]["FP6_FMA4"]["kernels"]["fma_throughput"]["cycles"]
         self.assertGreaterEqual(two, four)
 
+    def test_mixed_fp_fma_stream_preserves_work_and_reports_contention(self):
+        workloads = sim.build_composite_workload(scale=1)
+        result = sim.run_fma_resource_sweep(
+            workloads, sim.PROFILES["nexus_balanced_128"],
+            fp_counts=(6,), fma_counts=(2, 4),
+        )
+        two = result["results"]["FP6_FMA2"]["kernels"]["fp_fma_mixed"]
+        four = result["results"]["FP6_FMA4"]["kernels"]["fp_fma_mixed"]
+        self.assertEqual(two["ops"], 512)
+        self.assertEqual(four["ops"], 512)
+        self.assertTrue(two["ops_preserved"])
+        self.assertTrue(four["ops_preserved"])
+        self.assertGreater(two["cycles"], 0)
+        self.assertGreater(four["cycles"], 0)
+        # Mixed throughput is recorded independently of isolated FP/FMA tests.
+        self.assertIn("execution_unit_blocked_op_cycles", two)
+        self.assertIn("execution_unit_blocked_op_cycles", four)
+
     def test_fma_lanes_are_subset_of_fp_lanes(self):
         workloads = sim.build_composite_workload(scale=1)
         result = sim.run_fma_resource_sweep(
