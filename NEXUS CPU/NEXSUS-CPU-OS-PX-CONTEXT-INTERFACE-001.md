@@ -288,3 +288,7 @@ A page request may wait for its source chunks while unrelated L0I fills and alre
 Prioritize current-task continuation and imminent dispatch requirements, then next runnable task code, then speculative/background pages. Apply aging or bounded service guarantees so low-priority tasks cannot starve indefinitely. Task policy remains in the OS; physical slot safety, transfer arbitration and protection remain in hardware.
 
 The baseline App-code lane is one 64-bit (8-byte) read path. Four parallel 64-bit lanes are a future expansion candidate and are not part of the initial interface freeze.
+
+
+## Canonical terminology
+New explanatory text uses **CodeFlow Manager (CFM)**, **Code Slots CS0–CS7** (legacy PX P0–P7), **Code Cache C0** (legacy L0I), **Execution Buffer EB0** (legacy SPM0), and **Code Stream (CST)**. Existing symbols remain backward-compatible. See [NEXSUS-CPU-CODEFLOW-NAMING-001](NEXSUS-CPU-CODEFLOW-NAMING-001.md) for the naming decision.
