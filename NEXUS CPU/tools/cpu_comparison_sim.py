@@ -854,7 +854,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
     Per-core pipelines, ROBs and caches remain private approximations. All
     cores advance on one global cycle and submit DRAM misses as a same-cycle batch.
     """
-    features = {"spm": True, "p0": True}
+    features = {"spm": True, "p0": True, "codeflow": False}
     if nexus_features:
         features.update(nexus_features)
     is_nexus = p.name.startswith("NEXSUS CPU")
@@ -887,7 +887,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 p0_refill_latency=int(features.get("p0_refill_latency", 48)),
                 page_descriptors=features.get("px_page_descriptors"),
                 pool_miss_latency=int(features.get("px_pool_miss_latency", 120)),
-                codeflow_enabled=bool(features.get("codeflow", True)),
+                codeflow_enabled=bool(features.get("codeflow", False)),
                 code_cache_bytes=int(features.get("code_cache_kb", 64)) * 1024,
                 app_first_beat_latency=int(features.get("app_first_beat_latency", 40)),
                 app_beat_interval=int(features.get("app_beat_interval", 1)),
@@ -1378,7 +1378,7 @@ def main():
     for key in ("nexus_balanced_128",):
         profiles[key] = simulate_cpu(
             workloads, PROFILES[key], max(8, args.nexus_cores),
-            {"spm": True, "p0": True, "p0_capacity_kb": args.p0_capacity_kb,
+            {"spm": True, "p0": True, "codeflow": True, "p0_capacity_kb": args.p0_capacity_kb,
              "p0_refill_latency": args.p0_refill_cycles},
         )
     if args.json:
