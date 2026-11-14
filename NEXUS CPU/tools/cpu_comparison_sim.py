@@ -1088,6 +1088,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
             "branch_misses": 0, "branch_number": 0,
             "mshr_inflight": [],
             "mshr_max_outstanding": 0, "mshr_full_events": 0,
+            "mshr_full_cycles": 0, "mshr_blocked_this_cycle": False,
             "stalls": {"dependency_blocked_op_cycles": 0,
                        "issue_width_blocked_op_cycles": 0,
                        "execution_unit_blocked_op_cycles": 0,
@@ -1191,6 +1192,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
         # until every core has contributed its requests for this same cycle.
         for core_id, st in enumerate(states):
             ops = st["ops"]
+            st["mshr_blocked_this_cycle"] = False
             issued_now = 0
             for seq in list(st["rob"]):
                 if st["issued"][seq]:
@@ -1251,8 +1253,11 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                         if level == "DRAM" and mshr_capacity is not None:
                             outstanding = len(st["mshr_inflight"]) + mshr_reserved_this_cycle[core_id]
                             if outstanding >= int(mshr_capacity):
-                                st["mshr_full_events"] += 1
+                                st["mshr_full_events"] += 1  # blocked request-attempt cycles
                                 st["stalls"]["data_mshr_full_events"] += 1
+                                if not st["mshr_blocked_this_cycle"]:
+                                    st["mshr_full_cycles"] += 1
+                                    st["mshr_blocked_this_cycle"] = True
                                 continue
                             mshr_reserved_this_cycle[core_id] += 1
                         st["hits"][level] += 1
@@ -1322,8 +1327,14 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
             "data_mshr": {
                 "capacity_per_core": (int(mshr_capacity) if mshr_capacity is not None else None),
                 "max_outstanding_per_core": [st["mshr_max_outstanding"] for st in states],
+                # A blocked request is retried on later cycles; these counters
+                # deliberately distinguish retry attempts from unique full cycles.
                 "full_events_per_core": [st["mshr_full_events"] for st in states],
                 "total_full_events": sum(st["mshr_full_events"] for st in states),
+                "blocked_request_attempts_per_core": [st["mshr_full_events"] for st in states],
+                "total_blocked_request_attempts": sum(st["mshr_full_events"] for st in states),
+                "full_cycles_per_core": [st["mshr_full_cycles"] for st in states],
+                "total_full_cycles": sum(st["mshr_full_cycles"] for st in states),
             },
             "app_controller": ({"bank_count": app_controller.bank_count,
                                 "max_outstanding": app_controller.max_outstanding,
@@ -1590,7 +1601,7 @@ def run_fma_resource_sweep(workloads: Dict[str, List[Op]], profile_dict: dict,
 
 
 
-def run_data_mshr_sweep(profile_dict: dict, capacities=(1, 2, 4, 8, 16, 32),
+def run_data_mshr_sweep(profile_dict: dict, capacities=(1, 2, 4, 8, 16, 32, 64, 128),
                         ops_per_core=128) -> dict:
     """Sweep per-core Data RAM MSHR capacity on identical cold-load traffic."""
     if ops_per_core < 1:
@@ -1625,6 +1636,9 @@ def run_data_mshr_sweep(profile_dict: dict, capacities=(1, 2, 4, 8, 16, 32),
             "data_ram_requests": request_count,
             "max_outstanding_per_core": max_outstanding,
             "total_full_events": run["data_mshr"]["total_full_events"],
+            "total_blocked_request_attempts": run["data_mshr"]["total_blocked_request_attempts"],
+            "total_full_cycles": run["data_mshr"]["total_full_cycles"],
+            "full_cycles_per_core": run["data_mshr"]["full_cycles_per_core"],
             "app_ram_controller": run["app_controller"],
         }
     return {
@@ -1633,6 +1647,10 @@ def run_data_mshr_sweep(profile_dict: dict, capacities=(1, 2, 4, 8, 16, 32),
         "ops_per_core": ops_per_core,
         "same_cold_load_workload": True,
         "app_ram_and_data_ram_controllers_independent": True,
+        "counter_definitions": {
+            "total_blocked_request_attempts": "A request remains blocked for one cycle and is counted again if retried next cycle.",
+            "total_full_cycles": "Per-core cycles in which at least one request was blocked by a full MSHR pool; multiple blocked requests on one core in one cycle count once."
+        },
         "results": rows,
         "assumptions": (
             "Each MSHR entry tracks one outstanding Data RAM demand miss per core "
