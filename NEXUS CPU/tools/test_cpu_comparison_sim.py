@@ -688,5 +688,41 @@ class ExecutionResourceCountSweepTests(unittest.TestCase):
         self.assertTrue(all(cycles[i] >= cycles[i+1] for i in range(len(cycles)-1)), cycles)
 
 
+class FMAResourceSweepTests(unittest.TestCase):
+    def test_fma_sweep_preserves_work_for_all_fp_topologies(self):
+        workloads = sim.build_composite_workload(scale=1)
+        result = sim.run_fma_resource_sweep(
+            workloads, sim.PROFILES["nexus_balanced_128"],
+            fp_counts=(6, 8), fma_counts=(2, 4),
+        )
+        self.assertEqual(set(result["results"]), {
+            "FP6_FMA2", "FP6_FMA4", "FP8_FMA2", "FP8_FMA4",
+        })
+        for variant in result["results"].values():
+            for name, row in variant["kernels"].items():
+                self.assertTrue(row["ops_preserved"], name)
+        self.assertEqual(result["results"]["FP6_FMA2"]["kernels"]["fma_throughput"]["ops"], 512)
+
+    def test_more_fma_lanes_do_not_reduce_fma_throughput(self):
+        workloads = sim.build_composite_workload(scale=1)
+        result = sim.run_fma_resource_sweep(
+            workloads, sim.PROFILES["nexus_balanced_128"],
+            fp_counts=(6,), fma_counts=(2, 4),
+        )
+        two = result["results"]["FP6_FMA2"]["kernels"]["fma_throughput"]["cycles"]
+        four = result["results"]["FP6_FMA4"]["kernels"]["fma_throughput"]["cycles"]
+        self.assertGreaterEqual(two, four)
+
+    def test_fma_lanes_are_subset_of_fp_lanes(self):
+        workloads = sim.build_composite_workload(scale=1)
+        result = sim.run_fma_resource_sweep(
+            workloads, sim.PROFILES["nexus_balanced_128"],
+            fp_counts=(6,), fma_counts=(2, 4),
+        )
+        for row in result["results"].values():
+            self.assertLessEqual(row["fma_lanes_per_core"], row["fp64_lanes_per_core"])
+
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
