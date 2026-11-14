@@ -612,3 +612,35 @@ class TestNexusMemoryBandwidthRevision(unittest.TestCase):
         self.assertEqual(sim.PROFILES["nexus_balanced_128"]["dram_bytes_per_cycle"], 64)
         for key, expected in (("amd_9950x3d2", 21), ("intel_xeon_698x", 160), ("apple_m6", 48)):
             self.assertEqual(sim.PROFILES[key]["dram_bytes_per_cycle"], expected)
+
+
+
+class MixedWidthExecutionTopologyTests(unittest.TestCase):
+    def test_nexus_profile_exposes_two_128_capable_int_pairs_and_six_fp64_lanes(self):
+        profile = sim.PROFILES["nexus_balanced_128"]
+        self.assertEqual(profile["units"]["INT"], 8)
+        self.assertEqual(profile["units"]["FP"], 6)
+        self.assertEqual(profile["execution_topology"]["INT128_PAIRS"], [[0, 1], [2, 3]])
+
+    def test_128_bit_int_reserves_two_64_bit_lanes(self):
+        profile = dict(sim.PROFILES["nexus_balanced_128"])
+        profile["units"] = {**profile["units"], "INT": 2, "FP": 2}
+        profile["execution_topology"] = {"INT128_PAIRS": [[0, 1]]}
+        workloads = {
+            "mixed": [
+                sim.Op(0, "INT", exec_width_bits=128),
+                sim.Op(1, "INT", exec_width_bits=64),
+                sim.Op(2, "INT", exec_width_bits=64),
+            ]
+        }
+        result = sim.simulate_cpu(workloads, profile, 1)
+        self.assertEqual(result["kernels"]["mixed"]["ops"], 3)
+
+    def test_execution_sweep_preserves_work_and_reports_both_widths(self):
+        workloads = sim.build_composite_workload(scale=1)
+        result = sim.run_execution_topology_sweep(workloads, sim.PROFILES["nexus_balanced_128"])
+        self.assertEqual(result["experiment"], "NEXSUS mixed-width INT and six-lane FP execution topology")
+        for name in ("integer_throughput", "integer128_throughput", "fp_throughput"):
+            self.assertTrue(result["kernels"][name]["ops_preserved"], name)
+            self.assertGreater(result["kernels"][name]["ops"], 0)
+        self.assertEqual(result["kernels"]["integer128_throughput"]["ops"], 256)
