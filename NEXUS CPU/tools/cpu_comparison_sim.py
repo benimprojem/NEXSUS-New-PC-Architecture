@@ -613,6 +613,89 @@ class CommandFetchModel:
         self.wait_cycles += 1
         return False
 
+
+class AppRamController:
+    """Independent App RAM instruction-source controller.
+
+    Separate from SharedMemoryController: this controller serves instruction
+    fetches only. The current integrated CommandFetchModel remains a serialized
+    page-ready approximation until this shared controller is wired into it.
+    """
+    def __init__(self, bank_count: int = 8, beat_bytes: int = 8,
+                 bytes_per_cycle: int = 32, first_beat_latency: int = 40,
+                 beat_interval: int = 1, max_outstanding: int = 16):
+        self.bank_count = max(1, int(bank_count))
+        self.beat_bytes = max(1, int(beat_bytes))
+        self.bytes_per_cycle = max(1, int(bytes_per_cycle))
+        self.first_beat_latency = max(0, int(first_beat_latency))
+        self.beat_interval = max(1, int(beat_interval))
+        self.max_outstanding = max(1, int(max_outstanding))
+        self.bank_busy = [0] * self.bank_count
+        self.bus_next_byte = 0
+        self.inflight = {}
+        self.rr_cursor = 0
+        self.accepted = 0
+        self.rejected_queue_full = 0
+        self.bank_conflicts = 0
+        self.transferred_bytes = 0
+
+    def _bank(self, address: int) -> int:
+        return (int(address) // self.beat_bytes) % self.bank_count
+
+    def complete(self, cycle: int):
+        for key in [k for k, ready in self.inflight.items() if ready <= cycle]:
+            del self.inflight[key]
+
+    def reserve_batch(self, cycle: int, requests: List[dict]) -> dict:
+        """Admit same-cycle requests; each has id, core, address and bytes."""
+        self.complete(cycle)
+        if not requests:
+            return {}
+        cores = sorted({int(r["core"]) for r in requests})
+        start = self.rr_cursor % len(cores)
+        rotated = cores[start:] + cores[:start]
+        rank = {core: i for i, core in enumerate(rotated)}
+        ordered = sorted(requests, key=lambda r: (rank[int(r["core"])], str(r["id"])))
+        result = {}
+        for req in ordered:
+            req_id = req["id"]
+            if req_id in self.inflight:
+                raise ValueError(f"duplicate in-flight App RAM request id: {req_id}")
+            if len(self.inflight) >= self.max_outstanding:
+                self.rejected_queue_full += 1
+                result[req_id] = {"accepted": False, "reason": "queue_full"}
+                continue
+            address = int(req["address"])
+            size = max(1, int(req["bytes"]))
+            beats = math.ceil(size / self.beat_bytes)
+            touched = set()
+            bank_complete = cycle
+            for beat in range(beats):
+                bank = self._bank(address + beat * self.beat_bytes)
+                touched.add(bank)
+                bank_start = max(cycle, self.bank_busy[bank])
+                if bank_start > cycle:
+                    self.bank_conflicts += 1
+                self.bank_busy[bank] = bank_start + self.beat_interval
+                bank_complete = max(bank_complete, self.bank_busy[bank])
+            bus_start_byte = max(cycle * self.bytes_per_cycle, self.bus_next_byte)
+            bus_complete = math.ceil((bus_start_byte + size) / self.bytes_per_cycle)
+            self.bus_next_byte = bus_start_byte + size
+            ready = max(
+                cycle + self.first_beat_latency + max(0, bank_complete - cycle),
+                bus_complete,
+            )
+            self.inflight[req_id] = ready
+            self.accepted += 1
+            self.transferred_bytes += size
+            result[req_id] = {
+                "accepted": True, "bank_count_touched": len(touched),
+                "ready_cycle": ready, "queue_occupancy": len(self.inflight),
+            }
+        self.rr_cursor = (start + 1) % len(cores)
+        return result
+
+
 def profile_from_dict(d: dict) -> CoreProfile:
     return CoreProfile(**d)
 
