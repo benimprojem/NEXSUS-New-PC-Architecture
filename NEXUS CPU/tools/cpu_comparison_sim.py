@@ -1098,7 +1098,14 @@ def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=N
                 "pool_hits": sum(x["fetch"].pool_hits for x in per_core if x["fetch"] is not None),
                 "pool_misses": sum(x["fetch"].pool_misses for x in per_core if x["fetch"] is not None),
                 "pool_refill_bytes": sum(x["fetch"].pool_refill_bytes for x in per_core if x["fetch"] is not None),
-                "mode": ("PX pool -> SPM0 2x2-KiB" if p.name.startswith("NEXSUS CPU") and
+                "code_cache_hits": sum(x["fetch"].c0_hits for x in per_core if x["fetch"] is not None),
+                "code_cache_misses": sum(x["fetch"].c0_misses for x in per_core if x["fetch"] is not None),
+                "app_ram_beats": sum(x["fetch"].app_beats for x in per_core if x["fetch"] is not None),
+                "app_ram_bytes": sum(x["fetch"].app_bytes for x in per_core if x["fetch"] is not None),
+                "app_source_cycles": sum(x["fetch"].app_source_cycles for x in per_core if x["fetch"] is not None),
+                "code_slot_transfer_cycles": sum(x["fetch"].code_slot_cycles for x in per_core if x["fetch"] is not None),
+                "code_stream_transfer_cycles": sum(x["fetch"].code_stream_cycles for x in per_core if x["fetch"] is not None),
+                "mode": ("CodeFlow C0 -> CS -> EB (legacy PX/SPM0)" if p.name.startswith("NEXSUS CPU") and
                          (nexus_features is None or nexus_features.get("p0", True))
                          else "conventional I-cache")
             },
