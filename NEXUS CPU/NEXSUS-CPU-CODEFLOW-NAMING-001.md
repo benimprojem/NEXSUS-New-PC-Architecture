@@ -1,39 +1,50 @@
-# NEXSUS CPU Code-Path Terminology — Naming Decision 001
+# NEXSUS CPU — CodeFlow & Workspace Naming Standard (Decision 001)
 
-Status: proposed canonical vocabulary (implementation identifiers remain backward-compatible)
+Status: canonical terminology; legacy identifiers remain accepted in historical/source contexts.
 
-## Canonical names
+## Naming rule
+**A single instance has no numeric suffix.** Add an index only when multiple independently addressable instances exist. Examples: `Execution Buffer` (one), `Code Cache` (one), `Code Slot CS0–CS7` (eight), `Context Pool CP0–CP3` (four banks).
 
-| Legacy identifier | Canonical architectural name | Short symbol | Responsibility |
+## Code path
+
+| Legacy identifier | Canonical name | Symbol | Responsibility |
 |---|---|---|---|
-| PX Manager | CodeFlow Manager | CFM | OS-facing task/page orchestration and hardware-safe page lifecycle |
-| PX P0–P7 | Code Slots | CS0–CS7 | Eight equal, dynamically allocated 2 KiB executable-page slots |
-| L0I | Code Cache | C0 | 64 KiB task-aware App RAM staging/cache; incremental fills |
-| SPM0 | Execution Buffer | EB0 | 4 KiB CPU code workspace, two 2 KiB ping-pong banks |
-| PX → SPM0 transfer | Code Stream | CST | Page movement into the inactive execution bank |
-| PX_NEXT | Code-Flow Continue | CF_NEXT | Manager metadata indicating continuation |
-| PX_END | Code-Flow End | CF_END | Manager metadata marking end of code stream |
+| PX Manager | CodeFlow Manager | CFM | OS-facing task/page orchestration and safe page lifecycle |
+| PX P0–P7 | Code Slots | CS0–CS7 | Eight equal, dynamic 2 KiB executable-page slots |
+| L0I | Code Cache | C0 | 64 KiB task-aware App RAM staging/cache |
+| SPM0 | Execution Buffer | EB | CPU-visible code workspace; 2 × 2 KiB ping-pong banks |
+| PX → SPM0 | Code Stream Transfer | CST | Transfer into inactive execution bank |
+| PX_NEXT | Code-Flow Continue | CF_NEXT | Manager-only continuation metadata |
+| PX_END | Code-Flow End | CF_END | Manager-only stream-end metadata |
 
-## Compatibility rule
+## Former SPM workspaces — separate purposes, separate names
 
-The existing names PX, P0–P7, L0I, SPM0, PX_NEXT and PX_END remain valid in source, simulation output and historical records. The canonical names above are descriptive aliases, not a breaking rename. In new prose, use canonical name first and legacy symbol in parentheses on first occurrence, e.g. **Code Cache (C0; legacy L0I)**.
+| Legacy address/name | Canonical name | Symbol | Capacity | Purpose |
+|---|---|---|---:|---|
+| SPM1 | OS Workspace | OW | 8 KiB | OS/kernel working data and control |
+| SPM2 | Task Workspace | TW | 8 KiB | Current user/task-local working data |
+| SPM3–SPM6 | Context Pool | CP0–CP3 | 4 × 8 KiB | Protected task context images; pool entries, not task IDs |
+| SPM7 | Exception Workspace | XW | 8 KiB | Exception/interrupt entry scratch and handler workspace |
 
-Do not call CS0 the active slot by default: every Code Slot is equal; any mapped slot may be referenced by fetch. Code Cache (C0) is staging, not directly executable. Execution Buffer (EB0) is the active code workspace and does not hold register images.
+These are not one generic memory class: they have different ownership, privilege, lifetime, and save/restore rules. The old SPMx labels remain compatibility aliases for existing docs, source, and historical simulation records; new architecture text must use the canonical names.
 
-## Pipeline
+## Canonical code path
 
-```text
-App RAM -> Code Cache C0 (L0I, 64 KiB)
-        -> Code Slots CS0–CS7 (PX, 8 x 2 KiB)
-        -> Execution Buffer EB0 (SPM0, 2 x 2 KiB)
+```
+App RAM -> Code Cache C0 (legacy L0I, 64 KiB)
+        -> Code Slots CS0–CS7 (legacy PX, 8 × 2 KiB)
+        -> Execution Buffer EB (legacy SPM0, 2 × 2 KiB banks)
 ```
 
-App RAM baseline is one 64-bit read lane. Code Cache fills are task/page-aware and may use non-contiguous source addresses. The three transfer queues remain independent and may overlap subject to validity, ownership and backpressure.
+App RAM baseline remains one 64-bit read lane. C0 fills are task/page-aware and may use non-contiguous source addresses. App RAM→C0, C0→CS, and CS→EB are independent queues and may overlap subject to validity, ownership, and backpressure.
+
+## Compatibility and usage
+- Legacy PX/P0–P7/L0I/SPM0–SPM7 identifiers are **not deleted or silently reinterpreted**.
+- In new prose, introduce the canonical name first and legacy identifier parenthetically once.
+- Do not append `0` to a singleton. Index only genuinely repeated units.
+- CS0 is not a permanently active slot; all Code Slots are equal.
+- C0 is staging/cache, not directly executable. EB is the CPU-visible code buffer, not a register/context image.
+- CP0–CP3 are pool positions; a task's identity is independent of its context residency.
 
 ## Naming rationale
-
-- **CodeFlow** describes task-aware code page lifecycle, rather than an opaque “PX”.
-- **Code Slot** describes a physical page residency slot without implying task identity or priority.
-- **Code Cache** conveys incremental reuse/staging.
-- **Execution Buffer** identifies the final CPU-visible code workspace, distinguishing it from register/context storage.
-- **Code Stream** names the transfer/continuation concept without treating metadata as instruction bytes.
+CodeFlow describes the page lifecycle; Code Slot describes physical residency; Code Cache describes staging/reuse; Execution Buffer is the final code workspace. OS Workspace, Task Workspace, Context Pool, and Exception Workspace explicitly distinguish the former SPM regions by role.
