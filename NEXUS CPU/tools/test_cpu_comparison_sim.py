@@ -28,6 +28,65 @@ class DataRamMSHRTests(unittest.TestCase):
             result["results"]["1"]["cycles"], result["results"]["2"]["cycles"]
         )
 
+    def test_dependent_load_chain_does_not_need_extra_mshrs(self):
+        shards = []
+        for core_id in range(8):
+            shard = []
+            for seq in range(24):
+                shard.append(sim.Op(
+                    seq, "LOAD", deps=((seq - 1,) if seq else ()),
+                    address=0x30000000 + core_id * 0x10000 + seq * 64,
+                    width=8, label="dependent cold load chain",
+                ))
+            shards.append(shard)
+        profile = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        one = sim.simulate_multicore_streams(
+            shards, profile, 64,
+            {"task_workspace": False, "code_slots": False, "data_mshr_entries": 1},
+        )
+        many = sim.simulate_multicore_streams(
+            shards, profile, 64,
+            {"task_workspace": False, "code_slots": False, "data_mshr_entries": 8},
+        )
+        self.assertEqual([core["retired"] for core in one["cores"]], [24] * 8)
+        self.assertEqual(one["cycles"], many["cycles"])
+        self.assertEqual(one["data_mshr"]["max_outstanding_per_core"], [1] * 8)
+        self.assertEqual(one["data_mshr"]["total_full_cycles"], 0)
+
+    def test_app_and_data_ram_traffic_progress_on_independent_controllers(self):
+        shards = []
+        for core_id in range(8):
+            shard = []
+            for seq in range(260):
+                if seq % 2 == 0:
+                    shard.append(sim.Op(
+                        seq, "LOAD",
+                        address=0x40000000 + core_id * 0x100000 + (seq // 2) * 64,
+                        width=8, command_address=seq * 8,
+                        label="concurrent App RAM and Data RAM traffic",
+                    ))
+                else:
+                    shard.append(sim.Op(
+                        seq, "INT", command_address=seq * 8,
+                        label="interleaved compute",
+                    ))
+            shards.append(shard)
+        profile = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        run = sim.simulate_multicore_streams(
+            shards, profile, 64,
+            {"task_workspace": False, "code_slots": False, "codeflow": True,
+             "data_mshr_entries": 8},
+        )
+        self.assertEqual([core["retired"] for core in run["cores"]], [260] * 8)
+        self.assertIsNotNone(run["app_controller"])
+        self.assertGreater(run["app_controller"]["accepted"], 0)
+        self.assertGreater(len(run["app_controller"]["request_events"]), 0)
+        self.assertGreater(len(run["controller"]["request_events"]), 0)
+        self.assertNotEqual(
+            run["app_controller"]["request_events"],
+            run["controller"]["request_events"],
+        )
+
     def test_per_core_mshrs_are_not_a_shared_global_pool(self):
         # Each core owns a local sequence beginning at zero. Addresses
         # are unique so every core issues one independent cold DRAM miss.
