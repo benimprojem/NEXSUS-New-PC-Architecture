@@ -74,18 +74,18 @@ class DataRamMSHRTests(unittest.TestCase):
         profile = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
         run = sim.simulate_multicore_streams(
             shards, profile, 64,
-            {"task_workspace": False, "code_slots": False, "codeflow": True,
-             "data_mshr_entries": 8},
+            {"task_workspace": True, "code_slots": True, "codeflow": True,
+             "app_max_outstanding": 16, "data_mshr_entries": 8},
         )
         self.assertEqual([core["retired"] for core in run["cores"]], [260] * 8)
-        self.assertIsNotNone(run["app_controller"])
-        self.assertGreater(run["app_controller"]["accepted"], 0)
-        self.assertGreater(len(run["app_controller"]["request_events"]), 0)
-        self.assertGreater(len(run["controller"]["request_events"]), 0)
-        self.assertNotEqual(
-            run["app_controller"]["request_events"],
-            run["controller"]["request_events"],
-        )
+        app = run["app_controller"]
+        data = run["controller"]
+        self.assertIsNotNone(app)
+        self.assertGreater(app["accepted"], 8)
+        self.assertGreater(app["transferred_bytes"], 0)
+        self.assertGreater(len(data["request_events"]), 0)
+        overlap_cycles = set(app["request_cycles"]) & set(data["request_cycles"])
+        self.assertTrue(overlap_cycles, "App RAM and Data RAM requests did not overlap")
 
     def test_per_core_mshrs_are_not_a_shared_global_pool(self):
         # Each core owns a local sequence beginning at zero. Addresses
