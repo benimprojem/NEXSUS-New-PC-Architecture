@@ -37,7 +37,7 @@ Bu bileşenler araştırma ve tasarım önerileridir; tamamlanmış veya silikon
 ### CPU — simülasyon ve doğrulama
 - [Karşılaştırma simülatörü](NEXUS%20CPU/tools/cpu_comparison_sim.py)
 - [L0I / CodeFlow pipeline simülatörü](NEXUS%20CPU/tools/l0i_px_pipeline_sim.py)
-- [Birleşik CPU + CodeFlow test paketi](NEXUS%20CPU/tools/run_cross_arch_codeflow_suite.py)\n- [Cross-architecture + CodeFlow test guide (EN)](NEXUS%20CPU/NEXSUS-CPU-CROSS-ARCH-CODEFLOW-001.md)\n- [Karşılaştırma ve CodeFlow test rehberi (TR)](Türkçe/NEXSUS-CPU-CROSS-ARCH-CODEFLOW-001.md) — aynı iş yükünü AMD/Intel/ARM/NEXSUS modellerinde çalıştırır; NEXSUS kod besleme hattını ayrı beat aralığı duyarlılığı olarak raporlar.
+- [Birleşik CPU + CodeFlow test paketi](NEXUS%20CPU/tools/run_cross_arch_codeflow_suite.py)- [Cross-architecture + CodeFlow test guide (EN)](NEXUS%20CPU/NEXSUS-CPU-CROSS-ARCH-CODEFLOW-001.md)\n- [Karşılaştırma ve CodeFlow test rehberi (TR)](Türkçe/NEXSUS-CPU-CROSS-ARCH-CODEFLOW-001.md) — aynı iş yükünü AMD/Intel/ARM/NEXSUS modellerinde çalıştırır; NEXSUS kod besleme hattını ayrı beat aralığı duyarlılığı olarak raporlar.
 - [Karşılaştırma simülatörü testleri](NEXUS%20CPU/tools/test_cpu_comparison_sim.py)
 - [CodeFlow pipeline testleri](NEXUS%20CPU/tools/test_l0i_px_pipeline_sim.py)
 - [Simülatör mimarisi](NEXUS%20CPU/NEXSUS-CPU-SIMULATOR-ARCHITECTURE-001.md)
