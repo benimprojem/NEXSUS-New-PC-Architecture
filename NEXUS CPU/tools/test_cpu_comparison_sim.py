@@ -893,5 +893,79 @@ class SharedAppRamIntegrationTests(unittest.TestCase):
         self.assertEqual(kernel["app_ram_controller"]["max_outstanding"], 2)
 
 
+class EightCoreArchitectureScalingTests(unittest.TestCase):
+    @staticmethod
+    def _workload():
+        # Identical logical instruction/data trace for every architecture.
+        kinds = ("LOAD", "INT", "FP", "STORE", "VEC", "INT", "LOAD", "BR")
+        return [
+            sim.Op(i, kinds[i % len(kinds)],
+                   address=((i * 13) % 256) * 64,
+                   width=8 if i % 4 else 64,
+                   command_address=i * 8)
+            for i in range(1024)
+        ]
+
+    def test_all_architectures_run_the_same_workload_on_eight_cores(self):
+        workload = self._workload()
+        expected = {
+            "amd_9950x3d2": 16,
+            "intel_xeon_698x": 86,
+            "apple_m6": 12,
+            "nexus_balanced_128": 8,
+        }
+        rows = {}
+        for key in expected:
+            profile = sim.profile_from_dict(sim.PROFILES[key])
+            shards = sim.partition_dependency_components(workload, 8)
+            features = ({"task_workspace": True, "code_slots": True,
+                         "codeflow": True, "app_max_outstanding": 8}
+                        if key == "nexus_balanced_128" else
+                        {"task_workspace": False, "code_slots": False,
+                         "codeflow": False})
+            result = sim.simulate_multicore_streams(
+                shards, profile, int(sim.PROFILES[key]["dram_bytes_per_cycle"]),
+                features,
+            )
+            rows[key] = result
+            self.assertEqual(len(result["cores"]), 8)
+            self.assertEqual(sum(core["retired"] for core in result["cores"]), 1024)
+            self.assertGreater(result["cycles"], 0)
+            self.assertEqual(expected[key], sim.PROFILES[key]["core_count"])
+        # All architectures complete exactly the same 1,024 operations.
+        self.assertEqual(
+            {sum(core["retired"] for core in row["cores"]) for row in rows.values()},
+            {1024},
+        )
+        self.assertIsNotNone(rows["nexus_balanced_128"]["app_controller"])
+        for key in ("amd_9950x3d2", "intel_xeon_698x", "apple_m6"):
+            self.assertIsNone(rows[key]["app_controller"])
+
+    def test_nexus_eight_core_app_ram_queue_depth_sweep_is_lossless(self):
+        workload = self._workload()
+        shards = sim.partition_dependency_components(workload, 8)
+        profile = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        rows = {}
+        for depth in (1, 2, 4, 8, 16, 32):
+            result = sim.simulate_multicore_streams(
+                shards, profile, 64,
+                {"task_workspace": True, "code_slots": True,
+                 "codeflow": True, "app_max_outstanding": depth},
+            )
+            app = result["app_controller"]
+            rows[depth] = result
+            self.assertEqual(sum(core["retired"] for core in result["cores"]), 1024)
+            self.assertEqual(app["max_outstanding"], depth)
+            self.assertGreaterEqual(app["accepted"], 8)
+        # More queue slots must not cause lost/duplicated work or longer runtime
+        # solely from queue admission; exact cycles remain model-derived.
+        self.assertEqual(
+            {sum(core["retired"] for core in row["cores"]) for row in rows.values()},
+            {1024},
+        )
+        self.assertGreater(rows[1]["app_controller"]["queue_rejections"], 0)
+        self.assertEqual(rows[32]["app_controller"]["queue_rejections"], 0)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
