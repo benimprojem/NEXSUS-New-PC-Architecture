@@ -70,7 +70,7 @@ jobs:
           assert len({x["pages_completed"] for x in data["codeflow_beat_interval_sweep"].values()}) == 1
           print("PASS: same composite operations across four CPU models; CodeFlow lane interval sweep completed all pages.")
           PY
-      - name: Run four-way SPM P0 ablation
+      - name: Run four-way Task Workspace / Code Slots ablation
         run: python "NEXUS CPU/tools/cpu_comparison_sim.py" --ablation --scale 1
       - name: Run normalized eight-core comparison
         # All four profiles use the same configured core count and logical operation count.
@@ -94,21 +94,21 @@ jobs:
               assert row["ops_preserved"], name
               print(f'{name}: off={row["cycles_predictor_off"]} compact={row["cycles_compact_predictor"]} mispredicts={row["mispredicts_predictor_off"]}->{row["mispredicts_compact_predictor"]}')
           PY
-      - name: Run PX pool capacity sensitivity sweep
+      - name: Run CS code-slot capacity sensitivity sweep
         run: |
-          python "NEXUS CPU/tools/cpu_comparison_sim.py" --p0-sweep --scale 1 --json > /tmp/nexus-p0-sweep.json
+          python "NEXUS CPU/tools/cpu_comparison_sim.py" --cs-sweep --scale 1 --json > /tmp/nexus-cs-sweep.json
           python - <<'PY'
           import json
-          data = json.load(open("/tmp/nexus-p0-sweep.json", encoding="utf-8"))
+          data = json.load(open("/tmp/nexus-cs-sweep.json", encoding="utf-8"))
           rows = list(data["results"].values())
           assert len({row["total_ops"] for row in rows}) == 1
-          assert len({row["total_cycles"] for row in rows}) > 1, "PX pool capacity must affect miss cost"
-          misses = {row["kernels"]["p0_starvation"]["p0"]["pool_misses"] for row in rows}
+          assert len({row["total_cycles"] for row in rows}) > 1, "CS capacity must affect code-page miss cost"
+          misses = {row["kernels"]["cs_starvation"]["p0"]["pool_misses"] for row in rows}
           assert len(misses) > 1, misses
-          print("PX POOL CAPACITY SENSITIVITY")
+          print("CS CODE-SLOT CAPACITY SENSITIVITY")
           for row in data["results"].values():
-              starve = row["kernels"]["p0_starvation"]["cycles"]
-              print(f'{row["capacity_kb"]} KiB: total_cycles={row["total_cycles"]} p0_starvation_cycles={starve} ops={row["total_ops"]}')
+              starve = row["kernels"]["cs_starvation"]["cycles"]
+              print(f'{row["capacity_kb"]} KiB: total_cycles={row["total_cycles"]} cs_starvation_cycles={starve} ops={row["total_ops"]}')
           PY
       - name: Run instruction fetch latency sensitivity sweep
         run: |
@@ -123,14 +123,14 @@ jobs:
               for row in rows.values():
                   print(f'{profile}: refill={row["refill_latency_cycles"]} cycles={row["cycles"]} ops={row["ops"]}')
           PY
-      - name: Upload comparison and P0 sweep results
+      - name: Upload comparison and CS sweep results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: nexus-cpu-comparison-results
           path: |
             /tmp/nexus-cpu-results.json
-            /tmp/nexus-p0-sweep.json
+            /tmp/nexus-cs-sweep.json
             /tmp/nexus-fetch-sweep.json
             /tmp/nexus-branch-sweep.json
             /tmp/nexus-normalized-8core.json
