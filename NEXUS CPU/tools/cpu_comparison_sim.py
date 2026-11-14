@@ -1277,7 +1277,8 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                                 "accepted": app_controller.accepted,
                                 "queue_rejections": app_controller.rejected_queue_full,
                                 "bank_conflicts": app_controller.bank_conflicts,
-                                "transferred_bytes": app_controller.transferred_bytes}
+                                "transferred_bytes": app_controller.transferred_bytes,
+                                "request_cycles": sorted(set(app_controller.request_cycles))}
                                if app_controller is not None else None),
             "controller": {"bank_count": p.bank_count,
                            "aggregate_dram_bytes_per_cycle": aggregate_dram_bandwidth,
