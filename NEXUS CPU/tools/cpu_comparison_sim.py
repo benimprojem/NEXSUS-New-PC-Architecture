@@ -400,7 +400,15 @@ class CommandFetchModel:
         self.refill_latency = p0_refill_latency if enabled else conventional_refill_latency
         self.p0_buffer_bytes = p0_buffer_bytes
         self.page_descriptors = {int(k): v for k, v in (page_descriptors or {}).items()}
-        self.pool_miss_latency = pool_miss_latency
+        self.pool_miss_latency = pool_miss_latency  # legacy fallback
+        self.code_cache_capacity_pages = max(1, code_cache_bytes // p0_buffer_bytes)
+        self.code_cache_pages = OrderedDict()
+        self.app_first_beat_latency = app_first_beat_latency
+        self.app_beat_interval = max(1, app_beat_interval)
+        self.c0_to_cs_cycles = math.ceil(p0_buffer_bytes / max(1, c0_to_cs_bytes_per_cycle))
+        self.cs_to_eb_cycles = math.ceil(p0_buffer_bytes / max(1, cs_to_eb_bytes_per_cycle))
+        self.c0_hits = self.c0_misses = self.app_beats = self.app_bytes = 0
+        self.app_source_cycles = self.code_slot_cycles = self.code_stream_cycles = 0
         self.pool_initialized = False
         self.pool_refill_bytes = 0
         self.p0_buffers = [None, None]  # SPM0-A/B, 2 KiB each
