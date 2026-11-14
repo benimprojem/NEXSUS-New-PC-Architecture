@@ -153,8 +153,7 @@ class Pipeline:
             px_bank_available=self.spm[px_bank] is None
             if self.pxspm_q and not px_bank_available:
                 self.counters["px_spm_backpressure_cycles"]+=1
-            if (self.pxspm_active is None and self.pxspm_q and px_bank_available
-                    and self.l0px_active is None and self.app_active is None):
+            if self.pxspm_active is None and self.pxspm_q and px_bank_available:
                 p=self.pxspm_q.popleft()
                 self.pxspm_active=p
                 self.pxspm_done_cycle=cycle+self._transfer_duration(p.valid_bytes,self.c.px_to_spm_bytes_per_cycle)
@@ -170,8 +169,7 @@ class Pipeline:
                 self.l0px_active=None
             if self.l0px_active is not None and cycle>=self.l0px_done_cycle and len(self.pxspm_q)>=self.c.px_spm_queue_depth:
                 self.counters["l0i_px_backpressure_cycles"]+=1
-            if (self.l0px_active is None and self.l0px_q
-                    and self.pxspm_active is None and self.app_active is None):
+            if self.l0px_active is None and self.l0px_q:
                 p=self.l0px_q.popleft()
                 self.l0px_active=p
                 self.l0px_done_cycle=cycle+self._transfer_duration(p.valid_bytes,self.c.l0i_to_px_bytes_per_cycle)
@@ -203,8 +201,7 @@ class Pipeline:
                 self.app_active=None
             if self.app_active is not None and cycle>=self.app_done_cycle and len(self.l0px_q)>=self.c.l0i_px_queue_depth:
                 self.counters["app_backpressure_cycles"]+=1
-            if (self.app_active is None and self.app_q
-                    and self.l0px_active is None and self.pxspm_active is None):
+            if self.app_active is None and self.app_q:
                 p=self.app_q.popleft(); self.app_active=p
                 self.app_done_cycle=cycle+self._app_duration(p)
                 self.counters["app_stage_busy_cycles"]+=self._app_duration(p)
