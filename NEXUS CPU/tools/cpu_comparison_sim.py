@@ -1010,10 +1010,24 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 exec_kind = p.matrix_unit if op.kind == "ME512" else op.kind
                 resource = "LOAD" if exec_kind == "LOAD" else ("STORE" if exec_kind == "STORE" else exec_kind)
                 slots = st["unit_busy"].get(resource, [])
-                slot = next((i for i, available in enumerate(slots) if available <= cycle), None)
-                if slot is None:
+                topology = getattr(p, "execution_topology", {}) or {}
+                selected_slots = None
+                if resource == "INT" and op.exec_width_bits >= 128 and topology.get("INT128_PAIRS"):
+                    selected_slots = next(
+                        (pair for pair in topology["INT128_PAIRS"]
+                         if all(index < len(slots) and slots[index] <= cycle for index in pair)),
+                        None,
+                    )
+                elif resource == "INT" and topology.get("INT128_PAIRS"):
+                    slot_index = next((i for i, available in enumerate(slots) if available <= cycle), None)
+                    selected_slots = [slot_index] if slot_index is not None else None
+                else:
+                    slot_index = next((i for i, available in enumerate(slots) if available <= cycle), None)
+                    selected_slots = [slot_index] if slot_index is not None else None
+                if not selected_slots:
                     st["stalls"]["execution_unit_blocked_op_cycles"] += 1
                     continue
+                slot = selected_slots[0]
                 mem_lat = 0
                 level = None
                 if op.kind in ("LOAD", "STORE", "ATOM"):
@@ -1051,7 +1065,8 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                     item["request_id"] = None
                 # Mark as selected now; completion timing is finalized below.
                 st["issued"][seq] = True
-                slots[slot] = cycle + 1
+                for slot_index in selected_slots:
+                    slots[slot_index] = cycle + 1
                 item["branch"] = op.kind == "BR"
                 item["memory"] = op.kind in ("LOAD", "STORE", "ATOM")
                 pending_memory.append({"_issue": item})
