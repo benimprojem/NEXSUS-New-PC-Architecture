@@ -965,6 +965,14 @@ class EightCoreArchitectureScalingTests(unittest.TestCase):
         )
         self.assertGreater(rows[1]["app_controller"]["queue_rejections"], 0)
         self.assertEqual(rows[32]["app_controller"]["queue_rejections"], 0)
+        for depth, result in rows.items():
+            data = result["controller"]
+            dram_hits = sum(core["hits"]["DRAM"] for core in result["cores"])
+            self.assertEqual(len(data["request_events"]), dram_hits, depth)
+            self.assertTrue(all(
+                event["request_cycle"] <= event["service_complete_cycle"]
+                for event in data["request_events"]
+            ), depth)
 
     def test_app_ram_and_data_ram_controllers_progress_independently(self):
         app = sim.AppRamController(
@@ -1006,6 +1014,22 @@ class EightCoreArchitectureScalingTests(unittest.TestCase):
         self.assertEqual(app.transferred_bytes, 64)
         self.assertGreater(data.bus_next_byte, data_bus_after_first)
 
+        # Replaying only the same Data RAM requests must produce identical
+        # service reservations: App RAM traffic cannot perturb its controller.
+        reference_data = sim.SharedMemoryController(
+            bank_count=4, beat_bytes=8, aggregate_bytes_per_cycle=16,
+        )
+        reference_first = reference_data.reserve_batch(0, [
+            {"id": "data-load-0", "core": 0,
+             "address": 0x8000, "width": 64},
+        ])
+        reference_second = reference_data.reserve_batch(1, [
+            {"id": "data-load-1", "core": 1,
+             "address": 0x9000, "width": 64},
+        ])
+        self.assertEqual(data_first, reference_first)
+        self.assertEqual(data_second, reference_second)
+
         # Data RAM traffic must not consume App RAM queue slots or bus capacity.
         self.assertEqual(len(app.inflight), 1)
         self.assertEqual(app.inflight["instruction-page-0"], app_ready)
@@ -1044,9 +1068,16 @@ class EightCoreArchitectureScalingTests(unittest.TestCase):
         self.assertGreater(app["accepted"], 8)
         self.assertGreater(app["transferred_bytes"], 0)
         self.assertGreater(data["bus_next_cycle"], 0)
-        self.assertGreater(
-            sum(core["hits"]["DRAM"] for core in result["cores"]), 0,
-        )
+        dram_hits = sum(core["hits"]["DRAM"] for core in result["cores"])
+        self.assertGreater(dram_hits, 0)
+        self.assertEqual(len(data["request_events"]), dram_hits)
+        self.assertTrue(all(
+            event["request_cycle"] <= event["service_complete_cycle"]
+            and event["bank_wait"] >= 0
+            and event["bus_wait"] >= 0
+            and event["width"] > 0
+            for event in data["request_events"]
+        ))
 
         overlap_cycles = (
             set(app["request_cycles"]) & set(data["request_cycles"])
