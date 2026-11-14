@@ -867,7 +867,8 @@ def partition_dependency_components(ops: List[Op], core_count: int) -> List[List
                 command_pc = op.command_address if op.command_address >= 0 else new_seq * 8
             shard.append(Op(new_seq, op.kind,
                             tuple(remap[d] for d in op.deps if d in remap),
-                            op.address, op.width, op.label, command_pc))
+                            op.address, op.width, op.label, command_pc,
+                            op.exec_width_bits))
         if shard:
             shards.append(shard)
     return shards
@@ -1175,7 +1176,8 @@ def run_execution_topology_sweep(workloads: Dict[str, List[Op]], profile_dict: d
     variants = {
         "baseline_2INT_2FP": {
             "units": {**profile_dict["units"], "INT": 2, "FP": 2},
-            "execution_topology": {},
+            # The two baseline INT64 lanes must cooperate for one 128-bit op.
+            "execution_topology": {"INT128_PAIRS": [[0, 1]]},
         },
         "proposed_2x128_plus_4x64_INT__6x64_FP": {
             "units": {**profile_dict["units"], "INT": 8, "FP": 6},
@@ -1218,9 +1220,11 @@ def run_execution_topology_sweep(workloads: Dict[str, List[Op]], profile_dict: d
         },
         "kernels": rows,
         "assumptions": (
-            "INT has eight 64-bit issue lanes. Lanes 0-1 and 2-3 are paired into two 128-bit-capable "
-            "physical units; each pair can instead issue two independent 64-bit operations. "
-            "INT128 ops reserve both lanes of one pair for one cycle. FP has six independent 64-bit lanes. "
+            "Baseline has two 64-bit INT lanes which must pair to execute one 128-bit operation. "
+            "The proposal has eight 64-bit issue lanes: lanes 0-1 and 2-3 form two 128-bit-capable "
+            "pairs, while lanes 4-7 remain independent 64-bit lanes. Each pair can instead issue "
+            "two independent 64-bit operations. INT128 ops reserve both lanes of one pair for one cycle. "
+            "FP has six independent 64-bit lanes. "
             "FMA and IEEE binary128 are not modeled. Frontend/dispatch/issue limits remain unchanged."
         ),
     }
