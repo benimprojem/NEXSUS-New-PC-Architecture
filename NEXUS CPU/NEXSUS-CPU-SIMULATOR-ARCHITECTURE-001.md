@@ -325,3 +325,28 @@ OS policy events enqueue task-aware requests with priority/deadline and logical 
 ### 16.5 Simulation outputs
 
 Add L0I hit/miss, partial-valid hit, chunk-fill queue occupancy, App RAM transfer beats, L0I-to-PX queue occupancy, PX page-ready latency, SPM0 refill overlap, end-to-end dispatch code-ready latency, useful/overfetch bytes and starvation/fairness metrics.
+
+
+## 17. First executable L0I/PX/SPM0 pipeline model
+
+A standalone cycle/event implementation is now available at `tools/l0i_px_pipeline_sim.py`, with focused regression coverage in `tools/test_l0i_px_pipeline_sim.py`.
+
+Implemented behavior:
+- task/logical-page requests with deliberately non-contiguous App RAM source regions;
+- bounded App RAM request queue and configurable 64-bit beat interval/first-beat latency;
+- 64 KiB L0I page residency and incremental page arrivals;
+- independent L0I->PX and PX->SPM0 transfer queues/service rates;
+- eight equal dynamic PX slots with replacement accounting;
+- two 2 KiB SPM0 banks and bank switching;
+- timeline events for APP_REQUEST, APP_READ_START, L0I_READY, L0I_PX_START, PX_READY, PX_SPM0_START and SPM0_READY;
+- counters for App RAM bytes/beats, L0I/PX hits/misses, queue peaks, bank swaps and SPM0-not-ready stalls.
+
+Run from `NEXUS CPU/tools`:
+
+```bash
+python l0i_px_pipeline_sim.py --pages 64 --tasks 2
+python l0i_px_pipeline_sim.py --pages 64 --tasks 2 --beat-interval 4 --json
+python test_l0i_px_pipeline_sim.py
+```
+
+The default `app_beat_interval=1` is a baseline sensitivity assumption, not a frozen hardware guarantee. The first-beat latency, transfer rates and queue depth remain configurable. This first implementation is a pipeline model; it is not yet coupled to the full CPU instruction scheduler or the vendor comparison kernels. CI compiles and runs the dedicated regression suite.
