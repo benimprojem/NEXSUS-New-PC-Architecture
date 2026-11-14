@@ -1012,6 +1012,50 @@ class EightCoreArchitectureScalingTests(unittest.TestCase):
         self.assertGreaterEqual(data_second["service_complete_cycle"], data_ready)
         self.assertEqual(app.rejected_queue_full, 1)
 
+    def test_integrated_app_and_data_ram_requests_overlap_on_global_timeline(self):
+        # Each core crosses a 2-KiB command-page boundary while issuing
+        # independent, cache-cold data loads. Both paths must make progress
+        # during at least one common global cycle.
+        shards = []
+        for core_id in range(8):
+            shard = []
+            for seq in range(260):
+                is_load = (seq % 2 == 0)
+                shard.append(sim.Op(
+                    seq,
+                    "LOAD" if is_load else "INT",
+                    address=(core_id * 0x100000) + (seq * 4096),
+                    width=8,
+                    label="App/Data overlap",
+                    command_address=seq * 8,
+                ))
+            shards.append(shard)
+
+        profile = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        result = sim.simulate_multicore_streams(
+            shards, profile, 64,
+            {"task_workspace": True, "code_slots": True,
+             "codeflow": True, "app_max_outstanding": 16},
+        )
+
+        app = result["app_controller"]
+        data = result["controller"]
+        self.assertEqual(sum(core["retired"] for core in result["cores"]), 8 * 260)
+        self.assertGreater(app["accepted"], 8)
+        self.assertGreater(app["transferred_bytes"], 0)
+        self.assertGreater(data["bus_next_cycle"], 0)
+        self.assertGreater(
+            sum(core["hits"]["DRAM"] for core in result["cores"]), 0,
+        )
+
+        overlap_cycles = (
+            set(app["request_cycles"]) & set(data["request_cycles"])
+        )
+        self.assertTrue(
+            overlap_cycles,
+            "App RAM instruction fetch and Data RAM misses never overlapped",
+        )
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
