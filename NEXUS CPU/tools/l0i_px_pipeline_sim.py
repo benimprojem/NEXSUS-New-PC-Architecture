@@ -121,8 +121,9 @@ class Pipeline:
             # SPM0 CPU consumer: consume current bank's valid instruction bytes.
             if self.spm_remaining>0:
                 self.spm_remaining-=8
-            if self.spm_remaining<=0 and self.spm[self.active_bank] is not None:
-                self.spm[self.active_bank]=None
+            if self.spm_remaining<=0:
+                if self.spm[self.active_bank] is not None:
+                    self.spm[self.active_bank]=None
                 other=1-self.active_bank
                 if self.spm[other] is not None:
                     self.active_bank=other
