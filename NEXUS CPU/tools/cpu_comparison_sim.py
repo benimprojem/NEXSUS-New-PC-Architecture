@@ -1245,6 +1245,70 @@ def run_execution_topology_sweep(workloads: Dict[str, List[Op]], profile_dict: d
     }
 
 
+
+def run_execution_resource_count_sweep(workloads: Dict[str, List[Op]], profile_dict: dict,
+                                       int_counts=(2, 4, 6, 8, 10),
+                                       fp_counts=(2, 4, 6, 8)) -> dict:
+    """Sweep per-core INT/FP issue resources while holding all other assumptions fixed."""
+    target = {name: workloads[name] for name in (
+        "integer_throughput", "integer128_throughput", "fp_throughput",
+        "numeric_tile", "scalar_control"
+    )}
+    rows = {}
+    expected_ops = {name: len(ops) for name, ops in target.items()}
+    for int_count in int_counts:
+        pairs = [[i, i + 1] for i in range(0, int_count - 1, 2)]
+        for fp_count in fp_counts:
+            profile = dict(profile_dict)
+            profile["units"] = {**profile_dict["units"], "INT": int_count, "FP": fp_count}
+            profile["execution_topology"] = {"INT128_PAIRS": pairs}
+            run = simulate_cpu(
+                target, profile, 8,
+                {"task_workspace": False, "code_slots": False},
+            )
+            key = f"INT{int_count}_FP{fp_count}"
+            kernels = {}
+            for name, row in run["kernels"].items():
+                kernels[name] = {
+                    "ops": row["ops"],
+                    "ops_preserved": row["ops"] == expected_ops[name],
+                    "cycles": row["cycles"],
+                    "ipc": row["aggregate_ipc"],
+                    "execution_unit_blocked_op_cycles":
+                        row["stall_counters"]["execution_unit_blocked_op_cycles"],
+                    "dependency_blocked_op_cycles":
+                        row["stall_counters"]["dependency_blocked_op_cycles"],
+                    "issue_width_blocked_op_cycles":
+                        row["stall_counters"]["issue_width_blocked_op_cycles"],
+                }
+            rows[key] = {
+                "int_lanes_per_core": int_count,
+                "int128_pairs_per_core": len(pairs),
+                "fp64_lanes_per_core": fp_count,
+                "total_cycles": run["total_cycles"],
+                "total_ops": run["total_ops"],
+                "kernels": kernels,
+            }
+    if any(not row["ops_preserved"] for variant in rows.values()
+           for row in variant["kernels"].values()):
+        raise AssertionError("resource-count sweep changed logical operation count")
+    return {
+        "experiment": "NEXSUS per-core INT/FP execution resource count sweep",
+        "cores": 8,
+        "int_counts": list(int_counts),
+        "fp_counts": list(fp_counts),
+        "same_logical_workload": expected_ops,
+        "results": rows,
+        "assumptions": (
+            "Only per-core INT and FP unit counts change. INT128 pairs are adjacent "
+            "64-bit lanes; each 128-bit operation reserves one complete pair. All "
+            "variants use the same eight-core lockstep model, issue/frontend widths, "
+            "latencies, caches, and logical operations. FMA and IEEE binary128 are "
+            "not modeled. Results are simulator estimates, not silicon measurements."
+        ),
+    }
+
+
 def run_branch_predictor_sweep(workloads: Dict[str, List[Op]], profile_dict: dict) -> dict:
     """Compare NEXSUS predictor-off and compact-predictor assumptions on identical traces."""
     target = {name: workloads[name] for name in ("scalar_control", "pointer_graph", "branch_stress")}
@@ -1427,8 +1491,18 @@ def main():
     ap.add_argument("--cs-sweep", "--p0-sweep", dest="p0_sweep", action="store_true", help="run 4/8/16/32 KiB CS code-slot capacity sweep (legacy flag: --p0-sweep)")
     ap.add_argument("--fetch-sweep", action="store_true", help="compare conventional I-cache and P0 refill latency sensitivity")
     ap.add_argument("--execution-sweep", action="store_true", help="compare baseline and mixed-width NEXSUS INT/FP resources")
+    ap.add_argument("--resource-sweep", action="store_true", help="sweep per-core INT/FP unit counts with fixed workloads")
     args = ap.parse_args()
     workloads = build_composite_workload(args.scale)
+    if args.resource_sweep:
+        result = run_execution_resource_count_sweep(workloads, PROFILES["nexus_balanced_128"])
+        if args.json:
+            print(json.dumps(result, indent=2))
+        else:
+            print("NEXSUS INT/FP RESOURCE COUNT SWEEP")
+            for name, row in result["results"].items():
+                print(f'{name}: cycles={row["total_cycles"]} ops={row["total_ops"]}')
+        return
     if args.execution_sweep:
         result = run_execution_topology_sweep(workloads, PROFILES["nexus_balanced_128"])
         if args.json:
