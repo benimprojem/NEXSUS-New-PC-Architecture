@@ -30,6 +30,27 @@ class PipelineTests(unittest.TestCase):
         slow=sim.Pipeline(sim.Config(app_beat_interval=4)).run(pages)
         self.assertGreater(slow.cycles,fast.cycles)
 
+    def test_overlapped_stages_beat_serial_pipeline(self):
+        pages=sim.make_pages(16,tasks=4)
+        overlapped=sim.Pipeline(sim.Config(allow_overlap=True)).run(pages)
+        serial=sim.Pipeline(sim.Config(allow_overlap=False)).run(pages)
+        self.assertEqual(overlapped.pages_completed,16)
+        self.assertEqual(serial.pages_completed,16)
+        self.assertLess(overlapped.cycles,serial.cycles)
+        self.assertGreater(overlapped.app_stage_busy_cycles,0)
+        self.assertGreater(overlapped.l0i_px_stage_busy_cycles,0)
+        self.assertGreater(overlapped.px_spm_stage_busy_cycles,0)
+
+    def test_pipeline_queues_remain_bounded_and_report_backpressure(self):
+        cfg=sim.Config(app_queue_depth=2,l0i_px_queue_depth=1,px_spm_queue_depth=1)
+        result=sim.Pipeline(cfg).run(sim.make_pages(24,tasks=4))
+        self.assertLessEqual(result.app_queue_peak,2)
+        self.assertLessEqual(result.l0i_px_queue_peak,1)
+        self.assertLessEqual(result.px_spm_queue_peak,1)
+        self.assertGreaterEqual(result.app_backpressure_cycles,0)
+        self.assertGreaterEqual(result.l0i_px_backpressure_cycles,0)
+        self.assertGreaterEqual(result.px_spm_backpressure_cycles,0)
+
     def test_invalid_unaligned_page_rejected(self):
         with self.assertRaises(ValueError):
             sim.Pipeline(sim.Config()).run([sim.Page("T0",0,0,15)])
