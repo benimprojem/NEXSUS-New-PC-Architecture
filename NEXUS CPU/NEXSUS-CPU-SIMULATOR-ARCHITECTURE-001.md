@@ -349,7 +349,7 @@ python l0i_px_pipeline_sim.py --pages 64 --tasks 2 --beat-interval 4 --json
 python test_l0i_px_pipeline_sim.py
 ```
 
-The default `app_beat_interval=1` is a baseline sensitivity assumption, not a frozen hardware guarantee. The first-beat latency, transfer rates and queue depth remain configurable. This first implementation is a pipeline model; it is not yet coupled to the full CPU instruction scheduler or the vendor comparison kernels. CI compiles and runs the dedicated regression suite.
+The default `app_beat_interval=1` is a baseline sensitivity assumption, not a frozen hardware guarantee. The first-beat latency, transfer rates and queue depth remain configurable. The standalone pipeline remains available for queue-level event/timeline experiments. In addition, the comparison CPU scheduler now gates NEXSUS dispatch on CodeFlow readiness and includes configurable App RAM → C0, C0 → CS, and CS → EB delays in the same global cycle loop. Its fetch report exposes C0 hit/miss, App RAM beat/byte/source-cycle, Code Slot transfer-cycle, Code Stream transfer-cycle, pool and dispatch-wait counters. This integration is a serialized page-ready approximation, not a fully concurrent RTL pipeline; use the standalone pipeline to study overlap/arbitration and the CPU model to measure execution impact. CI covers both paths.
 
 
 ## Canonical terminology
