@@ -565,18 +565,17 @@ class WorkloadPartitionTests(unittest.TestCase):
 class IntegratedCodeFlowTests(unittest.TestCase):
     def test_c0_miss_waits_for_app_ram_and_two_transfer_stages(self):
         fetch = sim.CommandFetchModel(True, codeflow_enabled=True)
-        fetch._pool_touch(0)  # OS launch stages logical pages 0..7
-        self.assertFalse(fetch.can_fetch(8 * 2048, 0))
+        self.assertFalse(fetch.can_fetch(0, 0))
         # 2 KiB / 8-byte lane = 256 beats; 40-cycle first beat + 255 intervals + final beat.
         app_cycles = 40 + 255 * 1 + 1
         ready = 48 + app_cycles + 128 + 128
         fetch.complete(ready - 1)
-        self.assertFalse(fetch.can_fetch(8 * 2048, ready - 1))
+        self.assertFalse(fetch.can_fetch(0, ready - 1))
         fetch.complete(ready)
-        self.assertTrue(fetch.can_fetch(8 * 2048, ready))
+        self.assertTrue(fetch.can_fetch(0, ready))
         self.assertEqual(fetch.app_beats, 512)  # requested page plus one-page lookahead
-        self.assertEqual(fetch.app_bytes, 4096)  # requested page + lookahead
-        self.assertEqual(fetch.c0_misses, 2)  # requested page + next-page lookahead
+        self.assertEqual(fetch.app_bytes, 4096)  # cold page + lookahead
+        self.assertEqual(fetch.c0_misses, 2)  # cold page + next-page lookahead
         self.assertEqual(fetch.code_slot_cycles, 128)
         self.assertEqual(fetch.code_stream_cycles, 128)
 
@@ -584,8 +583,7 @@ class IntegratedCodeFlowTests(unittest.TestCase):
         ready_cycles = []
         for interval in (1, 4):
             fetch = sim.CommandFetchModel(True, codeflow_enabled=True, app_beat_interval=interval)
-            fetch._pool_touch(0)  # stage initial eight-page pool
-            fetch.can_fetch(8 * 2048, 0)
+            fetch.can_fetch(0, 0)
             ready = 48 + 40 + 255 * interval + 1 + 128 + 128
             fetch.complete(ready)
             self.assertTrue(fetch.can_fetch(8 * 2048, ready))
@@ -593,7 +591,7 @@ class IntegratedCodeFlowTests(unittest.TestCase):
         self.assertEqual(ready_cycles, [600, 1365])
 
     def test_nexus_execution_report_exposes_codeflow_stage_counters(self):
-        result = sim.simulate_cpu({"code": [sim.Op(0, "INT", command_address=0), sim.Op(1, "INT", command_address=8 * 2048)]},
+        result = sim.simulate_cpu({"code": [sim.Op(0, "INT", command_address=0)]},
                                   sim.PROFILES["nexus_balanced_128"], 1)
         counters = result["kernels"]["code"]["p0_counters"]
         for key in ("code_cache_misses", "app_ram_beats", "app_ram_bytes",
