@@ -856,6 +856,28 @@ class SharedAppRamIntegrationTests(unittest.TestCase):
         self.assertEqual(controller.accepted, 2)
         self.assertIsNotNone(core1.p0_pending)
 
+    def test_rejected_app_ram_request_does_not_poison_pool_residency(self):
+        controller = sim.AppRamController(first_beat_latency=5, max_outstanding=1)
+        blocker = controller.reserve_batch(0, [
+            {"id": "blocker", "core": 1, "address": 0x4000, "bytes": 8},
+        ])["blocker"]
+        fetch = sim.CommandFetchModel(
+            True, codeflow_enabled=True, app_ram_controller=controller,
+            core_id=0, app_first_beat_latency=5,
+        )
+        self.assertFalse(fetch.can_fetch(0, 0))
+        self.assertIsNone(fetch.p0_pending)
+        self.assertNotIn(0, fetch.pool_pages)
+        self.assertEqual(fetch.pool_misses, 0)
+        self.assertEqual(fetch.c0_misses, 0)
+
+        fetch.can_fetch(0, blocker["ready_cycle"])
+        self.assertIsNotNone(fetch.p0_pending)
+        self.assertEqual(controller.accepted, 2)
+        self.assertEqual(fetch.pool_misses, 1)
+        self.assertEqual(fetch.c0_misses, 1)
+        self.assertEqual(fetch.app_bytes, fetch.p0_buffer_bytes)
+
     def test_app_ram_metrics_are_separate_from_data_ram_metrics(self):
         workload = {"code_and_data": [sim.Op(0, "INT", command_address=0)]}
         features = {"task_workspace": True, "code_slots": True, "codeflow": True,

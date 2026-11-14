@@ -502,7 +502,8 @@ class CommandFetchModel:
         if valid_bytes <= 0 or valid_bytes > self.p0_buffer_bytes or valid_bytes % 8:
             raise ValueError(f"invalid valid_bytes/alignment for code page {block}")
 
-    def _pool_touch(self, block: int) -> bool:
+    def _pool_probe(self, block: int) -> bool:
+        """Check pool residency without recording a miss before source admission."""
         max_pages = max(1, self.capacity_bytes // self.p0_buffer_bytes)
         if not self.pool_initialized:
             # Legacy mode assumes OS launch-time staging. Integrated CodeFlow
@@ -516,11 +517,21 @@ class CommandFetchModel:
             self.pool_hits += 1
             self.pool_pages.move_to_end(block)
             return True
+        return False
+
+    def _pool_record_miss(self, block: int):
+        max_pages = max(1, self.capacity_bytes // self.p0_buffer_bytes)
         self.pool_misses += 1
-        self.pool_pages[block] = None
         self.pool_refill_bytes += self.p0_buffer_bytes
+        self.pool_pages[block] = None
         if len(self.pool_pages) > max_pages:
             self.pool_pages.popitem(last=False)
+
+    def _pool_touch(self, block: int) -> bool:
+        """Compatibility helper for callers that do not have admission control."""
+        if self._pool_probe(block):
+            return True
+        self._pool_record_miss(block)
         return False
 
     def _start_p0_prefetch(self, block: int, cycle: int, allow_active_bank: bool = False):
@@ -533,16 +544,17 @@ class CommandFetchModel:
             if not allow_active_bank:
                 return  # do not overwrite a bank still consumed by sequential fetch
             self.active_block = None  # branch redirect abandons the old sequential stream
-        pool_hit = self._pool_touch(block)
+        pool_hit = self._pool_probe(block)
         source_delay = code_slot_delay = stream_delay = 0
         if not pool_hit and not self.codeflow_enabled:
+            self._pool_record_miss(block)
             source_delay = self.pool_miss_latency
         elif not pool_hit:
             if block in self.code_cache_pages:
+                self._pool_record_miss(block)
                 self.c0_hits += 1
                 self.code_cache_pages.move_to_end(block)
             else:
-                self.c0_misses += 1
                 beats = math.ceil(self.p0_buffer_bytes / 8)
                 if self.app_ram_controller is not None:
                     request_id = f"core{self.core_id}:page{block}"
@@ -552,10 +564,13 @@ class CommandFetchModel:
                         "bytes": self.p0_buffer_bytes,
                     }])[request_id]
                     if not admission["accepted"]:
+                        # Rejected requests must remain nonresident and retry.
                         return
                     source_delay = max(0, admission["ready_cycle"] - cycle)
                 else:
                     source_delay = self.app_first_beat_latency + max(0, beats - 1) * self.app_beat_interval + 1
+                self._pool_record_miss(block)
+                self.c0_misses += 1
                 self.app_beats += beats
                 self.app_bytes += self.p0_buffer_bytes
                 self.app_source_cycles += source_delay
