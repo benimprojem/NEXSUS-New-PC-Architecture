@@ -393,13 +393,14 @@ class CommandFetchModel:
                  conventional_capacity_bytes: int = 32768,
                  p0_refill_latency: int = 48, conventional_refill_latency: int = 8,
                  p0_buffer_bytes: int = 2048, page_descriptors: dict | None = None,
-                 pool_miss_latency: int = 120, code_cache_bytes: int = 65536, app_first_beat_latency: int = 40, app_beat_interval: int = 1, c0_to_cs_bytes_per_cycle: int = 16, cs_to_eb_bytes_per_cycle: int = 16):
+                 pool_miss_latency: int = 120, code_cache_bytes: int = 65536, app_first_beat_latency: int = 40, app_beat_interval: int = 1, c0_to_cs_bytes_per_cycle: int = 16, cs_to_eb_bytes_per_cycle: int = 16, codeflow_enabled: bool = False):
         self.enabled = enabled
         self.capacity_bytes = p0_capacity_bytes if enabled else conventional_capacity_bytes
         self.lines = LRU(self.capacity_bytes, 64)
         self.refill_latency = p0_refill_latency if enabled else conventional_refill_latency
         self.p0_buffer_bytes = p0_buffer_bytes
         self.page_descriptors = {int(k): v for k, v in (page_descriptors or {}).items()}
+        self.codeflow_enabled = codeflow_enabled
         self.pool_miss_latency = pool_miss_latency  # legacy fallback
         self.code_cache_capacity_pages = max(1, code_cache_bytes // p0_buffer_bytes)
         self.code_cache_pages = OrderedDict()
@@ -493,7 +494,9 @@ class CommandFetchModel:
             self.active_block = None  # branch redirect abandons the old sequential stream
         pool_hit = self._pool_touch(block)
         source_delay = code_slot_delay = stream_delay = 0
-        if not pool_hit:
+        if not pool_hit and not self.codeflow_enabled:
+            source_delay = self.pool_miss_latency
+        elif not pool_hit:
             if block in self.code_cache_pages:
                 self.c0_hits += 1
                 self.code_cache_pages.move_to_end(block)
