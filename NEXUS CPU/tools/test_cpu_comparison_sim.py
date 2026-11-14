@@ -829,5 +829,43 @@ class AppRamControllerTests(unittest.TestCase):
         self.assertTrue(admitted["next"]["accepted"])
 
 
+class SharedAppRamIntegrationTests(unittest.TestCase):
+    def test_two_cores_share_one_app_ram_queue(self):
+        controller = sim.AppRamController(
+            bank_count=8, bytes_per_cycle=32,
+            first_beat_latency=5, max_outstanding=1,
+        )
+        core0 = sim.CommandFetchModel(
+            True, codeflow_enabled=True, app_ram_controller=controller, core_id=0,
+            app_first_beat_latency=5,
+        )
+        core1 = sim.CommandFetchModel(
+            True, codeflow_enabled=True, app_ram_controller=controller, core_id=1,
+            app_first_beat_latency=5,
+        )
+        self.assertFalse(core0.can_fetch(0, 0))
+        self.assertFalse(core1.can_fetch(0, 0))
+        self.assertEqual(controller.accepted, 1)
+        self.assertEqual(controller.rejected_queue_full, 1)
+        ready = core0.p0_pending[1]
+        self.assertIsNotNone(core0.p0_pending)
+        self.assertIsNone(core1.p0_pending)
+        self.assertFalse(core1.can_fetch(0, ready - 1))
+        self.assertIsNone(core1.p0_pending)
+        self.assertFalse(core1.can_fetch(0, ready))
+        self.assertEqual(controller.accepted, 2)
+        self.assertIsNotNone(core1.p0_pending)
+
+    def test_app_ram_metrics_are_separate_from_data_ram_metrics(self):
+        workload = {"code_and_data": [sim.Op(0, "INT", command_address=0)]}
+        features = {"task_workspace": True, "code_slots": True, "codeflow": True,
+                    "app_max_outstanding": 2}
+        result = sim.simulate_cpu(workload, sim.PROFILES["nexus_balanced_128"], 2, features)
+        kernel = result["kernels"]["code_and_data"]
+        self.assertIsNotNone(kernel["app_ram_controller"])
+        self.assertIn("memory_controller", kernel)
+        self.assertEqual(kernel["app_ram_controller"]["max_outstanding"], 2)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
