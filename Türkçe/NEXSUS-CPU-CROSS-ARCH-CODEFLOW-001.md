@@ -12,7 +12,7 @@ Ayrıca NEXSUS CodeFlow kod besleme hattını App RAM 64-bit beat aralığı (1/
 
 ## Önemli model sınırı
 
-CPU execution modeli ve CodeFlow pipeline modeli **ayrı katmanlar olarak raporlanır**. CodeFlow henüz her CPU komutunun fetch/scheduler döngüsüne bağlanmış değildir; pipeline gecikmesini CPU toplam çevrimine eklenmiş gibi yorumlamak doğru olmaz. Bu bir sonraki entegrasyon aşamasıdır.
+NEXSUS CPU execution modeli artık dispatch'i CodeFlow sayfa hazır durumuna bağlar; App RAM→C0, C0→CS ve CS→EB gecikmeleri CPU çevrimlerine entegredir. Ayrı CodeFlow pipeline sweep'i kuyruk/overlap ayrıntılarını inceler ve CPU toplam çevrimi üzerine ikinci kez eklenmez.
 
 ## Çalıştırma
 
@@ -24,6 +24,6 @@ CI şu kontrolleri uygular:
 - dört mimaride aynı mantıksal işlem sayısı;
 - dört CPU profilinin raporda bulunması;
 - dört App RAM beat interval senaryosunun tamamlanması;
-- tüm CodeFlow senaryolarında aynı sayfa tamamlanma sayısı.
+- tüm standalone CodeFlow senaryolarında aynı sayfa tamamlanma sayısı;\n- entegre NEXSUS CPU fetch testlerinde App RAM beat, C0 miss ve Code Slot/Code Stream aktarım sayaçları;\n- kod sayfası hazır olmadan dispatch'in ilerlememesi.
 
 Çıktı GitHub Actions artifact'i olarak saklanır. Sonuçlar gerçek CPU ölçümü değil, parametre tabanlı simülasyon sonuçlarıdır.
