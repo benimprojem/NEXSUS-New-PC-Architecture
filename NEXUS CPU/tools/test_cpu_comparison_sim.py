@@ -135,6 +135,8 @@ class SelectedNexusProfileTests(unittest.TestCase):
             "STORE": 4, "BR": 2, "CTX": 1, "ATOM": 1, "ME512": 1, "IRQ": 1,
         })
         self.assertEqual(p["execution_topology"]["INT128_PAIRS"], [[0, 1], [2, 3]])
+        self.assertEqual(p["execution_topology"]["FMA_LANES"], 4)
+        self.assertLessEqual(p["execution_topology"]["FMA_LANES"], p["units"]["FP"])
 
 
 class SharedCacheGroupTests(unittest.TestCase):
