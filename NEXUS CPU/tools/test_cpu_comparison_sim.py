@@ -576,7 +576,7 @@ class IntegratedCodeFlowTests(unittest.TestCase):
         self.assertTrue(fetch.can_fetch(8 * 2048, ready))
         self.assertEqual(fetch.app_beats, 512)  # requested page plus one-page lookahead
         self.assertEqual(fetch.app_bytes, 4096)  # requested page + lookahead
-        self.assertEqual(fetch.c0_misses, 1)
+        self.assertEqual(fetch.c0_misses, 2)  # requested page + next-page lookahead
         self.assertEqual(fetch.code_slot_cycles, 128)
         self.assertEqual(fetch.code_stream_cycles, 128)
 
