@@ -592,7 +592,7 @@ class IntegratedCodeFlowTests(unittest.TestCase):
 
     def test_nexus_execution_report_exposes_codeflow_stage_counters(self):
         result = sim.simulate_cpu({"code": [sim.Op(0, "INT", command_address=0)]},
-                                  sim.PROFILES["nexus_balanced_128"], 1)
+                                  sim.PROFILES["nexus_balanced_128"], 1, {"codeflow": True})
         counters = result["kernels"]["code"]["p0_counters"]
         for key in ("code_cache_misses", "app_ram_beats", "app_ram_bytes",
                     "app_source_cycles", "code_slot_transfer_cycles",
