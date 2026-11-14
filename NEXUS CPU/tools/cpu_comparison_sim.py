@@ -667,6 +667,7 @@ class AppRamController:
         self.rejected_queue_full = 0
         self.bank_conflicts = 0
         self.transferred_bytes = 0
+        self.request_cycles = []
 
     def _bank(self, address: int) -> int:
         return (int(address) // self.beat_bytes) % self.bank_count
@@ -717,6 +718,7 @@ class AppRamController:
             self.inflight[req_id] = ready
             self.accepted += 1
             self.transferred_bytes += size
+            self.request_cycles.append(cycle)
             result[req_id] = {
                 "accepted": True, "bank_count_touched": len(touched),
                 "ready_cycle": ready, "queue_occupancy": len(self.inflight),
@@ -742,6 +744,7 @@ class SharedMemoryController:
         self.bank_busy = [0] * bank_count
         self.bus_next_byte = 0
         self.rr_cursor = 0
+        self.request_cycles = []
 
     @property
     def bus_next_cycle(self) -> int:
@@ -771,6 +774,7 @@ class SharedMemoryController:
         result = {}
         for req in ordered:
             req_id = req["id"]
+            self.request_cycles.append(cycle)
             address = int(req["address"])
             width = max(1, int(req["width"]))
             first_beat_address = (address // self.beat_bytes) * self.beat_bytes
@@ -1278,7 +1282,8 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
             "controller": {"bank_count": p.bank_count,
                            "aggregate_dram_bytes_per_cycle": aggregate_dram_bandwidth,
                            "bank_busy_until": controller.bank_busy,
-                           "bus_next_cycle": controller.bus_next_cycle}}
+                           "bus_next_cycle": controller.bus_next_cycle,
+                           "request_cycles": sorted(set(controller.request_cycles))}}
 
 
 def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=None,
