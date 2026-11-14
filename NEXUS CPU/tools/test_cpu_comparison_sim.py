@@ -604,9 +604,6 @@ class IntegratedCodeFlowTests(unittest.TestCase):
         self.assertGreater(result["kernels"]["code"]["cycles"], 600)
 
 
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
-
 
 class TestNexusMemoryBandwidthRevision(unittest.TestCase):
     def test_nexus_has_double_reference_dram_bandwidth(self):
@@ -655,3 +652,41 @@ class MixedWidthExecutionTopologyTests(unittest.TestCase):
             self.assertTrue(result["kernels"][name]["ops_preserved"], name)
             self.assertGreater(result["kernels"][name]["ops"], 0)
         self.assertEqual(result["kernels"]["integer128_throughput"]["ops"], 256)
+
+
+class ExecutionResourceCountSweepTests(unittest.TestCase):
+    def test_resource_sweep_preserves_work_and_reports_all_unit_counts(self):
+        workloads = sim.build_composite_workload(scale=1)
+        result = sim.run_execution_resource_count_sweep(
+            workloads, sim.PROFILES["nexus_balanced_128"],
+            int_counts=(2, 4, 8), fp_counts=(2, 4, 6),
+        )
+        self.assertEqual(len(result["results"]), 9)
+        for variant in result["results"].values():
+            self.assertEqual(variant["total_ops"], sum(result["same_logical_workload"].values()))
+            for name, row in variant["kernels"].items():
+                self.assertTrue(row["ops_preserved"], name)
+
+    def test_more_int_lanes_do_not_reduce_independent_int_throughput(self):
+        workloads = sim.build_composite_workload(scale=1)
+        result = sim.run_execution_resource_count_sweep(
+            workloads, sim.PROFILES["nexus_balanced_128"],
+            int_counts=(2, 4, 6, 8), fp_counts=(2,),
+        )
+        cycles = [result["results"][f"INT{count}_FP2"]["kernels"]["integer_throughput"]["cycles"]
+                  for count in (2, 4, 6, 8)]
+        self.assertTrue(all(cycles[i] >= cycles[i+1] for i in range(len(cycles)-1)), cycles)
+
+    def test_more_fp_lanes_do_not_reduce_independent_fp_throughput(self):
+        workloads = sim.build_composite_workload(scale=1)
+        result = sim.run_execution_resource_count_sweep(
+            workloads, sim.PROFILES["nexus_balanced_128"],
+            int_counts=(2,), fp_counts=(2, 4, 6, 8),
+        )
+        cycles = [result["results"][f"INT2_FP{count}"]["kernels"]["fp_throughput"]["cycles"]
+                  for count in (2, 4, 6, 8)]
+        self.assertTrue(all(cycles[i] >= cycles[i+1] for i in range(len(cycles)-1)), cycles)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
