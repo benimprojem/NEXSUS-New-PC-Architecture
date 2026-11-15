@@ -90,6 +90,25 @@ Select **20 B/cycle for both C0→CS and CS→EB** as the balanced provisional o
 
 The 48 B/cycle App RAM option remains a lower-bandwidth alternative. App RAM and Data RAM remain separate controllers/paths. These are simulator-backed architecture candidates, not a hardware freeze.
 
+## Integrated branch-redirect model
+
+The legacy redirect estimate measured only the isolated App RAM refill. A new integrated estimate now includes the selected frontend stage rates and separately records the prefetched wrong-path P0/P1 block and explicitly parameterized queued wrong-path pages.
+
+Selected-rate first-target-page delivery components:
+
+| Component | Cycles |
+|---|---:|
+| App RAM refill | 168 |
+| P0/P1→C0 | 128 |
+| C0→CS | 103 |
+| CS→EB | 103 |
+| EB delivery | 128 |
+| **Serialized target delivery** | **630** |
+
+For the default modeled redirect, the branch resolves at cycle 680 and the target page is ready at cycle 1310. The model separately reports 8192 bytes discarded from the wrong-path P0/P1 block and two queued wrong-path pages (4096 bytes) flushed. The queued-page count is an explicit model input, not an observed queue occupancy.
+
+This is a conservative serialized upper-bound estimate: it does not yet model speculative target fetch, partial refill cancellation, or overlap of target delivery with other stages. It is not RTL or silicon timing. CI coverage was added for the integrated redirect path; do not treat it as validated until the workflow is green.
+
 ## Next development step
 
-Keep this operating point fixed and improve the branch-redirect experiment: the existing redirect model treats the target refill as a single isolated latency and does not account for in-flight frontend pages/queue flushes. The next useful model should measure redirect penalty, wrong-path work discarded, and target-page delivery under the selected operating point. Avoid another broad bandwidth sweep until that behavior is represented.
+Use the selected operating point for the next comparison: branch redirect with and without target prefetch/overlap. Keep the current serialized 630-cycle target delivery as the reference case. Avoid another broad bandwidth sweep unless the redirect comparison identifies a specific bottleneck.
