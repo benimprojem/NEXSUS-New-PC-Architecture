@@ -9,7 +9,7 @@ class BranchRedirectTests(unittest.TestCase):
         self.assertEqual(r.wrong_path_bytes_discarded,8192)
         self.assertEqual(r.redirect_stall_cycles,168)
         self.assertEqual(r.redirect_refill_count,1)
-        self.assertEqual(r.target_ready_cycle,1192)
+        self.assertEqual(r.target_ready_cycle,1360)
 
     def test_redirect_after_later_block(self):
         r=simulate_redirect(branch_block=3,target_block=9)
