@@ -43,6 +43,8 @@ jobs:
           python -m py_compile "NEXUS CPU/tools/test_p0p1_refill_sweep.py"
           python -m py_compile "NEXUS CPU/tools/p0p1_branch_redirect_sim.py"
           python -m py_compile "NEXUS CPU/tools/test_p0p1_branch_redirect_sim.py"
+          python -m py_compile "NEXUS CPU/tools/p0p1_l0i_px_integrated_sim.py"
+          python -m py_compile "NEXUS CPU/tools/test_p0p1_l0i_px_integrated_sim.py"
       - name: Run regression tests
         working-directory: "NEXUS CPU/tools"
         run: |
@@ -52,6 +54,7 @@ jobs:
           python test_p0p1_command_buffer_sim.py
           python test_p0p1_refill_sweep.py
           python test_p0p1_branch_redirect_sim.py
+          python test_p0p1_l0i_px_integrated_sim.py
       - name: Run comparison smoke test
         run: |
           python "NEXUS CPU/tools/cpu_comparison_sim.py" --scale 1 --json > /tmp/nexus-cpu-results.json
