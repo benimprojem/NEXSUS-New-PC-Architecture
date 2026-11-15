@@ -109,6 +109,12 @@ For the default modeled redirect, the branch resolves at cycle 680 and the targe
 
 This is a conservative serialized upper-bound estimate: it does not yet model speculative target fetch, partial refill cancellation, or overlap of target delivery with other stages. It is not RTL or silicon timing. CI coverage was added for the integrated redirect path; do not treat it as validated until the workflow is green.
 
-## Next development step
+## Branch recovery latency sweep
 
-Use the selected operating point for the next comparison: branch redirect with and without target prefetch/overlap. Keep the current serialized 630-cycle target delivery as the reference case. Avoid another broad bandwidth sweep unless the redirect comparison identifies a specific bottleneck.
+The branch-recovery penalty in the core execution model is distinct from the serialized 630-cycle frontend target-delivery upper bound above. The former is the time the modeled frontend is blocked after a misprediction; the latter is a conservative full target-page refill-and-delivery estimate. They must not be conflated or added blindly.
+
+A focused sweep now varies only the NEXSUS frontend recovery penalty across **4, 6, 8, 10, 12, and 16 cycles**, with the compact 2-bit predictor assumption and identical scalar-control, pointer-graph, and branch-stress workloads. Predictor behavior, execution resources, memory parameters, and operation counts remain fixed. The existing NEXSUS profile uses **10 cycles** as its provisional recovery setting.
+
+The sweep is added in commit `dcd6029` and must be treated as pending until its own CI run succeeds.
+
+Decision rule: retain 10 cycles as the baseline unless the controlled sweep shows a clear reason to change it. This parameter is a model assumption, not a measured NEXSUS hardware latency. The next architectural improvement to investigate is target-fetch prefetch/overlap, not another general bandwidth sweep.
