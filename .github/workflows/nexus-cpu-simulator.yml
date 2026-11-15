@@ -37,12 +37,15 @@ jobs:
           python -m py_compile "NEXUS CPU/tools/test_l0i_px_pipeline_sim.py"
           python -m py_compile "NEXUS CPU/tools/run_cross_arch_codeflow_suite.py"
           python -m py_compile "NEXUS CPU/tools/test_nexus_naming_standard.py"
+          python -m py_compile "NEXUS CPU/tools/p0p1_command_buffer_sim.py"
+          python -m py_compile "NEXUS CPU/tools/test_p0p1_command_buffer_sim.py"
       - name: Run regression tests
         working-directory: "NEXUS CPU/tools"
         run: |
           python test_cpu_comparison_sim.py
           python test_l0i_px_pipeline_sim.py
           python test_nexus_naming_standard.py
+          python test_p0p1_command_buffer_sim.py
       - name: Run comparison smoke test
         run: |
           python "NEXUS CPU/tools/cpu_comparison_sim.py" --scale 1 --json > /tmp/nexus-cpu-results.json
@@ -224,6 +227,19 @@ jobs:
           for profile, rows in data["results"].items():
               for row in rows.values():
                   print(f'{profile}: refill={row["refill_latency_cycles"]} cycles={row["cycles"]} ops={row["ops"]}')
+          PY
+      - name: Run P0/P1 command buffer tests and baseline
+        run: |
+          python "NEXUS CPU/tools/p0p1_command_buffer_sim.py" --blocks 16 --json > /tmp/nexus-p0p1.json
+          python - <<'PY'
+          import json
+          data = json.load(open("/tmp/nexus-p0p1.json", encoding="utf-8"))
+          assert data["blocks_consumed"] == 16
+          assert data["refill_count"] == 16
+          assert data["refill_bytes"] == 16 * 8192
+          assert data["boundary_stalls"] == 168, data
+          assert data["overlap_cycles"] > 0
+          print("P0/P1 baseline:", data)
           PY
       - name: Upload comparison and CS sweep results
         if: always()
