@@ -43,6 +43,8 @@ jobs:
           python -m py_compile "NEXUS CPU/tools/test_p0p1_refill_sweep.py"
           python -m py_compile "NEXUS CPU/tools/p0p1_branch_redirect_sim.py"
           python -m py_compile "NEXUS CPU/tools/test_p0p1_branch_redirect_sim.py"
+          python -m py_compile "NEXUS CPU/tools/branch_latency_sweep.py"
+          python -m py_compile "NEXUS CPU/tools/test_branch_latency_sweep.py"
           python -m py_compile "NEXUS CPU/tools/p0p1_l0i_px_integrated_sim.py"
           python -m py_compile "NEXUS CPU/tools/test_p0p1_l0i_px_integrated_sim.py"
           python -m py_compile "NEXUS CPU/tools/p0p1_l0i_px_integrated_sweep.py"
@@ -64,6 +66,7 @@ jobs:
           python test_p0p1_command_buffer_sim.py
           python test_p0p1_refill_sweep.py
           python test_p0p1_branch_redirect_sim.py
+          python test_branch_latency_sweep.py
           python test_p0p1_l0i_px_integrated_sim.py
           python test_p0p1_l0i_px_integrated_sweep.py
           python test_p0p1_l0i_px_bottleneck_sweep.py
@@ -306,6 +309,23 @@ jobs:
           assert d["target_ready_cycle"] == 1310
           print("INTEGRATED FRONTEND REDIRECT:", d)
           PY
+      - name: Run branch recovery latency sweep
+        run: |
+          python "NEXUS CPU/tools/branch_latency_sweep.py" --scale 1 --json > /tmp/nexus-branch-latency-sweep.json
+          python - <<'PY'
+          import json
+          data = json.load(open("/tmp/nexus-branch-latency-sweep.json", encoding="utf-8"))
+          assert data["penalties_cycles"] == [4, 6, 8, 10, 12, 16]
+          rows = [data["results"][str(p)]["branch_stress"] for p in data["penalties_cycles"]]
+          assert all(row["ops_preserved"] for row in rows)
+          assert len({row["ops"] for row in rows}) == 1
+          assert len({row["mispredicts"] for row in rows}) == 1
+          assert rows[0]["cycles"] < rows[-1]["cycles"]
+          print("BRANCH RECOVERY LATENCY SWEEP")
+          for penalty in data["penalties_cycles"]:
+              row = data["results"][str(penalty)]["branch_stress"]
+              print(f'{penalty} cycles: total={row["cycles"]} mispredicts={row["mispredicts"]} recovery_stall={row["branch_recovery_cycles"]}')
+          PY
       - name: Run integrated frontend parameter sweep
         run: |
           python "NEXUS CPU/tools/p0p1_l0i_px_integrated_sweep.py" --pages 32 --json > /tmp/nexus-integrated-frontend-sweep.json
@@ -433,4 +453,5 @@ jobs:
             /tmp/nexus-frontend-middle-sweep.json
             /tmp/nexus-frontend-workload-sweep.json
             /tmp/nexus-p0p1-integrated-redirect.json
+            /tmp/nexus-branch-latency-sweep.json
           if-no-files-found: ignore
