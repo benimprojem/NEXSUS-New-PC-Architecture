@@ -45,6 +45,8 @@ jobs:
           python -m py_compile "NEXUS CPU/tools/test_p0p1_branch_redirect_sim.py"
           python -m py_compile "NEXUS CPU/tools/p0p1_l0i_px_integrated_sim.py"
           python -m py_compile "NEXUS CPU/tools/test_p0p1_l0i_px_integrated_sim.py"
+          python -m py_compile "NEXUS CPU/tools/p0p1_l0i_px_integrated_sweep.py"
+          python -m py_compile "NEXUS CPU/tools/test_p0p1_l0i_px_integrated_sweep.py"
       - name: Run regression tests
         working-directory: "NEXUS CPU/tools"
         run: |
@@ -55,6 +57,7 @@ jobs:
           python test_p0p1_refill_sweep.py
           python test_p0p1_branch_redirect_sim.py
           python test_p0p1_l0i_px_integrated_sim.py
+          python test_p0p1_l0i_px_integrated_sweep.py
       - name: Run comparison smoke test
         run: |
           python "NEXUS CPU/tools/cpu_comparison_sim.py" --scale 1 --json > /tmp/nexus-cpu-results.json
@@ -274,6 +277,32 @@ jobs:
           assert d["redirect_stall_cycles"] == 168
           assert d["target_ready_cycle"] == 1360
           print("P0/P1 redirect:",d)
+          PY
+      - name: Run integrated frontend parameter sweep
+        run: |
+          python "NEXUS CPU/tools/p0p1_l0i_px_integrated_sweep.py" --pages 32 --json > /tmp/nexus-integrated-frontend-sweep.json
+          python - <<'PY'
+          import json
+          data = json.load(open("/tmp/nexus-integrated-frontend-sweep.json", encoding="utf-8"))
+          assert data["cases"] >= 20
+          assert data["pages"] == 32
+          assert len(data["results"]) == data["cases"]
+          baseline = next(row for row in data["results"] if row["case"] == "baseline")
+          assert baseline["app_refill_latency"] == 168
+          assert baseline["cold_stall_cycles"] == 168
+          assert baseline["boundary_stall_cycles"] == 0
+          for row in data["results"]:
+              assert row["pages_retired"] == 32, row["case"]
+              assert row["pages_requested"] == 32, row["case"]
+              assert row["p0p1_refills"] == 8, row["case"]
+              assert row["app_bytes_read"] == 8 * 8192, row["case"]
+              assert row["queue_peaks"]["c0"] <= row["config"]["queue_depth"], row["case"]
+              assert row["queue_peaks"]["cs"] <= row["config"]["queue_depth"], row["case"]
+              assert row["queue_peaks"]["eb"] <= row["config"]["queue_depth"], row["case"]
+          print(f'PASS: {data["cases"]} integrated frontend configurations completed the same 32-page workload.')
+          print(f'Baseline: {data["baseline_cycles"]} cycles.')
+          for row in sorted(data["results"], key=lambda item: item["cycles"])[:5]:
+              print(f'{row["case"]}: {row["cycles"]} cycles ({row["cycle_change_percent"]:+.3f}%)')
           PY
       - name: Upload comparison and CS sweep results
         if: always()
