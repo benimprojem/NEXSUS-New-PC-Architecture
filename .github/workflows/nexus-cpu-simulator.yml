@@ -290,6 +290,22 @@ jobs:
           assert d["target_ready_cycle"] == 1360
           print("P0/P1 redirect:",d)
           PY
+          python "NEXUS CPU/tools/p0p1_branch_redirect_sim.py" --integrated --json > /tmp/nexus-p0p1-integrated-redirect.json
+          python - <<'PY'
+          import json
+          d=json.load(open("/tmp/nexus-p0p1-integrated-redirect.json",encoding="utf-8"))
+          assert d["app_refill_cycles"] == 168
+          assert d["p0p1_to_c0_cycles"] == 128
+          assert d["c0_to_cs_cycles"] == 103
+          assert d["cs_to_eb_cycles"] == 103
+          assert d["eb_delivery_cycles"] == 128
+          assert d["target_delivery_latency"] == 630
+          assert d["p0p1_wrong_path_block_discarded_bytes"] == 8192
+          assert d["queued_wrong_path_pages_flushed"] == 2
+          assert d["queued_wrong_path_bytes_flushed"] == 4096
+          assert d["target_ready_cycle"] == 1310
+          print("INTEGRATED FRONTEND REDIRECT:", d)
+          PY
       - name: Run integrated frontend parameter sweep
         run: |
           python "NEXUS CPU/tools/p0p1_l0i_px_integrated_sweep.py" --pages 32 --json > /tmp/nexus-integrated-frontend-sweep.json
@@ -416,4 +432,5 @@ jobs:
             /tmp/nexus-frontend-refined-sweep.json
             /tmp/nexus-frontend-middle-sweep.json
             /tmp/nexus-frontend-workload-sweep.json
+            /tmp/nexus-p0p1-integrated-redirect.json
           if-no-files-found: ignore
