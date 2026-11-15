@@ -53,6 +53,8 @@ jobs:
           python -m py_compile "NEXUS CPU/tools/test_p0p1_l0i_px_refined_sweep.py"
           python -m py_compile "NEXUS CPU/tools/p0p1_l0i_px_middle_sweep.py"
           python -m py_compile "NEXUS CPU/tools/test_p0p1_l0i_px_middle_sweep.py"
+          python -m py_compile "NEXUS CPU/tools/p0p1_l0i_px_workload_sweep.py"
+          python -m py_compile "NEXUS CPU/tools/test_p0p1_l0i_px_workload_sweep.py"
       - name: Run regression tests
         working-directory: "NEXUS CPU/tools"
         run: |
@@ -67,6 +69,7 @@ jobs:
           python test_p0p1_l0i_px_bottleneck_sweep.py
           python test_p0p1_l0i_px_refined_sweep.py
           python test_p0p1_l0i_px_middle_sweep.py
+          python test_p0p1_l0i_px_workload_sweep.py
       - name: Run comparison smoke test
         run: |
           python "NEXUS CPU/tools/cpu_comparison_sim.py" --scale 1 --json > /tmp/nexus-cpu-results.json
@@ -372,6 +375,29 @@ jobs:
               print(f'{row["case"]}: {row["cycles"]} cycles '
                     f'({row["cycle_change_percent_vs_16_16"]:+.3f}%)')
           PY
+      - name: Run frontend workload-length sweep
+        run: |
+          python "NEXUS CPU/tools/p0p1_l0i_px_workload_sweep.py" --json > /tmp/nexus-frontend-workload-sweep.json
+          python - <<'PY'
+          import json
+          data = json.load(open("/tmp/nexus-frontend-workload-sweep.json", encoding="utf-8"))
+          assert data["cases"] == 21
+          assert data["page_counts"] == [1, 2, 4, 8, 16, 32, 64]
+          assert data["middle_rates_bytes_per_cycle"] == [16, 20, 32]
+          for row in data["results"]:
+              assert row["pages_retired"] == row["pages_requested"] == row["pages"]
+              assert row["p0p1_refills"] == (row["pages"] + 3) // 4
+              assert row["app_bytes_read"] == row["p0p1_refills"] * 8192
+              assert row["boundary_stall_cycles"] == 0
+              assert all(v <= 2 for v in row["queue_peaks"].values())
+          refs = {row["middle_rate_bytes_per_cycle"]: row["cycles"]
+                  for row in data["results"] if row["pages"] == 32}
+          assert refs == {16: 4652, 20: 4602, 32: 4524}, refs
+          print("FRONTEND WORKLOAD-LENGTH SWEEP")
+          for row in data["results"]:
+              print(f'{row["pages"]:>2} pages @ {row["middle_rate_bytes_per_cycle"]:>2} B/cycle: '
+                    f'{row["cycles"]:>6} cycles ({row["cycle_change_percent_vs_16"]:+.3f}%)')
+          PY
       - name: Upload comparison and CS sweep results
         if: always()
         uses: actions/upload-artifact@v4
@@ -389,4 +415,5 @@ jobs:
             /tmp/nexus-frontend-bottleneck-sweep.json
             /tmp/nexus-frontend-refined-sweep.json
             /tmp/nexus-frontend-middle-sweep.json
+            /tmp/nexus-frontend-workload-sweep.json
           if-no-files-found: ignore
