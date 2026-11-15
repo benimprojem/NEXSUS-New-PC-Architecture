@@ -50,7 +50,10 @@ def main():
     a = ap.parse_args()
     result = asdict(simulate_redirect(a.buffer_kb, a.app_bpc, a.setup,
                                       a.consume_bpc, a.branch_block, a.target_block))
-    print(json.dumps(result, indent=2) if a.json else print(result)
+    if a.json:
+        print(json.dumps(result, indent=2))
+    else:
+        print(result)
 
 
 if __name__ == "__main__":
