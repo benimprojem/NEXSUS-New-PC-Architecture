@@ -134,6 +134,12 @@ class IntegratedFrontend:
                     metrics["cs_to_eb_busy_cycles"] += d
                     timeline.append({"cycle": cycle, "event": "CS_EB_START", "page": page})
 
+            # C0 queue -> CS/PX input queue. This is a distinct bounded handoff.
+            if c0_q and len(cs_q) < c.queue_depth:
+                page = c0_q.pop(0)
+                cs_q.append(page)
+                timeline.append({"cycle": cycle, "event": "C0_TO_CS_QUEUE", "page": page})
+
             # C0/L0I -> CS/PX stage.
             if cs_active is not None and cycle >= cs_active[1] and len(eb_q) < c.queue_depth:
                 page = cs_active[0]
