@@ -147,6 +147,13 @@ class IntegratedFrontend:
                 metrics["c0_to_cs_busy_cycles"] += d
                 timeline.append({"cycle": cycle, "event": "C0_CS_START", "page": page})
 
+            # App RAM -> inactive P0/P1 slot. Refill can overlap page consumption.
+            if app_active is not None and cycle >= app_active[2]:
+                block, slot, _ = app_active
+                p0p1[slot] = block
+                timeline.append({"cycle": cycle, "event": "P0P1_BLOCK_READY", "block": block, "slot": slot})
+                app_active = None
+
             # P0/P1 -> C0/L0I page transfer.
             if p0_active is not None and cycle >= p0_active[1] and len(c0_q) < c.queue_depth:
                 page = p0_active[0]
@@ -174,12 +181,6 @@ class IntegratedFrontend:
                     else:
                         metrics["p0p1_boundary_stall_cycles"] += 1
 
-            # App RAM -> inactive P0/P1 slot. Refill can overlap page consumption.
-            if app_active is not None and cycle >= app_active[2]:
-                block, slot, _ = app_active
-                p0p1[slot] = block
-                timeline.append({"cycle": cycle, "event": "P0P1_BLOCK_READY", "block": block, "slot": slot})
-                app_active = None
             if app_active is None and next_refill < blocks_total:
                 slot = next_refill % 2
                 if p0p1[slot] is None:
