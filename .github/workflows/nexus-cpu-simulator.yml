@@ -41,6 +41,8 @@ jobs:
           python -m py_compile "NEXUS CPU/tools/test_p0p1_command_buffer_sim.py"
           python -m py_compile "NEXUS CPU/tools/p0p1_refill_sweep.py"
           python -m py_compile "NEXUS CPU/tools/test_p0p1_refill_sweep.py"
+          python -m py_compile "NEXUS CPU/tools/p0p1_branch_redirect_sim.py"
+          python -m py_compile "NEXUS CPU/tools/test_p0p1_branch_redirect_sim.py"
       - name: Run regression tests
         working-directory: "NEXUS CPU/tools"
         run: |
@@ -49,6 +51,7 @@ jobs:
           python test_nexus_naming_standard.py
           python test_p0p1_command_buffer_sim.py
           python test_p0p1_refill_sweep.py
+          python test_p0p1_branch_redirect_sim.py
       - name: Run comparison smoke test
         run: |
           python "NEXUS CPU/tools/cpu_comparison_sim.py" --scale 1 --json > /tmp/nexus-cpu-results.json
@@ -256,6 +259,18 @@ jobs:
           assert not ref[0]["starvation_after_cold_fill"]
           assert any(r["starvation_after_cold_fill"] for r in data["results"])
           print(f"PASS: {data['cases']} P0/P1 configurations swept; starvation boundary identified.")
+          PY
+      - name: Run P0/P1 branch redirect baseline
+        run: |
+          python "NEXUS CPU/tools/p0p1_branch_redirect_sim.py" --json > /tmp/nexus-p0p1-redirect.json
+          python - <<'PY'
+          import json
+          d=json.load(open("/tmp/nexus-p0p1-redirect.json",encoding="utf-8"))
+          assert d["refill_latency"] == 168
+          assert d["wrong_path_bytes_discarded"] == 8192
+          assert d["redirect_stall_cycles"] == 168
+          assert d["target_ready_cycle"] == 1360
+          print("P0/P1 redirect:",d)
           PY
       - name: Upload comparison and CS sweep results
         if: always()
