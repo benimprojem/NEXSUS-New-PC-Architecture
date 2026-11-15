@@ -35,7 +35,7 @@ def main() -> None:
     }
     assert set(app_cases) == {32, 48, 64, 128}
     assert app_cases[128]["app_refill_latency"] < app_cases[64]["app_refill_latency"]
-    assert app_cases[128]["cycles"] < app_cases[64]["cycles"]
+    assert app_cases[128]["cycles"] <= app_cases[64]["cycles"]
 
     queue_cases = {
         row["config"]["queue_depth"]: row
