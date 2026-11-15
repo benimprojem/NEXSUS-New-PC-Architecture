@@ -39,6 +39,8 @@ jobs:
           python -m py_compile "NEXUS CPU/tools/test_nexus_naming_standard.py"
           python -m py_compile "NEXUS CPU/tools/p0p1_command_buffer_sim.py"
           python -m py_compile "NEXUS CPU/tools/test_p0p1_command_buffer_sim.py"
+          python -m py_compile "NEXUS CPU/tools/p0p1_refill_sweep.py"
+          python -m py_compile "NEXUS CPU/tools/test_p0p1_refill_sweep.py"
       - name: Run regression tests
         working-directory: "NEXUS CPU/tools"
         run: |
@@ -46,6 +48,7 @@ jobs:
           python test_l0i_px_pipeline_sim.py
           python test_nexus_naming_standard.py
           python test_p0p1_command_buffer_sim.py
+          python test_p0p1_refill_sweep.py
       - name: Run comparison smoke test
         run: |
           python "NEXUS CPU/tools/cpu_comparison_sim.py" --scale 1 --json > /tmp/nexus-cpu-results.json
@@ -240,6 +243,19 @@ jobs:
           assert data["boundary_stalls"] == 168, data
           assert data["overlap_cycles"] > 0
           print("P0/P1 baseline:", data)
+          PY
+      - name: Run P0/P1 refill parameter sweep
+        run: |
+          python "NEXUS CPU/tools/p0p1_refill_sweep.py" > /tmp/nexus-p0p1-sweep.json
+          python - <<'PY'
+          import json
+          data=json.load(open("/tmp/nexus-p0p1-sweep.json",encoding="utf-8"))
+          assert data["cases"] > 100
+          ref=[r for r in data["results"] if (r["buffer_kb"],r["app_bytes_per_cycle"],r["setup_cycles"],r["consume_bytes_per_cycle"])==(8,64,40,8)]
+          assert len(ref)==1 and ref[0]["refill_latency_cycles"]==168
+          assert not ref[0]["starvation_after_cold_fill"]
+          assert any(r["starvation_after_cold_fill"] for r in data["results"])
+          print(f"PASS: {data['cases']} P0/P1 configurations swept; starvation boundary identified.")
           PY
       - name: Upload comparison and CS sweep results
         if: always()
