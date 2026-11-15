@@ -51,6 +51,8 @@ jobs:
           python -m py_compile "NEXUS CPU/tools/test_p0p1_l0i_px_bottleneck_sweep.py"
           python -m py_compile "NEXUS CPU/tools/p0p1_l0i_px_refined_sweep.py"
           python -m py_compile "NEXUS CPU/tools/test_p0p1_l0i_px_refined_sweep.py"
+          python -m py_compile "NEXUS CPU/tools/p0p1_l0i_px_middle_sweep.py"
+          python -m py_compile "NEXUS CPU/tools/test_p0p1_l0i_px_middle_sweep.py"
       - name: Run regression tests
         working-directory: "NEXUS CPU/tools"
         run: |
@@ -64,6 +66,7 @@ jobs:
           python test_p0p1_l0i_px_integrated_sweep.py
           python test_p0p1_l0i_px_bottleneck_sweep.py
           python test_p0p1_l0i_px_refined_sweep.py
+          python test_p0p1_l0i_px_middle_sweep.py
       - name: Run comparison smoke test
         run: |
           python "NEXUS CPU/tools/cpu_comparison_sim.py" --scale 1 --json > /tmp/nexus-cpu-results.json
@@ -351,6 +354,24 @@ jobs:
               print(f'{row["case"]}: {row["cycles"]} cycles ({row["cycle_change_percent"]:+.3f}%), '
                     f'App refill={row["app_refill_latency"]}')
           PY
+      - name: Run middle frontend-stage rate sweep
+        run: |
+          python "NEXUS CPU/tools/p0p1_l0i_px_middle_sweep.py" --pages 32 --json > /tmp/nexus-frontend-middle-sweep.json
+          python - <<'PY'
+          import json
+          data = json.load(open("/tmp/nexus-frontend-middle-sweep.json", encoding="utf-8"))
+          assert data["cases"] == 25
+          assert data["pages"] == 32
+          assert data["baseline_cycles"] == 4652
+          for row in data["results"]:
+              assert row["pages_retired"] == 32, row["case"]
+              assert all(v <= row["config"]["queue_depth"] for v in row["queue_peaks"].values()), row["case"]
+          print("MIDDLE FRONTEND STAGE RATE SWEEP")
+          print(f'16/16 baseline: {data["baseline_cycles"]} cycles.')
+          for row in sorted(data["results"], key=lambda item: item["cycles"])[:8]:
+              print(f'{row["case"]}: {row["cycles"]} cycles '
+                    f'({row["cycle_change_percent_vs_16_16"]:+.3f}%)')
+          PY
       - name: Upload comparison and CS sweep results
         if: always()
         uses: actions/upload-artifact@v4
@@ -367,4 +388,5 @@ jobs:
             /tmp/nexus-integrated-frontend-sweep.json
             /tmp/nexus-frontend-bottleneck-sweep.json
             /tmp/nexus-frontend-refined-sweep.json
+            /tmp/nexus-frontend-middle-sweep.json
           if-no-files-found: ignore
