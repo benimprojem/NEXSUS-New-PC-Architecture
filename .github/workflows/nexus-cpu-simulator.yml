@@ -47,6 +47,8 @@ jobs:
           python -m py_compile "NEXUS CPU/tools/test_p0p1_l0i_px_integrated_sim.py"
           python -m py_compile "NEXUS CPU/tools/p0p1_l0i_px_integrated_sweep.py"
           python -m py_compile "NEXUS CPU/tools/test_p0p1_l0i_px_integrated_sweep.py"
+          python -m py_compile "NEXUS CPU/tools/p0p1_l0i_px_bottleneck_sweep.py"
+          python -m py_compile "NEXUS CPU/tools/test_p0p1_l0i_px_bottleneck_sweep.py"
       - name: Run regression tests
         working-directory: "NEXUS CPU/tools"
         run: |
@@ -58,6 +60,7 @@ jobs:
           python test_p0p1_branch_redirect_sim.py
           python test_p0p1_l0i_px_integrated_sim.py
           python test_p0p1_l0i_px_integrated_sweep.py
+          python test_p0p1_l0i_px_bottleneck_sweep.py
       - name: Run comparison smoke test
         run: |
           python "NEXUS CPU/tools/cpu_comparison_sim.py" --scale 1 --json > /tmp/nexus-cpu-results.json
@@ -304,6 +307,27 @@ jobs:
           for row in sorted(data["results"], key=lambda item: item["cycles"])[:5]:
               print(f'{row["case"]}: {row["cycles"]} cycles ({row["cycle_change_percent"]:+.3f}%)')
           PY
+      - name: Run focused P0/P1 and EB bottleneck interaction sweep
+        run: |
+          python "NEXUS CPU/tools/p0p1_l0i_px_bottleneck_sweep.py" --pages 32 --json > /tmp/nexus-frontend-bottleneck-sweep.json
+          python - <<'PY'
+          import json
+          data = json.load(open("/tmp/nexus-frontend-bottleneck-sweep.json", encoding="utf-8"))
+          assert data["cases"] == 29
+          assert data["pages"] == 32
+          assert len(data["results"]) == 29
+          baseline = next(row for row in data["results"] if row["case"] == "p0p1=8,eb=8")
+          assert baseline["cycles"] == data["baseline_cycles"]
+          for row in data["results"]:
+              assert row["pages_retired"] == 32, row["case"]
+              depth = row["config"]["queue_depth"]
+              assert all(value <= depth for value in row["queue_peaks"].values()), row["case"]
+          print(f'PASS: {data["cases"]} bottleneck combinations completed the same 32-page workload.')
+          print(f'Baseline: {data["baseline_cycles"]} cycles.')
+          for row in sorted(data["results"], key=lambda item: item["cycles"])[:8]:
+              print(f'{row["case"]}: {row["cycles"]} cycles ({row["cycle_change_percent"]:+.3f}%), '
+                    f'CPU-not-ready={row["cpu_not_ready_stall_cycles"]}')
+          PY
       - name: Upload comparison and CS sweep results
         if: always()
         uses: actions/upload-artifact@v4
@@ -317,4 +341,6 @@ jobs:
             /tmp/nexus-branch-sweep.json
             /tmp/nexus-normalized-8core.json
             /tmp/nexus-resource-sweep.json
+            /tmp/nexus-integrated-frontend-sweep.json
+            /tmp/nexus-frontend-bottleneck-sweep.json
           if-no-files-found: ignore
