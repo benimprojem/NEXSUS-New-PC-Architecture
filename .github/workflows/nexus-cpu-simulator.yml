@@ -45,6 +45,8 @@ jobs:
           python -m py_compile "NEXUS CPU/tools/test_p0p1_branch_redirect_sim.py"
           python -m py_compile "NEXUS CPU/tools/branch_latency_sweep.py"
           python -m py_compile "NEXUS CPU/tools/test_branch_latency_sweep.py"
+          python -m py_compile "NEXUS CPU/tools/target_prefetch_overlap_sweep.py"
+          python -m py_compile "NEXUS CPU/tools/test_target_prefetch_overlap_sweep.py"
           python -m py_compile "NEXUS CPU/tools/p0p1_l0i_px_integrated_sim.py"
           python -m py_compile "NEXUS CPU/tools/test_p0p1_l0i_px_integrated_sim.py"
           python -m py_compile "NEXUS CPU/tools/p0p1_l0i_px_integrated_sweep.py"
@@ -67,6 +69,7 @@ jobs:
           python test_p0p1_refill_sweep.py
           python test_p0p1_branch_redirect_sim.py
           python test_branch_latency_sweep.py
+          python test_target_prefetch_overlap_sweep.py
           python test_p0p1_l0i_px_integrated_sim.py
           python test_p0p1_l0i_px_integrated_sweep.py
           python test_p0p1_l0i_px_bottleneck_sweep.py
@@ -326,6 +329,21 @@ jobs:
               row = data["results"][str(penalty)]["branch_stress"]
               print(f'{penalty} cycles: total={row["cycles"]} mispredicts={row["mispredicts"]} recovery_stall={row["branch_recovery_cycles"]}')
           PY
+      - name: Run target prefetch overlap sweep
+        run: |
+          python "NEXUS CPU/tools/target_prefetch_overlap_sweep.py" --json > /tmp/nexus-target-prefetch-overlap.json
+          python - <<'PY'
+          import json
+          data = json.load(open("/tmp/nexus-target-prefetch-overlap.json", encoding="utf-8"))
+          assert data["serialized_target_delivery_cycles"] == 630
+          rows = list(data["results"].values())
+          assert rows[0]["remaining_target_wait_cycles"] == 630
+          assert rows[-1]["remaining_target_wait_cycles"] == 0
+          assert all(rows[i]["target_ready_cycle"] >= rows[i+1]["target_ready_cycle"] for i in range(len(rows)-1))
+          print("TARGET PREFETCH OVERLAP SWEEP")
+          for overlap, row in data["results"].items():
+              print(f'{overlap} overlap cycles: target-ready={row["target_ready_cycle"]} saved={row["cycles_saved_vs_no_prefetch"]}')
+          PY
       - name: Run integrated frontend parameter sweep
         run: |
           python "NEXUS CPU/tools/p0p1_l0i_px_integrated_sweep.py" --pages 32 --json > /tmp/nexus-integrated-frontend-sweep.json
@@ -454,4 +472,5 @@ jobs:
             /tmp/nexus-frontend-workload-sweep.json
             /tmp/nexus-p0p1-integrated-redirect.json
             /tmp/nexus-branch-latency-sweep.json
+            /tmp/nexus-target-prefetch-overlap.json
           if-no-files-found: ignore
