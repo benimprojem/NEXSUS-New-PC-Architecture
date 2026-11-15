@@ -72,7 +72,7 @@ class P0P1:
             if nxt < blocks and ready[inactive] is None and pending[inactive] is None:
                 request(inactive, nxt, cycle)
             if pending[inactive] is not None:
-                overlap += 1
+                overlap += min(self.consume_cycles, self.refill_latency)
 
             cycle += self.consume_cycles
             ready[active] = None
