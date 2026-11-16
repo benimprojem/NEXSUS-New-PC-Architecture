@@ -344,6 +344,26 @@ jobs:
           for overlap, row in data["results"].items():
               print(f'{overlap} overlap cycles: target-ready={row["target_ready_cycle"]} saved={row["cycles_saved_vs_no_prefetch"]}')
           PY
+      - name: Run wrong-path cleanup and P0/P1 slot reuse sweep
+        run: |
+          python -m py_compile "NEXUS CPU/tools/wrong_path_cleanup_sweep.py" "NEXUS CPU/tools/test_wrong_path_cleanup_sweep.py"
+          python "NEXUS CPU/tools/test_wrong_path_cleanup_sweep.py"
+          python "NEXUS CPU/tools/wrong_path_cleanup_sweep.py" --json > /tmp/nexus-wrong-path-cleanup.json
+          python - <<'PY'
+          import json
+          data = json.load(open("/tmp/nexus-wrong-path-cleanup.json", encoding="utf-8"))
+          assert data["cases"] == 144
+          rows = data["results"]
+          free = [r for r in rows if not r["target_slot_conflict"] and r["flush_pages_per_cycle"] == 2 and r["slot_invalidate_cycles"] == 1]
+          blocked = [r for r in rows if r["target_slot_conflict"] and r["flush_pages_per_cycle"] == 2 and r["slot_invalidate_cycles"] == 1]
+          assert [r["actual_overlap_cycles"] for r in free] == [0, 64, 128, 256, 512, 630]
+          assert all(r["actual_overlap_cycles"] == 0 for r in blocked)
+          assert all(r["target_ready_cycle"] == 1311 for r in blocked)
+          print("WRONG-PATH CLEANUP / P0-P1 SLOT REUSE")
+          print("No slot conflict:", [(r["requested_overlap_cycles"], r["target_ready_cycle"]) for r in free])
+          print("Slot conflict:", [(r["requested_overlap_cycles"], r["target_ready_cycle"]) for r in blocked])
+          PY
+
       - name: Run integrated frontend parameter sweep
         run: |
           python "NEXUS CPU/tools/p0p1_l0i_px_integrated_sweep.py" --pages 32 --json > /tmp/nexus-integrated-frontend-sweep.json
