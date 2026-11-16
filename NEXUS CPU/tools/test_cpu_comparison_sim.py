@@ -548,6 +548,28 @@ class BranchPredictionTests(unittest.TestCase):
 
 
 class VectorArithmeticWorkloadTests(unittest.TestCase):
+    def test_execution_only_mode_bypasses_fetch_but_preserves_backend_work(self):
+        workload = {"vec_add": [sim.Op(i, "VEC_ADD", exec_width_bits=512)
+                                for i in range(32)]}
+        normal = sim.simulate_cpu(
+            workload, sim.PROFILES["nexus_balanced_128"], 8,
+            {"task_workspace": True, "code_slots": True, "codeflow": True},
+        )
+        isolated = sim.simulate_cpu(
+            workload, sim.PROFILES["nexus_balanced_128"], 8,
+            {"execution_only": True},
+        )
+        normal_row = normal["kernels"]["vec_add"]
+        isolated_row = isolated["kernels"]["vec_add"]
+        self.assertEqual(normal_row["ops"], isolated_row["ops"])
+        self.assertGreater(normal_row["codeflow_counters"]["wait_cycles"], 0)
+        self.assertEqual(isolated_row["codeflow_counters"]["wait_cycles"], 0)
+        self.assertLess(isolated_row["cycles"], normal_row["cycles"])
+        self.assertEqual(isolated_row["codeflow_counters"]["mode"],
+                         "execution-only backend isolation")
+
+
+class VectorArithmeticWorkloadTests(unittest.TestCase):
     def test_vector_arithmetic_opcodes_share_the_vector_issue_resource(self):
         workload = {
             "vector_arithmetic": [
