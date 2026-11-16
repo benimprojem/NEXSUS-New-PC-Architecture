@@ -6,6 +6,7 @@ from app_ram_multicore_fairness_sweep import POLICIES, run_sweep
 def main() -> None:
     data = run_sweep()
     assert data["policies"] == list(POLICIES)
+    assert data["workload"]["controller"]["aggregate_bytes_per_cycle"] == 64
     assert set(data["results"]) == set(POLICIES)
     for policy, row in data["results"].items():
         assert row["cores"] == 8, policy
