@@ -1878,8 +1878,8 @@ class PerCoreCodeFlowTopologyTests(unittest.TestCase):
         fetchers = [sim.CommandFetchModel(True, codeflow_enabled=True, core_id=i)
                     for i in range(8)]
         for fetch in fetchers:
-            self.assertEqual(fetch.c0_to_cs_bytes_per_cycle, 8)
-            self.assertEqual(fetch.cs_to_eb_bytes_per_cycle, 8)
+            self.assertEqual(fetch.c0_to_cs_bytes_per_cycle, 16)
+            self.assertEqual(fetch.cs_to_eb_bytes_per_cycle, 16)
         self.assertEqual(len({id(fetch.p0_buffers) for fetch in fetchers}), 8)
         self.assertEqual(len({id(fetch) for fetch in fetchers}), 8)
 
