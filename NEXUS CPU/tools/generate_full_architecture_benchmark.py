@@ -91,11 +91,11 @@ def render_report(data):
         us = sum(k["cycles"] / (r["clock_ghz"] * 1000.0) for k in r["kernels"].values())
         lines.append(f"| {LABELS[arch]} | {r['cores_configured']} | {r['clock_ghz']:.2f} GHz | {r['total_cycles']:,} | {us:,.3f} | {r['aggregate_ipc']:.3f} |")
     lines += ["", "*Diagnostic sums across separate kernels, not a standardized overall score. Do not rank systems from this summary row alone.", ""]
-    for mode_key, heading in (
-        ("native", "Per-kernel comparison — native core counts, modeled frontend"),
-        ("normalized_8core", "Per-kernel comparison — normalized 8-core, modeled frontend"),
-        ("execution_only_native", "Backend isolation — native core counts, instruction frontend bypassed"),
-        ("execution_only_8core", "Backend isolation — normalized 8-core, instruction frontend bypassed"),
+    for mode_data, mode_key, heading in (
+        (data["modes"], "native", "Per-kernel comparison — native core counts, modeled frontend"),
+        (data["modes"], "normalized_8core", "Per-kernel comparison — normalized 8-core, modeled frontend"),
+        (data["backend_isolation"], "native", "Backend isolation — native core counts, instruction frontend bypassed"),
+        (data["backend_isolation"], "normalized_8core", "Backend isolation — normalized 8-core, instruction frontend bypassed"),
     ):
         lines += [f"## {heading}", "",
                   "| Kernel | Logical ops | AMD cycles / µs | Intel cycles / µs | Apple cycles / µs | NEXSUS cycles / µs |",
@@ -103,7 +103,7 @@ def render_report(data):
         for kernel in data["kernel_names"]:
             cells, ops = [], None
             for arch in ARCHS:
-                r = data["modes"][mode_key][arch]
+                r = mode_data[mode_key][arch]
                 k = r["kernels"][kernel]
                 ops = k["ops"]
                 us = k["cycles"] / (r["clock_ghz"] * 1000.0)
@@ -142,8 +142,10 @@ def main():
         "modes": {
             "native": run_mode(workloads, False),
             "normalized_8core": run_mode(workloads, True),
-            "execution_only_native": run_mode(workloads, False, execution_only=True),
-            "execution_only_8core": run_mode(workloads, True, execution_only=True),
+        },
+        "backend_isolation": {
+            "native": run_mode(workloads, False, execution_only=True),
+            "normalized_8core": run_mode(workloads, True, execution_only=True),
         },
         "result_class": "simulated event/cycle model; not physical silicon measurements",
     }
