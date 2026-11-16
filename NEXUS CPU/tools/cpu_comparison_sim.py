@@ -1082,6 +1082,32 @@ def build_cache_hierarchies(p: CoreProfile, core_count: int) -> List[CacheHierar
     return [CacheHierarchy(p, None, shared_l3) for _ in range(core_count)]
 
 
+def build_command_page_descriptors(ops: List[Op], page_bytes: int = 2048) -> dict:
+    """Describe only code pages actually touched by a core's command stream."""
+    page_lengths = {}
+    for op in ops:
+        pc = op.command_address if op.command_address >= 0 else op.seq * 8
+        page_id, offset = divmod(max(0, int(pc)), page_bytes)
+        page_lengths[page_id] = max(page_lengths.get(page_id, 0), offset + 8)
+    page_ids = sorted(page_lengths)
+    descriptors = {}
+    for index, page_id in enumerate(page_ids):
+        valid_bytes = min(page_bytes, math.ceil(page_lengths[page_id] / 8) * 8)
+        next_is_sequential = (index + 1 < len(page_ids) and
+                              page_ids[index + 1] == page_id + 1)
+        descriptor = {"logical_page_id": page_id, "valid_bytes": valid_bytes}
+        if valid_bytes == page_bytes:
+            if not next_is_sequential:
+                descriptor["stream_end"] = True
+        elif next_is_sequential:
+            descriptor["marker"] = "CF_NEXT"
+            descriptor["next_logical_page_id"] = page_id + 1
+        else:
+            descriptor["marker"] = "CF_END"
+        descriptors[page_id] = descriptor
+    return descriptors
+
+
 def validate_px_page_descriptors(pages: List[dict]) -> bool:
     """Validate CodeFlow Manager metadata; markers are never executable operations."""
     if not pages:
@@ -1148,8 +1174,10 @@ class CommandFetchModel:
         self.code_cache_pages = OrderedDict()
         self.app_first_beat_latency = app_first_beat_latency
         self.app_beat_interval = max(1, app_beat_interval)
-        self.c0_to_cs_cycles = math.ceil(p0_buffer_bytes / max(1, c0_to_cs_bytes_per_cycle))
-        self.cs_to_eb_cycles = math.ceil(p0_buffer_bytes / max(1, cs_to_eb_bytes_per_cycle))
+        self.c0_to_cs_bytes_per_cycle = max(1, int(c0_to_cs_bytes_per_cycle))
+        self.cs_to_eb_bytes_per_cycle = max(1, int(cs_to_eb_bytes_per_cycle))
+        self.c0_to_cs_cycles = math.ceil(p0_buffer_bytes / self.c0_to_cs_bytes_per_cycle)
+        self.cs_to_eb_cycles = math.ceil(p0_buffer_bytes / self.cs_to_eb_bytes_per_cycle)
         self.c0_hits = self.c0_misses = self.app_beats = self.app_bytes = 0
         self.app_source_cycles = self.code_slot_cycles = self.code_stream_cycles = 0
         self.pool_initialized = False
@@ -1191,7 +1219,10 @@ class CommandFetchModel:
         if descriptor.get("stream_end", False):
             return None
         if valid_bytes == self.p0_buffer_bytes:
-            return block + 1
+            next_block = block + 1
+            if self.known_page_ids is not None and next_block not in self.known_page_ids:
+                return None
+            return next_block
         if marker == "CF_END":
             return None
         if marker == "CF_NEXT":
@@ -1225,10 +1256,11 @@ class CommandFetchModel:
             return True
         return False
 
-    def _pool_record_miss(self, block: int):
+    def _pool_record_miss(self, block: int, transfer_bytes: int | None = None):
         max_pages = max(1, self.capacity_bytes // self.p0_buffer_bytes)
         self.pool_misses += 1
-        self.pool_refill_bytes += self.p0_buffer_bytes
+        self.pool_refill_bytes += (self.p0_buffer_bytes if transfer_bytes is None
+                                   else max(1, int(transfer_bytes)))
         self.pool_pages[block] = None
         if len(self.pool_pages) > max_pages:
             self.pool_pages.popitem(last=False)
@@ -1250,24 +1282,31 @@ class CommandFetchModel:
             if not allow_active_bank:
                 return  # do not overwrite a bank still consumed by sequential fetch
             self.active_block = None  # branch redirect abandons the old sequential stream
+        descriptor = self.page_descriptors.get(block)
+        valid_bytes = int(descriptor.get("valid_bytes", self.p0_buffer_bytes)
+                          if descriptor is not None else self.p0_buffer_bytes)
+        if valid_bytes <= 0 or valid_bytes > self.p0_buffer_bytes or valid_bytes % 8:
+            raise ValueError(f"invalid transfer length for code page {block}: {valid_bytes}")
+        beats = math.ceil(valid_bytes / 8)
+        code_slot_delay = math.ceil(valid_bytes / self.c0_to_cs_bytes_per_cycle)
+        stream_delay = math.ceil(valid_bytes / self.cs_to_eb_bytes_per_cycle)
         pool_hit = self._pool_probe(block)
-        source_delay = code_slot_delay = stream_delay = 0
+        source_delay = 0
         if not pool_hit and not self.codeflow_enabled:
-            self._pool_record_miss(block)
+            self._pool_record_miss(block, valid_bytes)
             source_delay = self.pool_miss_latency
         elif not pool_hit:
             if block in self.code_cache_pages:
-                self._pool_record_miss(block)
+                self._pool_record_miss(block, valid_bytes)
                 self.c0_hits += 1
                 self.code_cache_pages.move_to_end(block)
             else:
-                beats = math.ceil(self.p0_buffer_bytes / 8)
                 if self.app_ram_controller is not None:
                     request_id = f"core{self.core_id}:page{block}"
                     admission = self.app_ram_controller.reserve_batch(cycle, [{
                         "id": request_id, "core": self.core_id,
                         "address": block * self.p0_buffer_bytes,
-                        "bytes": self.p0_buffer_bytes,
+                        "bytes": valid_bytes,
                     }])[request_id]
                     if not admission["accepted"]:
                         # Rejected requests must remain nonresident and retry.
@@ -1275,24 +1314,22 @@ class CommandFetchModel:
                     source_delay = max(0, admission["ready_cycle"] - cycle)
                 else:
                     source_delay = self.app_first_beat_latency + max(0, beats - 1) * self.app_beat_interval + 1
-                self._pool_record_miss(block)
+                self._pool_record_miss(block, valid_bytes)
                 self.c0_misses += 1
                 self.app_beats += beats
-                self.app_bytes += self.p0_buffer_bytes
+                self.app_bytes += valid_bytes
                 self.app_source_cycles += source_delay
                 self.code_cache_pages[block] = None
                 if len(self.code_cache_pages) > self.code_cache_capacity_pages:
                     self.code_cache_pages.popitem(last=False)
-            code_slot_delay = self.c0_to_cs_cycles
-            stream_delay = self.cs_to_eb_cycles
             self.code_slot_cycles += code_slot_delay
             self.code_stream_cycles += stream_delay
         ready_cycle = cycle + self.refill_latency + source_delay + code_slot_delay + stream_delay
         self.p0_pending = (block, ready_cycle, bank)
         self.prefetches += 1
         self.refills += 1
-        self.refill_bytes += self.p0_buffer_bytes
-        self.useful_bytes += self.p0_buffer_bytes
+        self.refill_bytes += valid_bytes
+        self.useful_bytes += valid_bytes
 
     def _start_i_prefetch(self, first_line: int, cycle: int):
         """Issue a bounded stream of conventional I-cache line fills."""
@@ -1841,7 +1878,10 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 bool(features["p0"]),
                 p0_capacity_bytes=int(features.get("p0_capacity_kb", 16)) * 1024,
                 p0_refill_latency=int(features.get("p0_refill_latency", 48)),
-                page_descriptors=features.get("px_page_descriptors"),
+                page_descriptors=(features.get("px_page_descriptors") or
+                                  build_command_page_descriptors(
+                                      shard, int(features.get("p0_buffer_bytes", 2048))
+                                  )),
                 pool_miss_latency=int(features.get("px_pool_miss_latency", 120)),
                 codeflow_enabled=bool(features.get("codeflow", False)),
                 code_cache_bytes=int(features.get("code_cache_kb", 64)) * 1024,
