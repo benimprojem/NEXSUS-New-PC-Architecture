@@ -522,6 +522,106 @@ def distribute_memory_to_l4(caches: List[CacheHierarchy], addresses: List[int],
     return counts
 
 
+
+def timed_memory_to_l4(caches: List[CacheHierarchy], addresses: List[int],
+                       chunk_bytes: int = 256,
+                       data_ram_bytes_per_cycle: int = 64,
+                       l4_ingress_bytes_per_cycle: int = 64,
+                       source_first_beat_latency: int = 0,
+                       l4_ingress_latency: int = 0) -> dict:
+    """Timed bulk transfer from Data RAM directly into one eight-core L4 home.
+
+    addresses are contiguous byte addresses, one per cache line. This models
+    a single eight-core block only. Source bandwidth/bank service and L4 ingress
+    are separate resources; chunks may overlap in the pipeline. No L4-to-L4
+    forwarding or normal demand-fill path is involved.
+    """
+    if len(caches) != 8:
+        raise ValueError("timed Data RAM-to-L4 transfer requires exactly 8 core caches")
+    if any(cache.l4 is None for cache in caches):
+        raise ValueError("timed Data RAM-to-L4 transfer requires an L4 cache on every core")
+    l4 = caches[0].l4
+    if any(cache.l4 is not l4 for cache in caches):
+        raise ValueError("all 8 cores must share the same L4 home")
+    if not addresses:
+        raise ValueError("timed Data RAM-to-L4 transfer requires at least one address")
+    if chunk_bytes <= 0 or data_ram_bytes_per_cycle <= 0 or l4_ingress_bytes_per_cycle <= 0:
+        raise ValueError("chunk size and both bandwidth values must be positive")
+    if source_first_beat_latency < 0 or l4_ingress_latency < 0:
+        raise ValueError("transfer latencies cannot be negative")
+
+    line_bytes = caches[0].line
+    if any(int(address) % line_bytes for address in addresses):
+        raise ValueError(f"all transfer addresses must be {line_bytes}-byte aligned")
+    ordered_addresses = [int(address) for address in addresses]
+    if any(b - a != line_bytes for a, b in zip(ordered_addresses, ordered_addresses[1:])):
+        raise ValueError("bulk transfer addresses must describe one contiguous cache-line range")
+    if chunk_bytes < line_bytes or chunk_bytes % line_bytes:
+        raise ValueError(f"chunk_bytes must be a positive multiple of cache-line size ({line_bytes})")
+
+    lines_per_chunk = max(1, chunk_bytes // line_bytes)
+    chunks = []
+    for start in range(0, len(ordered_addresses), lines_per_chunk):
+        chunk_addresses = ordered_addresses[start:start + lines_per_chunk]
+        chunks.append({
+            "id": f"bulk-l4-{len(chunks)}",
+            "core": 0,
+            "address": chunk_addresses[0],
+            "width": len(chunk_addresses) * line_bytes,
+            "addresses": chunk_addresses,
+        })
+
+    source = SharedMemoryController(
+        bank_count=8, beat_bytes=8,
+        aggregate_bytes_per_cycle=data_ram_bytes_per_cycle,
+    )
+    source_reservations = source.reserve_batch(
+        0, [{"id": c["id"], "core": 0, "address": c["address"], "width": c["width"]}
+            for c in chunks]
+    )
+
+    l4_next_cycle = 0
+    ingress_events = []
+    completed_lines = []
+    for chunk in chunks:
+        source_done = source_reservations[chunk["id"]]["service_complete_cycle"] + source_first_beat_latency
+        ingress_start = max(source_done, l4_next_cycle)
+        ingress_cycles = max(1, math.ceil(chunk["width"] / l4_ingress_bytes_per_cycle))
+        ingress_done = ingress_start + ingress_cycles + l4_ingress_latency
+        l4_next_cycle = ingress_done
+        completed_lines.extend((ingress_done, address) for address in chunk["addresses"])
+        ingress_events.append({
+            "chunk_id": chunk["id"],
+            "bytes": chunk["width"],
+            "source_complete_cycle": source_done,
+            "ingress_start_cycle": ingress_start,
+            "ingress_complete_cycle": ingress_done,
+            "ingress_wait_cycles": ingress_start - source_done,
+        })
+
+    for _, address in sorted(completed_lines):
+        l4.insert(address // line_bytes)
+
+    return {
+        "cores": 8,
+        "l4_home_count": 1,
+        "bytes_transferred": len(ordered_addresses) * line_bytes,
+        "cache_lines_transferred": len(ordered_addresses),
+        "chunk_bytes": chunk_bytes,
+        "chunk_count": len(chunks),
+        "data_ram_bytes_per_cycle": data_ram_bytes_per_cycle,
+        "l4_ingress_bytes_per_cycle": l4_ingress_bytes_per_cycle,
+        "source_first_beat_latency": source_first_beat_latency,
+        "l4_ingress_latency": l4_ingress_latency,
+        "source_request_events": source.request_events,
+        "l4_ingress_events": ingress_events,
+        "data_ram_bus_next_cycle": source.bus_next_cycle,
+        "cycles": max(event["ingress_complete_cycle"] for event in ingress_events),
+        "l4_resident_lines": sum(1 for address in ordered_addresses
+                                 if l4.lookup(address // line_bytes)),
+        "model_scope": "single 8-core block; direct Data RAM-to-L4; no cross-L4 forwarding",
+    }
+
 def build_cache_hierarchies(p: CoreProfile, core_count: int) -> List[CacheHierarchy]:
     """Build private and shared cache objects using each modeled architecture's topology.
 
