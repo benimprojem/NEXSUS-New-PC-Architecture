@@ -2086,7 +2086,8 @@ def run_vector_matrix_isolation_sweep(workloads: Dict[str, List[Op]]) -> dict:
         cache_resident = simulate_cpu(
             {"vec_me512_memory_overlap": mixed}, profile, core_count,
             {"execution_only": True,
-             "cache_prefill_addresses": warm_addresses},
+             "cache_prefill_addresses": warm_addresses,
+             "cache_prefill_level": "L4" if core_count >= 8 else "L3"},
         ) if mixed else None
         rows[key] = {
             "normal": normal,
