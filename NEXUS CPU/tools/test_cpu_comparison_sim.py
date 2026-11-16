@@ -1633,5 +1633,51 @@ class EightCoreArchitectureScalingTests(unittest.TestCase):
             sim.timed_memory_to_l4(caches, [0x1000], chunk_bytes=0)
 
 
+    def test_direct_l4_to_l1_copy_bypasses_l2_and_l3_for_all_cores(self):
+        profile = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        caches = sim.build_cache_hierarchies(profile, 8)
+        addresses = [0x900000 + i * 64 for i in range(16)]
+        sim.timed_memory_to_l4(caches, addresses, chunk_bytes=256)
+        result = sim.timed_l4_to_l1(
+            caches, addresses, chunk_bytes=256,
+            l4_read_bytes_per_cycle=128, l1_ingress_bytes_per_cycle=64,
+        )
+        self.assertEqual(result["transfer_path"], "L4 -> private L1 (direct; L2/L3 bypassed)")
+        self.assertEqual(result["target_cores"], list(range(8)))
+        self.assertEqual(result["unique_bytes"], 1024)
+        self.assertEqual(result["bytes_copied"], 8192)
+        self.assertEqual(result["chunk_count_per_core"], 4)
+        self.assertEqual(result["l1_resident_lines"], {core: 16 for core in range(8)})
+        for core in range(8):
+            for address in addresses:
+                line = address // caches[core].line
+                self.assertTrue(caches[core].l1.lookup(line))
+                self.assertFalse(caches[core].l2.lookup(line))
+                self.assertFalse(caches[core].l3.lookup(line))
+
+    def test_direct_l4_to_l1_can_target_one_core_or_a_subset(self):
+        profile = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        caches = sim.build_cache_hierarchies(profile, 8)
+        addresses = [0xA00000 + i * 64 for i in range(8)]
+        sim.timed_memory_to_l4(caches, addresses)
+        result = sim.timed_l4_to_l1(caches, addresses, target_cores=[1, 3])
+        self.assertEqual(result["target_cores"], [1, 3])
+        self.assertEqual(result["bytes_copied"], 1024)
+        self.assertEqual(result["l1_resident_lines"], {1: 8, 3: 8})
+        self.assertFalse(caches[0].l1.lookup(addresses[0] // caches[0].line))
+
+    def test_direct_l4_to_l1_rejects_missing_source_lines_and_invalid_targets(self):
+        profile = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        caches = sim.build_cache_hierarchies(profile, 8)
+        addresses = [0xB00000 + i * 64 for i in range(4)]
+        with self.assertRaisesRegex(ValueError, "L4 source miss"):
+            sim.timed_l4_to_l1(caches, addresses)
+        sim.timed_memory_to_l4(caches, addresses)
+        with self.assertRaisesRegex(ValueError, "unique valid"):
+            sim.timed_l4_to_l1(caches, addresses, target_cores=[2, 2])
+        with self.assertRaisesRegex(ValueError, "outside available"):
+            sim.timed_l4_to_l1(caches, addresses, target_cores=[8])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
