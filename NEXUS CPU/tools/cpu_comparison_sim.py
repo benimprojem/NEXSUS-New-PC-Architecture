@@ -1326,8 +1326,13 @@ class CommandFetchModel:
                 self.hits += 1
                 self.buffer_hits += 1
                 next_block = self._next_logical_page(block)
+                descriptor = self.page_descriptors.get(block)
+                valid_page_bytes = int(
+                    descriptor.get("valid_bytes", self.p0_buffer_bytes)
+                    if descriptor is not None else self.p0_buffer_bytes
+                )
                 prefetch_start = max(
-                    0, self.p0_buffer_bytes - self.prefetch_distance_bytes
+                    0, valid_page_bytes - self.prefetch_distance_bytes
                 )
                 if next_block is not None and offset >= prefetch_start:
                     self._start_p0_prefetch(next_block, cycle)
