@@ -1224,7 +1224,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                    dispatched_now < p.frontend and len(st["rob"]) < p.rob and
                    cycle >= st["frontend_blocked_until"]):
                 op = ops[st["next_frontend"]]
-                if st["fetch"] is not None:
+                if st["fetch"] is not None and not features.get("execution_only", False):
                     pc = op.command_address if op.command_address >= 0 else op.seq * 8
                     sequential_fetch = st["last_pc"] is None or pc == st["last_pc"] + 8
                     if not st["fetch"].can_fetch(pc, cycle, sequential=sequential_fetch):
@@ -1459,9 +1459,10 @@ def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=N
                 "app_source_cycles": sum(x["fetch"].app_source_cycles for x in per_core if x["fetch"] is not None),
                 "code_slot_transfer_cycles": sum(x["fetch"].code_slot_cycles for x in per_core if x["fetch"] is not None),
                 "code_stream_transfer_cycles": sum(x["fetch"].code_stream_cycles for x in per_core if x["fetch"] is not None),
-                "mode": ("CodeFlow C0 -> CS -> EB" if p.name.startswith("NEXSUS CPU") and
-                         (nexus_features is None or nexus_features.get("p0", True))
-                         else "conventional I-cache")
+                "mode": ("execution-only backend isolation" if nexus_features and nexus_features.get("execution_only", False)
+                         else ("CodeFlow C0 -> CS -> EB" if p.name.startswith("NEXSUS CPU") and
+                               (nexus_features is None or nexus_features.get("p0", True))
+                               else "conventional I-cache"))
             },
             "parallel_model": "lockstep multicore; private L1; NEXSUS L2 shared per 2 cores, L3 per 4 and L4 per 8; reference CPU caches remain per-core approximations; shared DRAM banks and work-conserving aggregate bus; coherence not modeled"
         }
@@ -1983,6 +1984,35 @@ def run_fetch_latency_sweep(workloads, conventional_latencies=(8, 16, 24, 32),
     }
 
 
+def run_vector_matrix_isolation_sweep(workloads: Dict[str, List[Op]]) -> dict:
+    """Compare normal instruction delivery with a fetch-bypassed backend upper bound."""
+    names = ("vector_throughput", "vec_add", "vec_sub", "vec_mul",
+             "vec_fma", "vec_permute", "vec_reduce", "me512_matrix")
+    target = {name: workloads[name] for name in names if name in workloads}
+    profiles = ("amd_9950x3d2", "intel_xeon_698x", "apple_m6", "nexus_balanced_128")
+    rows = {}
+    for key in profiles:
+        profile = PROFILES[key]
+        core_count = 8
+        if key == "nexus_balanced_128":
+            normal_features = {"task_workspace": True, "code_slots": True,
+                               "codeflow": True, "p0_capacity_kb": 16,
+                               "p0_refill_latency": 48}
+        else:
+            normal_features = None
+        normal = simulate_cpu(target, profile, core_count, normal_features)
+        isolated = simulate_cpu(target, profile, core_count,
+                                {"execution_only": True})
+        rows[key] = {"normal": normal, "execution_only": isolated}
+    return {
+        "experiment": "VEC and ME512 instruction-fetch isolation",
+        "cores_per_profile": 8,
+        "same_logical_workloads": list(target),
+        "execution_only_definition": "Bypass instruction-fetch readiness only; retain per-core dispatch/issue, execution units, dependencies, Data RAM/cache timing and retirement.",
+        "results": rows,
+    }
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--scale", type=int, default=1)
@@ -2000,8 +2030,22 @@ def main():
     ap.add_argument("--fma-sweep", action="store_true", help="compare 2/4 FMA lanes with 6/8 total FP64 lanes")
     ap.add_argument("--fma-latency-sweep", action="store_true", help="sweep FMA result latency with FP6/FMA4 held fixed")
     ap.add_argument("--mshr-sweep", action="store_true", help="sweep per-core Data RAM MSHR capacities 1/2/4/8/16/32")
+    ap.add_argument("--vec-me512-isolation", action="store_true", help="compare normal VEC/ME512 workloads with instruction-fetch-bypassed backend isolation")
     args = ap.parse_args()
     workloads = build_composite_workload(args.scale)
+    if args.vec_me512_isolation:
+        result = run_vector_matrix_isolation_sweep(workloads)
+        if args.json:
+            print(json.dumps(result, indent=2))
+        else:
+            print("VEC / ME512 INSTRUCTION-FETCH ISOLATION")
+            for profile, pair in result["results"].items():
+                for kernel in result["same_logical_workloads"]:
+                    normal = pair["normal"]["kernels"][kernel]
+                    isolated = pair["execution_only"]["kernels"][kernel]
+                    print(f"{profile:20} {kernel:20} normal={normal['cycles']:>5} backend={isolated['cycles']:>5} "
+                          f"fetch_wait={normal['codeflow_counters']['wait_cycles']:>6}")
+        return
     if args.mshr_sweep:
         result = run_data_mshr_sweep(PROFILES["nexus_balanced_128"])
         if args.json:
