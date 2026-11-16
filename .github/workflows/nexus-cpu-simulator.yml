@@ -32,6 +32,7 @@ jobs:
       - name: Compile simulator and tests
         run: |
           python -m py_compile "NEXUS CPU/tools/cpu_comparison_sim.py"
+          python -m py_compile "NEXUS CPU/tools/generate_full_architecture_benchmark.py"
           python -m py_compile "NEXUS CPU/tools/test_cpu_comparison_sim.py"
           python -m py_compile "NEXUS CPU/tools/l0i_px_pipeline_sim.py"
           python -m py_compile "NEXUS CPU/tools/test_l0i_px_pipeline_sim.py"
@@ -623,6 +624,26 @@ jobs:
                     f'worst={worst["multicast_cycles"] / worst["unicast_cycles"]:.3f}; '
                     f'L4 bytes saved={best["l4_source_bytes_saved"]}')
           PY
+      - name: Generate full architecture benchmark tables
+        run: |
+          python "NEXUS CPU/tools/generate_full_architecture_benchmark.py" --scale 1 --output-dir /tmp/nexus-full-architecture-benchmark
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("/tmp/nexus-full-architecture-benchmark")
+          data = json.loads((root / "full-architecture-results.json").read_text(encoding="utf-8"))
+          assert len(data["kernel_names"]) == 25, len(data["kernel_names"])
+          assert set(data["modes"]) == {"native", "normalized_8core"}
+          expected = {"amd_9950x3d2", "intel_xeon_698x", "apple_m6", "nexus_balanced_128"}
+          for mode in data["modes"].values():
+              assert set(mode) == expected
+              assert len({mode[arch]["total_ops"] for arch in expected}) == 1
+              for kernel in data["kernel_names"]:
+                  assert len({mode[arch]["kernels"][kernel]["ops"] for arch in expected}) == 1
+          assert (root / "full-architecture-results.md").stat().st_size > 1000
+          assert (root / "full-architecture-results.csv").stat().st_size > 1000
+          print("PASS: 25 kernels, four architecture profiles, native and normalized-8-core tables.")
+          PY
       - name: Upload comparison and CS sweep results
         if: always()
         uses: actions/upload-artifact@v4
@@ -630,6 +651,8 @@ jobs:
           name: nexus-cpu-comparison-results
           path: |
             /tmp/nexus-l4-l1-transfer-sweep.json
+            /tmp/nexus-l4-l1-distribution-comparison.json
+            /tmp/nexus-full-architecture-benchmark/
             /tmp/nexus-cpu-results.json
             /tmp/nexus-vec-me512-isolation.json
             /tmp/nexus-data-mshr-sweep.json
