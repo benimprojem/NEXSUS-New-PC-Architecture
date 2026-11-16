@@ -602,6 +602,16 @@ class WorkspaceCodeSlotModelTests(unittest.TestCase):
                              [i*8 for i in range(len(shard))])
 
 class CrossArchitectureComparisonTests(unittest.TestCase):
+    def test_px_valid_byte_boundary_is_not_applied_to_legacy_p0_mode(self):
+        descriptor = {0: {"logical_page_id": 0, "valid_bytes": 8, "marker": "CF_END"}}
+        legacy = sim.CommandFetchModel(True, page_descriptors=descriptor,
+                                       codeflow_enabled=False)
+        legacy._validate_fetch_address(0, 8)
+        codeflow = sim.CommandFetchModel(True, page_descriptors=descriptor,
+                                         codeflow_enabled=True)
+        with self.assertRaisesRegex(ValueError, "invalid/padding bytes"):
+            codeflow._validate_fetch_address(0, 8)
+
     def test_backend_isolation_bypasses_instruction_frontend_on_every_architecture(self):
         workload = {"backend_isolation": [
             sim.Op(i, "INT", command_address=i * 8) for i in range(64)
