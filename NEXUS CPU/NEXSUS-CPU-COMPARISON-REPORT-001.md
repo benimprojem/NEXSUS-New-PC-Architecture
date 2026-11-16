@@ -205,9 +205,24 @@ The simulator now supports an untimed, exact-level working-set prefill. It inser
 
 The eight-core VEC/ME512 cache-resident sweep now homes its working set in shared L4. Regression coverage verifies that a prefilled line is visible at L1 only to its owner core, at L2 to its two-core pair, at L3 to its four-core group, and at L4 to its eight-core group—but not to the next group. This validates modeled sharing and placement, not cache bandwidth, coherence, or physical silicon timing.
 
-The mixed kernel also has true data dependencies: LOAD feeds both VEC and ME512, and STORE waits for both results. The cold and cache-resident cases can therefore expose operand-feed delay without confusing independent arithmetic with unrelated memory traffic. Full CI/artifact results are pending; no new performance conclusion is recorded yet.
+The mixed kernel also has true data dependencies: LOAD feeds both VEC and ME512, and STORE waits for both results. The cold and cache-resident cases expose operand-feed delay without confusing independent arithmetic with unrelated memory traffic. The completed CI artifact provides the measurements in section 8.4.
 
 ---
+
+## 8.4 Mixed VEC + ME512 + memory: cold versus cache-resident — CI 43796038337
+
+CI [43796038337](https://github.com/benimprojem/NEXUS-New-PC-Architecture/actions/runs/43796038337) passed all regression, comparison, VEC/ME512 isolation, cross-architecture, and CodeFlow steps. The artifact's mixed kernel preserves 448 logical operations (128 VEC, 128 ME512, 128 LOAD, 64 STORE); the 192 memory operations are unchanged between paths. NEXSUS uses its eight-core L4 home; reference profiles use their modeled L3 home.
+
+| Profile | Cold DRAM path | Cache-resident path | DRAM accesses (cold → resident) | Shared-home accesses (resident) |
+|---|---:|---:|---:|---:|
+| AMD 9950X3D2 model | 738 cycles | 114 cycles | 192 → 0 | 192 L3 |
+| Intel Xeon 698X model | 462 cycles | 137 cycles | 192 → 0 | 192 L3 |
+| Apple M6 model | 411 cycles | 95 cycles | 192 → 0 | 192 L3 |
+| NEXSUS Balanced 128 | 1,078 cycles | 147 cycles | 192 → 0 | 192 L4 |
+
+In this modeled workload, exact-level working-set prefill removes the 192 DRAM accesses and moves the data requests to the collaboration group's shared cache home. NEXSUS cold-to-resident completion changes from 1,078 to 147 cycles; this is a simulator workload result, **not** a silicon speedup claim or an isolated cache-latency measurement. The kernel still includes dependency stalls, execution-resource contention, memory/cache service, instruction delivery, and retirement. Reference CPU cache organizations are approximations and are not architecturally equivalent to NEXSUS L2/L3/L4 sharing.
+
+**Next cache validation:** test home-level capacity/eviction and access visibility across group boundaries, then add explicit cache hit/miss latency and bandwidth/port models only after the relevant policy parameters are chosen. Coherence and cross-group transfer remain unmodeled.
 
 ## 9. Next engineering steps
 
