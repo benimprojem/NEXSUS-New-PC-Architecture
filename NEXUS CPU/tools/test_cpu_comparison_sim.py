@@ -1000,7 +1000,7 @@ class CodeFlowMetadataTests(unittest.TestCase):
         fetch = sim.CommandFetchModel(True, page_descriptors={
             0: {"valid_bytes": 1024, "marker": "CF_NEXT", "next_logical_page_id": 1},
             1: {"valid_bytes": 512, "marker": "CF_END"},
-        })
+        }, codeflow_enabled=True)
         self.assertFalse(fetch.can_fetch(0, 0))
         fetch.complete(48)
         self.assertTrue(fetch.can_fetch(0, 48))
