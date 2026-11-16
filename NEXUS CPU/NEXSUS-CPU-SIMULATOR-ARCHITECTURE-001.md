@@ -115,7 +115,9 @@ The initial architectural resource map includes:
 - P0 64-bit command records and 512-bit peak refill interface target;
 - EB 2 × 2 KiB banks; OW 8 KiB; TW 8 KiB; CP0–CP3 (4 × 8 KiB); XW 8 KiB, each with defined roles/permissions;
 - separate App RAM and Data RAM paths;
-- L1 private 128 KiB/core, L2 shared per 2 cores 1 MiB, L3 shared per 4 cores 8 MiB, L4 shared per 8+ cores 64 MiB as current proposed capacities;
+- Fixed cache topology per eight-core block: 8 × private L1 (1 MiB/core), 4 × pair-shared L2 (2 MiB each), 2 × four-core-shared L3 (8 MiB each), and 1 × eight-core-shared L4 (64 MiB+).
+- Every core may access its own L1, pair L2, four-core L3, and block L4 subject to permissions/visibility. Both L3 groups in one eight-core block share the same L4; the L3 boundary is not an L4 boundary. Cross-L4-block access is explicit, not implicit.
+- Cache instance counts (8/4/2/1) are not port counts. Cache ports, service bandwidth, arbitration, latency and contention remain configurable/open; simulator single-request/cycle assumptions are provisional.
 - 8 banks × 64-bit per bank group as a recommended topology baseline, not physical freeze;
 - local bank queues and all-or-none multi-bank admission;
 - existing task context residency and IRQ/exception architecture.
