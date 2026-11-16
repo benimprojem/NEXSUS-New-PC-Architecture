@@ -667,6 +667,23 @@ class ME512WorkloadTests(unittest.TestCase):
                     self.assertEqual(result["kernels"][name]["ops"], 128)
                     self.assertGreater(result["kernels"][name]["cycles"], 0)
 
+    def test_mixed_vec_me512_and_memory_stream_preserves_work_and_overlaps(self):
+        ops = sim.build_composite_workload(scale=1)["vec_me512_memory_overlap"]
+        self.assertEqual(len(ops), 128 * 3 + 64)
+        self.assertEqual(sum(op.kind == "VEC_ADD" for op in ops), 128)
+        self.assertEqual(sum(op.kind == "ME512" for op in ops), 128)
+        self.assertEqual(sum(op.kind == "LOAD" for op in ops), 128)
+        self.assertEqual(sum(op.kind == "STORE" for op in ops), 64)
+        result = sim.simulate_cpu(
+            {"vec_me512_memory_overlap": ops},
+            sim.PROFILES["nexus_balanced_128"], 8,
+            {"execution_only": True},
+        )["kernels"]["vec_me512_memory_overlap"]
+        self.assertEqual(result["ops"], len(ops))
+        self.assertGreater(result["issue_span_cycles"], 0)
+        self.assertGreater(result["cache_accesses"]["DRAM"], 0)
+        self.assertGreater(result["stall_counters"]["memory_latency_exposure_cycles"], 0)
+
     def test_me512_tiled_workload_retires_on_all_architectures(self):
         workload = {"me512_matrix": sim.build_composite_workload(scale=1)["me512_matrix"]}
         for key in ("amd_9950x3d2", "intel_xeon_698x", "apple_m6", "nexus_balanced_128"):
