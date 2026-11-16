@@ -1288,14 +1288,15 @@ class CommandFetchModel:
         if valid_bytes <= 0 or valid_bytes > self.p0_buffer_bytes or valid_bytes % 8:
             raise ValueError(f"invalid transfer length for code page {block}: {valid_bytes}")
         beats = math.ceil(valid_bytes / 8)
-        code_slot_delay = math.ceil(valid_bytes / self.c0_to_cs_bytes_per_cycle)
-        stream_delay = math.ceil(valid_bytes / self.cs_to_eb_bytes_per_cycle)
+        code_slot_delay = stream_delay = 0
         pool_hit = self._pool_probe(block)
         source_delay = 0
         if not pool_hit and not self.codeflow_enabled:
             self._pool_record_miss(block, valid_bytes)
             source_delay = self.pool_miss_latency
         elif not pool_hit:
+            code_slot_delay = math.ceil(valid_bytes / self.c0_to_cs_bytes_per_cycle)
+            stream_delay = math.ceil(valid_bytes / self.cs_to_eb_bytes_per_cycle)
             if block in self.code_cache_pages:
                 self._pool_record_miss(block, valid_bytes)
                 self.c0_hits += 1
