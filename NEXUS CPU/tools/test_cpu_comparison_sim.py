@@ -385,6 +385,20 @@ class SharedCacheGroupTests(unittest.TestCase):
         self.assertEqual(caches[3].probe(0x2000)[1], "L3")
         self.assertEqual(caches[4].probe(0x2000)[1], "L4")
 
+    def test_both_l3_groups_access_the_same_l4_home(self):
+        p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        caches = sim.build_cache_hierarchies(p, 8)
+        # Core 0 and core 4 belong to different L3 groups, but one L4 block.
+        self.assertIsNot(caches[0].l3, caches[4].l3)
+        self.assertIs(caches[0].l4, caches[4].l4)
+        caches[0].fill(0x3800, "DRAM")
+        self.assertEqual(caches[4].probe(0x3800)[1], "L4")
+        # Accessing through core 4 must not fake-copy the line into its L3/L2/L1.
+        line = 0x3800 // caches[4].line
+        self.assertFalse(caches[4].l3.lookup(line))
+        self.assertFalse(caches[4].l2.lookup(line))
+        self.assertFalse(caches[4].l1.lookup(line))
+
     def test_l4_is_shared_by_eight_core_group_not_next_group(self):
         p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
         caches = sim.build_cache_hierarchies(p, 16)
