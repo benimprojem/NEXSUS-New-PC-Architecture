@@ -294,6 +294,19 @@ def build_composite_workload(scale: int = 1) -> Dict[str, List[Op]]:
         )
     result["me512_dependency_chain"] = ops
 
+    # H2c) Mixed VEC + ME512 + Data RAM stream. Independent arithmetic
+    # operations and memory traffic are interleaved to expose resource overlap.
+    ops = []
+    for i in range(128*n):
+        add_op(ops, "VEC_ADD", label="mixed VEC arithmetic", exec_width_bits=512)
+        add_op(ops, "ME512", label="mixed ME512 tile MAC", exec_width_bits=512)
+        add_op(ops, "LOAD", address=0xA000000 + (i % 256) * 64,
+               width=64, label="mixed Data RAM operand load")
+        if i % 2 == 0:
+            add_op(ops, "STORE", address=0xB000000 + (i % 128) * 64,
+                   width=64, label="mixed Data RAM result store")
+    result["vec_me512_memory_overlap"] = ops
+
     # H3) Atomic read-modify-write contention on a small shared address set.
     ops = []
     for i in range(256*n):
@@ -2020,7 +2033,7 @@ def run_vector_matrix_isolation_sweep(workloads: Dict[str, List[Op]]) -> dict:
              "vec_mul_dependency_chain", "vec_fma_dependency_chain",
              "vec_permute_dependency_chain", "vec_reduce_dependency_chain",
              "me512_independent_throughput", "me512_dependency_chain",
-             "me512_matrix")
+             "me512_matrix", "vec_me512_memory_overlap")
     target = {name: workloads[name] for name in names if name in workloads}
     profiles = ("amd_9950x3d2", "intel_xeon_698x", "apple_m6", "nexus_balanced_128")
     rows = {}
