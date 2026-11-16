@@ -1,4 +1,8 @@
 # NEXSUS CPU — OS / PX Pool / Context Control Interface
+
+> **LEGACY TERMINOLOGY NOTICE — READ BEFORE USING THIS DOCUMENT**  
+> This document predates the canonical CodeFlow naming decision. Its symbols PX / P0–P7 / SPM0 / L0I are legacy identifiers. Use the current names in new work: **CodeFlow Manager (CFM)**, **Code Slots (CS0–CS7)**, **Code Cache (C0)**, **Code Stream Transfer (CST)**, and **Execution Buffer (EB)**. “Ping-pong” describes EB's two-bank operation; it is not a separate stage. See `NEXSUS-CPU-CODEFLOW-NAMING-001.md` and `NEXSUS-CPU-MEMORY-PATH-AND-NAMING-001.md`. The technical capacities and ownership rules remain applicable unless superseded by a later decision.
+
 **Document ID:** NEXSUS-CPU-OS-PX-CONTEXT-INTERFACE-001  
 **Status:** Architecture proposal — command semantics not yet frozen  
 **Date:** 2026-11-13
