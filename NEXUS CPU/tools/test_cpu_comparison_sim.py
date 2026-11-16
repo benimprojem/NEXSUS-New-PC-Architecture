@@ -1002,17 +1002,26 @@ class CodeFlowMetadataTests(unittest.TestCase):
             1: {"valid_bytes": 512, "marker": "CF_END"},
         }, codeflow_enabled=True)
         self.assertFalse(fetch.can_fetch(0, 0))
-        fetch.complete(48)
-        self.assertTrue(fetch.can_fetch(0, 48))
-        self.assertEqual(fetch.p0_pending, (1, 96, 1))
-        self.assertFalse(fetch.can_fetch(2048, 49))
-        fetch.complete(96)
-        self.assertTrue(fetch.can_fetch(2048, 96))
+
+        # Integrated CodeFlow starts cold: include AppRAM, C0->CS, CS->EB
+        # and refill latency rather than assuming the legacy P0-only 48 cycles.
+        first_ready = fetch.p0_pending[1]
+        self.assertGreater(first_ready, 48)
+        fetch.complete(first_ready)
+        self.assertTrue(fetch.can_fetch(0, first_ready))
+
+        # CF_NEXT starts an early refill into the alternate EB bank.
+        self.assertEqual(fetch.p0_pending[0], 1)
+        self.assertEqual(fetch.p0_pending[2], 1)
+        second_ready = fetch.p0_pending[1]
+        self.assertFalse(fetch.can_fetch(2048, first_ready + 1))
+        fetch.complete(second_ready)
+        self.assertTrue(fetch.can_fetch(2048, second_ready))
         self.assertIsNone(fetch.p0_pending)  # CF_END suppresses next-page prefetch.
         with self.assertRaises(ValueError):
-            fetch.can_fetch(2048 + 512, 97)  # No padding fetch past valid_bytes.
+            fetch.can_fetch(2048 + 512, second_ready + 1)  # No padding fetch past valid_bytes.
         with self.assertRaises(ValueError):
-            fetch.can_fetch(4096, 97)  # CF_END cannot continue sequentially.
+            fetch.can_fetch(4096, second_ready + 1)  # CF_END cannot continue sequentially.
 
     def test_partial_page_without_marker_is_rejected(self):
         with self.assertRaises(ValueError):
