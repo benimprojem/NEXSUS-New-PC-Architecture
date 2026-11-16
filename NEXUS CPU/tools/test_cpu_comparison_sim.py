@@ -605,6 +605,22 @@ class WorkspaceCodeSlotModelTests(unittest.TestCase):
                              [i*8 for i in range(len(shard))])
 
 class CrossArchitectureComparisonTests(unittest.TestCase):
+    def test_backend_isolation_bypasses_instruction_frontend_on_every_architecture(self):
+        workload = {"backend_isolation": [
+            sim.Op(i, "INT", command_address=i * 8) for i in range(64)
+        ]}
+        for key in ("amd_9950x3d2", "intel_xeon_698x", "apple_m6", "nexus_balanced_128"):
+            with self.subTest(profile=key):
+                result = sim.simulate_cpu(
+                    workload, sim.PROFILES[key], 8, {"execution_only": True}
+                )
+                row = result["kernels"]["backend_isolation"]
+                self.assertEqual(row["ops"], 64)
+                self.assertEqual(row["codeflow_counters"]["wait_cycles"], 0)
+                self.assertEqual(row["codeflow_counters"]["refills"], 0)
+                self.assertEqual(row["codeflow_counters"]["mode"],
+                                 "execution-only backend isolation")
+
     def test_all_architectures_retire_the_same_logical_work_on_eight_cores(self):
         workloads = {
             "same_algorithm": [
