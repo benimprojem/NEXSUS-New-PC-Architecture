@@ -178,7 +178,9 @@ def run_sweep() -> dict:
             "target_arrival_cycles": [0, 160, 320, 480],
             "speculative_arrival_interval_cycles": 32,
             "controller": {
-                "banks": 8, "beat_bytes": 8, "per_core_bytes_per_cycle": 64,
+                "modeled_banks_per_core": 8,
+                "physical_bank_topology": "OPEN; simulator abstraction only",
+                "beat_bytes": 8, "per_core_bytes_per_cycle": 64,
                 "core_count": CORE_COUNT,
                 "aggregate_bytes_per_cycle": 64 * CORE_COUNT,
                 "first_beat_latency_cycles": 40, "max_outstanding": 8,
