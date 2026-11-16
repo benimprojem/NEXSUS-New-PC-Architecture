@@ -1103,11 +1103,11 @@ class IntegratedCodeFlowTests(unittest.TestCase):
         for interval in (1, 4):
             fetch = sim.CommandFetchModel(True, codeflow_enabled=True, app_beat_interval=interval)
             fetch.can_fetch(0, 0)
-            ready = 48 + 40 + 255 * interval + 1 + 128 + 128
+            ready = 48 + 40 + 255 * interval + 1 + 256 + 256
             fetch.complete(ready)
             self.assertTrue(fetch.can_fetch(0, ready))
             ready_cycles.append(ready)
-        self.assertEqual(ready_cycles, [600, 1365])
+        self.assertEqual(ready_cycles, [856, 1621])
 
     def test_nexus_execution_report_exposes_codeflow_stage_counters(self):
         result = sim.simulate_cpu({"code": [sim.Op(0, "INT", command_address=0)]},
