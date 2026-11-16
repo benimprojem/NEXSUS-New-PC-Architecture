@@ -897,7 +897,8 @@ class FMAResourceSweepTests(unittest.TestCase):
         )
         self.assertEqual(set(result["results"]), {"3", "4", "5", "6"})
         chain_cycles = []
-        independent_cycles = []
+        fma_issue_spans = []
+        fp_issue_spans = []
         fp_cycles = []
         for row in result["results"].values():
             self.assertEqual(row["kernels"]["fma_dependency_chain"]["ops"], 256)
@@ -905,11 +906,15 @@ class FMAResourceSweepTests(unittest.TestCase):
             self.assertEqual(row["kernels"]["fp_throughput"]["ops"], 512)
             self.assertTrue(all(x["ops_preserved"] for x in row["kernels"].values()))
             chain_cycles.append(row["kernels"]["fma_dependency_chain"]["cycles"])
-            independent_cycles.append(row["kernels"]["fma_throughput"]["cycles"])
+            fma_issue_spans.append(row["kernels"]["fma_throughput"]["issue_span_cycles"])
+            fp_issue_spans.append(row["kernels"]["fp_throughput"]["issue_span_cycles"])
             fp_cycles.append(row["kernels"]["fp_throughput"]["cycles"])
         self.assertEqual(chain_cycles, sorted(chain_cycles))
         self.assertEqual(len(set(chain_cycles)), 4)
-        self.assertEqual(len(set(independent_cycles)), 1)
+        # Total completion includes the final result-latency drain. Compare
+        # issue spans to verify that independent FMA throughput is unchanged.
+        self.assertEqual(len(set(fma_issue_spans)), 1)
+        self.assertEqual(len(set(fp_issue_spans)), 1)
         self.assertEqual(len(set(fp_cycles)), 1)
 
 
