@@ -105,6 +105,39 @@ def _run(policy: str) -> dict:
     expected = CORE_COUNT * (4 + 16)
     if len(admitted) != expected:
         raise AssertionError(f"{policy}: admitted {len(admitted)} of {expected} requests")
+    per_core = {}
+    for core in range(CORE_COUNT):
+        core_rows = [row for row in admitted.values() if row["core"] == core]
+        core_target = [row for row in core_rows if row["kind"] == "target"]
+        core_speculative = [row for row in core_rows if row["kind"] == "speculative"]
+        core_latencies = [row["completion_latency"] for row in core_rows]
+        per_core[str(core)] = {
+            "requests": len(core_rows),
+            "target_requests": len(core_target),
+            "speculative_requests": len(core_speculative),
+            "bytes_transferred": len(core_rows) * PAGE_BYTES,
+            "mean_completion_latency_cycles": round(
+                sum(core_latencies) / len(core_latencies), 2
+            ),
+            "max_completion_latency_cycles": max(core_latencies),
+        }
+
+    core_bytes = [row["bytes_transferred"] for row in per_core.values()]
+    core_mean_latencies = [
+        row["mean_completion_latency_cycles"] for row in per_core.values()
+    ]
+    core_fairness = {
+        "min_bytes_per_core": min(core_bytes),
+        "max_bytes_per_core": max(core_bytes),
+        "bytes_spread": max(core_bytes) - min(core_bytes),
+        "min_mean_latency_cycles": min(core_mean_latencies),
+        "max_mean_latency_cycles": max(core_mean_latencies),
+        "mean_latency_spread_cycles": round(
+            max(core_mean_latencies) - min(core_mean_latencies), 2
+        ),
+        "equal_bytes_across_cores": len(set(core_bytes)) == 1,
+    }
+
     groups = {}
     for kind in ("target", "speculative"):
         rows = [row for row in admitted.values() if row["kind"] == kind]
@@ -128,6 +161,8 @@ def _run(policy: str) -> dict:
         "queue_full_retries": controller.rejected_queue_full,
         "bank_conflicts": controller.bank_conflicts,
         "last_completion_cycle": max(row["ready_cycle"] for row in admitted.values()),
+        "per_core": per_core,
+        "core_fairness": core_fairness,
         "by_request_class": groups,
     }
 
