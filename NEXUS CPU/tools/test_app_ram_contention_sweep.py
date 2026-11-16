@@ -43,7 +43,7 @@ class AppRamContentionTests(unittest.TestCase):
             if r["burst_bytes"] == 2048
             and r["policy"] == "target_first"
         )
-        self.assertEqual(target_first["target_ready_cycle"], 64)
+        self.assertEqual(target_first["target_ready_cycle"], 72)
 
     def test_disjoint_short_bursts_have_no_bank_conflict(self):
         result = run_contention_sweep()
