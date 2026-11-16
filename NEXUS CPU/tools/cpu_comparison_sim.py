@@ -687,7 +687,17 @@ class AppRamController:
         start = self.rr_cursor % len(cores)
         rotated = cores[start:] + cores[:start]
         rank = {core: i for i, core in enumerate(rotated)}
-        ordered = sorted(requests, key=lambda r: (rank[int(r["core"])], str(r["id"])))
+        # Higher-priority instruction requests are admitted first. Requests
+        # without an explicit priority retain the previous round-robin/core-ID
+        # ordering, so existing workloads remain behaviorally unchanged.
+        ordered = sorted(
+            requests,
+            key=lambda r: (
+                -int(r.get("priority", 0)),
+                rank[int(r["core"])],
+                str(r["id"]),
+            ),
+        )
         result = {}
         for req in ordered:
             req_id = req["id"]
