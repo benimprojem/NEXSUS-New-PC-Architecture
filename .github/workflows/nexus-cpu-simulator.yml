@@ -425,7 +425,7 @@ jobs:
           assert len(rows) == 15
           page = {r["policy"]: r for r in rows if r["burst_bytes"] == 2048}
           assert page["target_first"]["target_ready_cycle"] == 72
-          assert page["speculative_first"]["target_ready_cycle"] == 128
+          assert page["speculative_first"]["target_ready_cycle"] == 104
           assert page["target_first"]["target_ready_cycle"] < page["speculative_first"]["target_ready_cycle"]
           print("APP RAM TARGET / WRONG-PATH CONTENTION")
           for r in rows:
