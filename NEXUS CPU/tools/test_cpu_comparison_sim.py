@@ -547,6 +547,35 @@ class BranchPredictionTests(unittest.TestCase):
         self.assertEqual(sim.PROFILES["nexus_balanced_128"]["branch_predictor"], "small_2bit")
 
 
+class VectorArithmeticWorkloadTests(unittest.TestCase):
+    def test_vector_arithmetic_opcodes_share_the_vector_issue_resource(self):
+        workload = {
+            "vector_arithmetic": [
+                sim.Op(0, "VEC_ADD", exec_width_bits=512),
+                sim.Op(1, "VEC_MUL", exec_width_bits=512),
+                sim.Op(2, "VEC_FMA", exec_width_bits=512),
+                sim.Op(3, "VEC_PERMUTE", exec_width_bits=512),
+            ]
+        }
+        for key in ("amd_9950x3d2", "intel_xeon_698x", "apple_m6", "nexus_balanced_128"):
+            with self.subTest(profile=key):
+                result = sim.simulate_cpu(workload, sim.PROFILES[key])
+                row = result["kernels"]["vector_arithmetic"]
+                self.assertEqual(row["ops"], 4)
+                self.assertTrue(row["ops_preserved"])
+        self.assertEqual(sim.execution_resource_kind("VEC_ADD", "ME512"), "VEC")
+        self.assertEqual(sim.execution_resource_kind("VEC_MUL", "ME512"), "VEC")
+        self.assertEqual(sim.execution_resource_kind("VEC_FMA", "ME512"), "VEC")
+        self.assertEqual(sim.execution_resource_kind("VEC_PERMUTE", "ME512"), "VEC")
+
+    def test_vector_workload_contains_all_arithmetic_classes(self):
+        workload = sim.build_composite_workload(scale=1)
+        for name in ("vec_add", "vec_mul", "vec_fma", "vec_permute"):
+            with self.subTest(kernel=name):
+                self.assertEqual(len(workload[name]), 128)
+                self.assertTrue(all(op.exec_width_bits == 512 for op in workload[name]))
+
+
 class ME512WorkloadTests(unittest.TestCase):
     def test_me512_workload_retires_on_all_architectures(self):
         workload = {"me512": [
@@ -566,6 +595,27 @@ class ME512WorkloadTests(unittest.TestCase):
         self.assertEqual(sim.PROFILES["amd_9950x3d2"]["matrix_unit"], "VEC")
         self.assertEqual(sim.PROFILES["apple_m6"]["vector_bits"], 128)
         self.assertEqual(sim.PROFILES["amd_9950x3d2"]["vector_bits"], 512)
+
+    def test_me512_kernel_is_a_tiled_accumulate_workload_not_one_opaque_op(self):
+        workload = sim.build_composite_workload(scale=1)["me512_matrix"]
+        mac_ops = [op for op in workload if op.kind == "ME512"]
+        loads = [op for op in workload if op.kind == "LOAD"]
+        stores = [op for op in workload if op.kind == "STORE"]
+        self.assertEqual(len(mac_ops), 16 * 8)
+        self.assertEqual(len(loads), 16 * 8 * 2)
+        self.assertEqual(len(stores), 16)
+        self.assertTrue(all(op.exec_width_bits == 512 for op in mac_ops))
+        self.assertTrue(all(len(op.deps) == 3 for op in mac_ops if op.deps and
+                            any(workload[d].kind == "ME512" for d in op.deps)))
+
+    def test_me512_tiled_workload_retires_on_all_architectures(self):
+        workload = {"me512_matrix": sim.build_composite_workload(scale=1)["me512_matrix"]}
+        for key in ("amd_9950x3d2", "intel_xeon_698x", "apple_m6", "nexus_balanced_128"):
+            with self.subTest(profile=key):
+                result = sim.simulate_cpu(workload, sim.PROFILES[key])
+                row = result["kernels"]["me512_matrix"]
+                self.assertEqual(row["ops"], len(workload["me512_matrix"]))
+                self.assertTrue(row["ops_preserved"])
 
 
 class BranchSweepIntegrationTests(unittest.TestCase):
