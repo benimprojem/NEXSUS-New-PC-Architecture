@@ -1679,5 +1679,37 @@ class EightCoreArchitectureScalingTests(unittest.TestCase):
             sim.timed_l4_to_l1(caches, addresses, target_cores=[8])
 
 
+    def test_l4_to_l1_sweep_covers_transfer_dimensions_without_freezing_them(self):
+        result = sim.run_l4_l1_transfer_sweep(
+            working_set_kib_values=(64,),
+            chunk_bytes_values=(64, 256),
+            l4_read_bandwidth_values=(64, 128),
+            l1_ingress_bandwidth_values=(64, 128),
+            target_core_counts=(1, 4, 8),
+        )
+        self.assertEqual(result["row_count"], 24)
+        self.assertEqual(result["cores_per_block"], 8)
+        self.assertEqual(result["transfer_path"], "L4 -> selected private L1s; L2/L3 bypassed")
+        self.assertEqual(result["data_ram_baseline_bytes_per_cycle"], 64)
+        self.assertEqual(result["hardware_decisions_frozen_by_sweep"], [])
+        self.assertIn("arbitration", result["open_parameters"])
+        for row in result["results"]:
+            self.assertEqual(row["unique_bytes"], 64 * 1024)
+            self.assertEqual(row["bytes_copied"], 64 * 1024 * row["target_core_count"])
+            self.assertGreater(row["cycles"], 0)
+            self.assertGreater(row["effective_bytes_per_cycle"], 0)
+            self.assertEqual(row["chunk_count_per_core"], 1024 if row["chunk_bytes"] == 64 else 256)
+
+    def test_l4_to_l1_sweep_rejects_invalid_working_set_and_core_count(self):
+        with self.assertRaisesRegex(ValueError, "positive"):
+            sim.run_l4_l1_transfer_sweep(working_set_kib_values=(0,))
+        with self.assertRaisesRegex(ValueError, "1..8"):
+            sim.run_l4_l1_transfer_sweep(
+                working_set_kib_values=(64,), chunk_bytes_values=(64,),
+                l4_read_bandwidth_values=(64,), l1_ingress_bandwidth_values=(64,),
+                target_core_counts=(9,),
+            )
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
