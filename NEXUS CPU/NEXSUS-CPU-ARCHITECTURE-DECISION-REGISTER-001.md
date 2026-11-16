@@ -153,16 +153,16 @@ Implementation-specific tests remain required; these behaviors must not be redes
 
 The following capacities are **FIXED by the latest explicit architecture decision**:
 
-| Cache level | Capacity |
-|---|---:|
-| L1 | 1 MiB |
-| L2 | 2 MiB |
-| L3 | 8 MiB |
-| L4 | 64 MiB or more |
+| Cache level | Capacity | Sharing scope | State |
+|---|---:|---|---|
+| L1 | 1 MiB | Private to each core | **FIXED** |
+| L2 | 2 MiB | Shared by each pair of cores | **FIXED** |
+| L3 | 8 MiB | Shared by each group of four cores | **FIXED** |
+| L4 | 64 MiB or more | Shared by each group of eight cores; not shared with the next group | **FIXED** |
 
-Do not reopen these capacity values during routine work.
+The simulator already contains and tests this grouping: L1 private, L2 per 2-core group, L3 per 4-core group, and L4 per 8-core group. These sharing scopes and capacities are both fixed decisions; do not reopen them during routine work.
 
-**OPEN:** exact per-core/shared allocation scope, cache-line size, associativity, replacement, hit/miss latency, bandwidth/ports, write policy, inclusion/exclusion, coherence protocol, and interaction with the L1–L4 logical memory-domain/zone model. A logical access domain is not automatically the same thing as a physical cache instance.
+**OPEN:** cache-line size, associativity, replacement, hit/miss latency, bandwidth/ports, write policy, inclusion/exclusion, coherence protocol, and interaction with the L1–L4 logical memory-domain/zone model. A logical access domain is not automatically the same thing as a physical cache instance.
 
 ---
 
@@ -265,6 +265,6 @@ Items already specified in architecture documents are not to be redesigned; they
 - The 2026-11-13 architecture revision restores Data RAM aggregate bandwidth to 64 B/cycle and confirms 32-entry RA/FA/DA/MA banks. Older 64-entry register tables are superseded.
 - The 2026-11-16 memory-path naming decision establishes C0, CS, CST, EB, OW, TW, CP, and XW as current terms. PX, P0–P7, Ping-Pong, SPM0, and L0I are legacy terms.
 - The latest explicit execution-resource decision fixes INT=8, FP64=6, FMA=4, VEC=2, ME512=1.
-- The latest explicit cache-capacity decision fixes L1=1 MiB, L2=2 MiB, L3=8 MiB, and L4=64 MiB+.
+- Cache sharing is already defined and simulator-tested: private L1, L2 shared per 2 cores, L3 per 4 cores, and L4 per 8-core group. The latest explicit capacity decision fixes these to L1=1 MiB/core, L2=2 MiB/2-core group, L3=8 MiB/4-core group, and L4=64 MiB+/8-core group.
 
 When a decision changes, append the date, old value, new value, reason, approving instruction, and affected specification/test files. Never silently overwrite history.
