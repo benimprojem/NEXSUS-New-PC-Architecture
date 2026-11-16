@@ -1385,7 +1385,7 @@ def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=N
         stall_keys = list(per_core[0]["stalls"]) if per_core else []
         results[name] = {
             "cycles": elapsed_cycles, "ops": total_ops,
-            "issue_span_cycles": (max(x["issue_cycles"] for x in per_core if x["issue_cycles"]) - min(x["issue_cycles"] for x in per_core if x["issue_cycles"]) + 1) if any(x["issue_cycles"] for x in per_core) else 0,
+            "issue_span_cycles": (max(cycle for x in per_core for cycle in x["issue_cycles"]) - min(cycle for x in per_core for cycle in x["issue_cycles"]) + 1) if any(x["issue_cycles"] for x in per_core) else 0,
             "aggregate_ipc": round(total_ops/max(1, elapsed_cycles), 3),
             "core_cycles_sum": elapsed_cycles * len(per_core),
             "active_cores": len(per_core),
