@@ -285,6 +285,29 @@ class SharedCacheGroupTests(unittest.TestCase):
         self.assertEqual(cache.probe(0x10040)[1], "DRAM")
         self.assertEqual(cache.probe(0x20000 + 15 * cache.line)[1], "L4")
 
+    def test_cache_probe_reports_each_level_latency_without_implicit_fill(self):
+        p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        cache = sim.CacheHierarchy(p)
+        address = 0xA000
+        line = address // cache.line
+        levels = (
+            ("L1", cache.l1, p.l1_lat),
+            ("L2", cache.l2, p.l2_lat),
+            ("L3", cache.l3, p.l3_lat),
+            ("L4", cache.l4, p.l4_lat),
+        )
+        for level, target, expected_latency in levels:
+            with self.subTest(level=level):
+                target.insert(line)
+                latency, observed = cache.probe(address)
+                self.assertEqual((latency, observed), (expected_latency, level))
+                # Probe is lookup-only: it must not allocate in a nearer cache.
+                self.assertFalse(cache.l1.lookup(line) if level != "L1" else False)
+                target.lines.clear()
+
+        latency, observed = cache.probe(address)
+        self.assertEqual((latency, observed), (p.dram_lat, "DRAM"))
+
     def test_l1_is_private_but_l2_is_shared_by_pair(self):
         p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
         self.assertEqual((p.l1_kb, p.l2_kb, p.l3_kb, p.l4_kb),
