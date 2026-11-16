@@ -378,10 +378,38 @@ def build_composite_workload(scale: int = 1) -> Dict[str, List[Op]]:
 
     return result
 
+class CachePort:
+    """Parameterized cache request port; defaults are provisional design assumptions.
+
+    One port admits one cache-line request per cycle. Wider requests reserve
+    proportionally more service cycles. Shared cache objects share this port.
+    """
+    def __init__(self, ports: int = 1, lines_per_port_cycle: int = 1):
+        if ports < 1 or lines_per_port_cycle < 1:
+            raise ValueError("cache ports and line service rate must be positive")
+        self.ports = ports
+        self.lines_per_port_cycle = lines_per_port_cycle
+        self.next_cycle = [0] * ports
+        self.requests = 0
+        self.wait_cycles = 0
+
+    def reserve(self, cycle: int, width_bytes: int, line_bytes: int = 64) -> int:
+        lines = max(1, math.ceil(max(1, width_bytes) / line_bytes))
+        service = max(1, math.ceil(lines / self.lines_per_port_cycle))
+        slot = min(range(self.ports), key=lambda i: self.next_cycle[i])
+        start = max(cycle, self.next_cycle[slot])
+        wait = start - cycle
+        self.next_cycle[slot] = start + service
+        self.requests += 1
+        self.wait_cycles += wait
+        return wait
+
+
 class LRU:
     def __init__(self, capacity_bytes: int, line_bytes: int):
         self.capacity = max(1, capacity_bytes // line_bytes)
         self.lines = OrderedDict()
+        self.port = CachePort()
     def lookup(self, line: int) -> bool:
         hit = line in self.lines
         if hit:
@@ -421,6 +449,13 @@ class CacheHierarchy:
         if self.l4 and self.l4.lookup(line):
             return self.p.l4_lat, "L4"
         return self.p.dram_lat, "DRAM"
+
+    def reserve(self, level: str, cycle: int, width_bytes: int = 8) -> int:
+        """Reserve a request on the selected level's shared port."""
+        target = getattr(self, level.lower(), None)
+        if target is None:
+            raise ValueError(f"Cannot reserve {level}: cache level is unavailable")
+        return target.port.reserve(cycle, width_bytes, self.line)
 
     def prefill(self, address: int, level: str):
         """Place an untimed shared working-set line at its chosen group level."""
@@ -1374,6 +1409,9 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                                 st["spm"]["overflow"] += 1
                             st["spm"]["fallback_bytes"] += op.width
                         mem_lat, level = st["cache"].probe(op.address)
+                        if level != "DRAM":
+                            cache_port_wait = st["cache"].reserve(level, cycle, op.width)
+                            mem_lat += cache_port_wait
                         if level == "DRAM" and mshr_capacity is not None:
                             outstanding = len(st["mshr_inflight"]) + mshr_reserved_this_cycle[core_id]
                             if outstanding >= int(mshr_capacity):
