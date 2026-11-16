@@ -529,6 +529,7 @@ jobs:
             /tmp/nexus-branch-sweep.json
             /tmp/nexus-normalized-8core.json
             /tmp/nexus-resource-sweep.json
+            /tmp/nexus-fma-sweep.json
             /tmp/nexus-integrated-frontend-sweep.json
             /tmp/nexus-frontend-bottleneck-sweep.json
             /tmp/nexus-frontend-refined-sweep.json
