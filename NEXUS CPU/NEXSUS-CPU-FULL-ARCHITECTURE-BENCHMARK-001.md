@@ -91,7 +91,7 @@ K05 must not be represented by a single generic vector opcode. Its diagnostic su
 - horizontal reduction and dependent accumulation;
 - mixed independent streams to measure issue throughput separately from dependency latency.
 
-The current simulator exposes `VEC_ADD`, `VEC_MUL`, `VEC_FMA`, and `VEC_PERMUTE) as distinct issue opcodes. They map to the two VEC resources and use an explicit 512-bit execution width. Opcode-specific numerical semantics and latency are not yet frozen.
+The current simulator exposes `VEC_ADD`, `VEC_SUB`, `VEC_MUL`, `VEC_FMA`, `VEC_PERMUTE`, and `VEC_REDUCE` as distinct issue opcodes. They map to the two VEC resources and use an explicit 512-bit execution width. Opcode-specific numerical semantics and latency are not yet frozen.
 
 K06/K16 must exercise a real tiled matrix algorithm rather than one isolated tile instruction. The minimum diagnostic pattern is: load A/B tile operands, issue dependent tile multiply-accumulate operations across K, preserve the partial accumulator chain, then store the completed output tile. Measure separately:
 
