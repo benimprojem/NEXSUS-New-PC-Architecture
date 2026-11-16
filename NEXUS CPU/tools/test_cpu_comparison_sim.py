@@ -1306,67 +1306,63 @@ class FMAResourceSweepTests(unittest.TestCase):
 
 
 class AppRamControllerTests(unittest.TestCase):
-    def test_default_app_ram_bandwidth_matches_nexus_architecture(self):
+    def test_default_app_ram_bandwidth_is_64_bytes_per_cycle_per_core(self):
         ctrl = sim.AppRamController()
         self.assertEqual(ctrl.bytes_per_cycle, 64)
 
-    def test_app_ram_controller_has_independent_bounded_queue(self):
+    def test_eight_cores_transfer_concurrently_at_64_bytes_each_per_cycle(self):
+        ctrl = sim.AppRamController(first_beat_latency=40, max_outstanding=1)
+        requests = [
+            {"id": f"page-c{core}", "core": core,
+             "address": 0x200000 * core, "bytes": 2048}
+            for core in range(8)
+        ]
+        result = ctrl.reserve_batch(0, requests)
+        self.assertTrue(all(result[item["id"]]["accepted"] for item in requests))
+        self.assertEqual({result[item["id"]]["ready_cycle"] for item in requests}, {72})
+        self.assertEqual(ctrl.transferred_bytes, 8 * 2048)
+        self.assertEqual(sum(ctrl.bytes_by_core.values()), 8 * 2048)
+        self.assertEqual(ctrl.bytes_per_cycle * 8, 512)
+
+    def test_each_core_has_its_own_outstanding_capacity(self):
         ctrl = sim.AppRamController(first_beat_latency=10, max_outstanding=1)
         first = ctrl.reserve_batch(0, [
-            {"id": "code0", "core": 0, "address": 0x1000, "bytes": 8},
+            {"id": "c0-a", "core": 0, "address": 0x1000, "bytes": 8},
+            {"id": "c1-a", "core": 1, "address": 0x2000, "bytes": 8},
         ])
         second = ctrl.reserve_batch(0, [
-            {"id": "code1", "core": 1, "address": 0x2000, "bytes": 8},
+            {"id": "c0-b", "core": 0, "address": 0x3000, "bytes": 8},
+            {"id": "c1-b", "core": 1, "address": 0x4000, "bytes": 8},
         ])
-        self.assertTrue(first["code0"]["accepted"])
-        self.assertFalse(second["code1"]["accepted"])
-        self.assertEqual(second["code1"]["reason"], "queue_full")
-        self.assertEqual((ctrl.accepted, ctrl.rejected_queue_full), (1, 1))
+        self.assertTrue(first["c0-a"]["accepted"])
+        self.assertTrue(first["c1-a"]["accepted"])
+        self.assertFalse(second["c0-b"]["accepted"])
+        self.assertFalse(second["c1-b"]["accepted"])
+        ctrl.complete(10)
+        third = ctrl.reserve_batch(10, [
+            {"id": "c0-c", "core": 0, "address": 0x5000, "bytes": 8},
+            {"id": "c1-c", "core": 1, "address": 0x6000, "bytes": 8},
+        ])
+        self.assertTrue(third["c0-c"]["accepted"])
+        self.assertTrue(third["c1-c"]["accepted"])
 
-    def test_app_ram_independent_banks_do_not_conflict(self):
-        ctrl = sim.AppRamController(bytes_per_cycle=64, first_beat_latency=4)
+    def test_bank_conflicts_are_local_to_each_core_port(self):
+        ctrl = sim.AppRamController(first_beat_latency=4)
         result = ctrl.reserve_batch(0, [
-            {"id": "bank0", "core": 0, "address": 0x0000, "bytes": 8},
-            {"id": "bank1", "core": 1, "address": 0x0008, "bytes": 8},
+            {"id": "c0-bank0", "core": 0, "address": 0x0000, "bytes": 8},
+            {"id": "c1-bank0", "core": 1, "address": 0x0000, "bytes": 8},
         ])
-        self.assertTrue(result["bank0"]["accepted"])
-        self.assertTrue(result["bank1"]["accepted"])
+        self.assertTrue(result["c0-bank0"]["accepted"])
+        self.assertTrue(result["c1-bank0"]["accepted"])
         self.assertEqual(ctrl.bank_conflicts, 0)
-        self.assertEqual(result["bank0"]["ready_cycle"], result["bank1"]["ready_cycle"])
+        self.assertEqual(result["c0-bank0"]["ready_cycle"], result["c1-bank0"]["ready_cycle"])
 
-    def test_app_ram_same_bank_conflict_is_local(self):
-        ctrl = sim.AppRamController(bytes_per_cycle=64, first_beat_latency=4)
-        result = ctrl.reserve_batch(0, [
-            {"id": "same0", "core": 0, "address": 0x0000, "bytes": 8},
-            {"id": "same1", "core": 1, "address": 0x0040, "bytes": 8},
-        ])
-        self.assertTrue(result["same0"]["accepted"])
-        self.assertTrue(result["same1"]["accepted"])
-        self.assertGreaterEqual(ctrl.bank_conflicts, 1)
-        self.assertGreater(result["same1"]["ready_cycle"], result["same0"]["ready_cycle"])
-
-    def test_app_ram_completion_releases_queue_slot(self):
-        ctrl = sim.AppRamController(first_beat_latency=5, max_outstanding=1)
-        first = ctrl.reserve_batch(0, [
-            {"id": "first", "core": 0, "address": 0, "bytes": 8},
-        ])
-        ready = first["first"]["ready_cycle"]
-        ctrl.complete(ready - 1)
-        blocked = ctrl.reserve_batch(ready - 1, [
-            {"id": "blocked", "core": 1, "address": 8, "bytes": 8},
-        ])
-        self.assertFalse(blocked["blocked"]["accepted"])
-        ctrl.complete(ready)
-        admitted = ctrl.reserve_batch(ready, [
-            {"id": "next", "core": 1, "address": 8, "bytes": 8},
-        ])
-        self.assertTrue(admitted["next"]["accepted"])
 
 
 class SharedAppRamIntegrationTests(unittest.TestCase):
-    def test_two_cores_share_one_app_ram_queue(self):
+    def test_two_cores_use_independent_app_ram_ports(self):
         controller = sim.AppRamController(
-            bank_count=8, bytes_per_cycle=32,
+            bank_count=8, bytes_per_cycle=64,
             first_beat_latency=5, max_outstanding=1,
         )
         core0 = sim.CommandFetchModel(
@@ -1379,23 +1375,15 @@ class SharedAppRamIntegrationTests(unittest.TestCase):
         )
         self.assertFalse(core0.can_fetch(0, 0))
         self.assertFalse(core1.can_fetch(0, 0))
-        self.assertEqual(controller.accepted, 1)
-        self.assertEqual(controller.rejected_queue_full, 1)
-        ready = core0.p0_pending[1]
-        self.assertIsNotNone(core0.p0_pending)
-        self.assertIsNone(core1.p0_pending)
-        app_ready = controller.inflight["core0:page0"]
-        self.assertLess(app_ready, ready)  # App RAM source completes before the EB page is ready.
-        self.assertFalse(core1.can_fetch(0, app_ready - 1))
-        self.assertIsNone(core1.p0_pending)
-        self.assertFalse(core1.can_fetch(0, app_ready))
         self.assertEqual(controller.accepted, 2)
+        self.assertEqual(controller.rejected_queue_full, 0)
+        self.assertIsNotNone(core0.p0_pending)
         self.assertIsNotNone(core1.p0_pending)
 
     def test_rejected_app_ram_request_does_not_poison_pool_residency(self):
         controller = sim.AppRamController(first_beat_latency=5, max_outstanding=1)
         blocker = controller.reserve_batch(0, [
-            {"id": "blocker", "core": 1, "address": 0x4000, "bytes": 8},
+            {"id": "blocker", "core": 0, "address": 0x4000, "bytes": 8},
         ])["blocker"]
         fetch = sim.CommandFetchModel(
             True, codeflow_enabled=True, app_ram_controller=controller,
@@ -1900,7 +1888,7 @@ class PerCoreCodeFlowTopologyTests(unittest.TestCase):
         self.assertEqual(controller.transferred_bytes, 64)
         self.assertEqual(controller.accepted, 8)
         self.assertTrue(all(result[f"c{i}"]["accepted"] for i in range(8)))
-        self.assertEqual(controller.bus_next_byte, 64)
+        self.assertEqual(controller.bus_next_byte, {})
 
 
 if __name__ == "__main__":
