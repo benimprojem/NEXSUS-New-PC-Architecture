@@ -118,6 +118,8 @@ The initial architectural resource map includes:
 - Fixed cache topology per eight-core block: 8 × private L1 (1 MiB/core), 4 × pair-shared L2 (2 MiB each), 2 × four-core-shared L3 (8 MiB each), and 1 × eight-core-shared L4 (64 MiB+).
 - Every core may access its own L1, pair L2, four-core L3, and block L4 subject to permissions/visibility. Both L3 groups in one eight-core block share the same L4; the L3 boundary is not an L4 boundary. Cross-L4-block access is explicit, not implicit.
 - Cache instance counts (8/4/2/1) are not port counts. Cache ports, service bandwidth, arbitration, latency and contention remain configurable/open; simulator single-request/cycle assumptions are provisional.
+- For workloads spanning multiple eight-core blocks, model direct Data RAM/main-memory staging into each selected block's L4 home. Support partitioned chunks, replicated read-mostly ranges, and selective multicast as configurable distribution policies. Do not model cross-L4 forwarding as the mandatory sharing path.
+- Treat writable replicas as unsafe for concurrent mutation until an explicit ownership/update visibility protocol is configured.
 - 8 banks × 64-bit per bank group as a recommended topology baseline, not physical freeze;
 - local bank queues and all-or-none multi-bank admission;
 - existing task context residency and IRQ/exception architecture.
