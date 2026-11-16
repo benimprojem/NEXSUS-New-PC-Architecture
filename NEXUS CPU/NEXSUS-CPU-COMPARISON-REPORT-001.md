@@ -171,6 +171,24 @@ ME512's tiled workload contains operand loads, a dependent accumulator chain for
 
 **Next measurement refinement:** add separate operand-resident ME512 independent-throughput and dependent-accumulator-chain kernels, plus equivalent VEC dependency-chain kernels. Keep the existing tiled load/MAC/store workload as the end-to-end operand-feed case. This will separate (1) unit issue capacity, (2) result-forwarding latency, and (3) Data RAM/operand-feed pressure without changing the fixed VEC=2 or ME512=1 resource counts.
 
+
+### 8.2 Operand-resident latency and mixed-resource validation — 2026-11-16
+
+CI run [43793155027](https://github.com/benimprojem/NEXSUS-New-PC-Architecture/actions/runs/43793155027) passed all steps. Its artifact adds independent and dependent VEC/ME512 kernels. The following backend-isolation cycle counts are simulator results for eight configured cores:
+
+| Profile | VEC dependent chain (64 ops) | Configured VEC latency | ME512 independent (128 ops) | ME512 dependent chain (128 ops) | Configured matrix-resource latency |
+|---|---:|---:|---:|---:|---:|
+| AMD 9950X3D2 model | 193 cycles | 3 | 11 cycles | 385 cycles | 3 (ME512 maps to VEC) |
+| Intel Xeon 698X model | 193 cycles | 3 | 18 cycles | 257 cycles | 2 (ME512 maps to AMX) |
+| Apple M6 model | 513 cycles | 8 (2 × 512/128 width factor) | 16 cycles | 1,025 cycles | 8 (ME512 maps to VEC) |
+| NEXSUS Balanced 128 | 129 cycles | 2 | 20 cycles | 513 cycles | 4 |
+
+**Interpretation limitation:** the dependent-chain results reproduce the latency values already configured in each simulator profile (plus pipeline/retirement boundary overhead). They validate that dependency readiness and completion timing honor those assumptions; they do not independently discover or prove the physical unit latencies. Likewise, independent-stream completion validates modeled issue capacity across eight cores, not silicon throughput. The VEC opcodes still share a common VEC latency assumption; no opcode-specific latency is established.
+
+For NEXSUS, 128 independent VEC operations complete in 10 cycles, while 128 independent ME512 operations complete in 20 cycles. This is consistent with two VEC issue slots per core versus one ME512 slot per core, over eight cores. It is a useful topology sanity check, not a final performance claim.
+
+**Next experiment:** the mixed `vec_me512_memory_overlap` kernel interleaves VEC arithmetic, ME512 MACs, Data RAM loads and stores in one stream. Its purpose is to verify that the separate execution resources and memory subsystem make progress concurrently, preserve all operations, and expose contention/stall counters. The experiment does not change the fixed resource counts.
+
 ## 9. Next engineering steps
 
 1. Integrate the concurrent C0 → CS → EB scheduler into the main CPU fetch model without changing the 64-bit App RAM read lane.
