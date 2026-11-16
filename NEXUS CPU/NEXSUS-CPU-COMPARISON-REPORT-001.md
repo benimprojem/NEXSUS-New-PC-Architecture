@@ -189,6 +189,26 @@ For NEXSUS, 128 independent VEC operations complete in 10 cycles, while 128 inde
 
 **Next experiment:** the mixed `vec_me512_memory_overlap` kernel interleaves VEC arithmetic, ME512 MACs, Data RAM loads and stores in one stream. Its purpose is to verify that the separate execution resources and memory subsystem make progress concurrently, preserve all operations, and expose contention/stall counters. The experiment does not change the fixed resource counts.
 
+### 8.3 Collaboration-scope cache residency — 2026-11-16
+
+The cache hierarchy is not only a latency ladder. Each level is also the natural shared working-set home for a particular collaboration width:
+
+| Collaborating cores | Working-set home |
+|---|---|
+| 1 | Private L1 |
+| 2 | Pair-shared L2 |
+| 3–4 | Four-core shared L3 |
+| 5–8 | Eight-core shared L4 |
+| More than 8 | Separate L4 homes per eight-core group; cross-group sharing is not implicit |
+
+The simulator now supports an untimed, exact-level working-set prefill. It inserts each line once per distinct cache object at the selected home level; it does not replicate an L4-resident group working set into every private L1. Demand accesses then follow the normal probe path, and completed demand fills may populate lower levels according to the current inclusive-fill model.
+
+The eight-core VEC/ME512 cache-resident sweep now homes its working set in shared L4. Regression coverage verifies that a prefilled line is visible at L1 only to its owner core, at L2 to its two-core pair, at L3 to its four-core group, and at L4 to its eight-core group—but not to the next group. This validates modeled sharing and placement, not cache bandwidth, coherence, or physical silicon timing.
+
+The mixed kernel also has true data dependencies: LOAD feeds both VEC and ME512, and STORE waits for both results. The cold and cache-resident cases can therefore expose operand-feed delay without confusing independent arithmetic with unrelated memory traffic. Full CI/artifact results are pending; no new performance conclusion is recorded yet.
+
+---
+
 ## 9. Next engineering steps
 
 1. Integrate the concurrent C0 → CS → EB scheduler into the main CPU fetch model without changing the 64-bit App RAM read lane.
