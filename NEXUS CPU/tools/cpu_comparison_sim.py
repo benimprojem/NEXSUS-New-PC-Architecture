@@ -932,6 +932,127 @@ def run_l4_l1_transfer_sweep(
     }
 
 
+def run_l4_l1_distribution_comparison_sweep(
+    working_set_kib_values: Tuple[int, ...] = (64, 256),
+    chunk_bytes_values: Tuple[int, ...] = (64, 256, 1024),
+    l4_read_bandwidth_values: Tuple[int, ...] = (64, 128, 256),
+    fanout_bandwidth_values: Tuple[int, ...] = (64, 256, 1024),
+    l1_ingress_bandwidth_values: Tuple[int, ...] = (64, 128, 256),
+    target_core_counts: Tuple[int, ...] = (1, 2, 4, 8),
+) -> dict:
+    """Compare conservative unicast against explicit multicast fanout settings.
+
+    Every multicast row is paired with a unicast row using identical working
+    set, chunk, L4 read and per-core L1 ingress settings. Fanout bandwidth is
+    aggregate replicated-payload capacity. This is design-space exploration,
+    not a selected hardware operating point.
+    """
+    profile = profile_from_dict(PROFILES["nexus_balanced_128"])
+    rows = []
+    unicast_cache = {}
+    line_bytes = profile.line_bytes
+    for working_set_kib in working_set_kib_values:
+        if working_set_kib <= 0:
+            raise ValueError("working-set sizes must be positive")
+        total_bytes = working_set_kib * 1024
+        if total_bytes % line_bytes:
+            raise ValueError("working-set size must be a multiple of cache-line size")
+        if total_bytes > profile.l4_kb * 1024:
+            raise ValueError("working set exceeds the configured L4 capacity")
+        addresses = [0x18000000 + offset for offset in range(0, total_bytes, line_bytes)]
+        for chunk_bytes in chunk_bytes_values:
+            if chunk_bytes < line_bytes or chunk_bytes % line_bytes:
+                raise ValueError(f"chunk_bytes must be a positive multiple of cache-line size ({line_bytes})")
+            for l4_bw in l4_read_bandwidth_values:
+                if l4_bw <= 0:
+                    raise ValueError("L4 read bandwidth values must be positive")
+                for l1_bw in l1_ingress_bandwidth_values:
+                    if l1_bw <= 0:
+                        raise ValueError("L1 ingress bandwidth values must be positive")
+                    for target_count in target_core_counts:
+                        if target_count < 1 or target_count > 8:
+                            raise ValueError("target core counts must be in the range 1..8")
+                        key = (working_set_kib, chunk_bytes, l4_bw, l1_bw, target_count)
+                        if key not in unicast_cache:
+                            caches = build_cache_hierarchies(profile, 8)
+                            for address in addresses:
+                                caches[0].l4.insert(address // line_bytes)
+                            unicast = timed_l4_to_l1(
+                                caches, addresses, target_cores=list(range(target_count)),
+                                chunk_bytes=chunk_bytes,
+                                l4_read_bytes_per_cycle=l4_bw,
+                                l1_ingress_bytes_per_cycle=l1_bw,
+                            )
+                            unicast_cache[key] = {
+                                "cycles": unicast["cycles"],
+                                "l4_source_bytes_read": unicast["l4_source_bytes_read"],
+                                "l4_source_read_count": unicast["l4_source_read_count"],
+                                "bytes_copied": unicast["bytes_copied"],
+                                "effective_bytes_per_cycle": unicast["bytes_copied"] / max(1, unicast["cycles"]),
+                            }
+                        baseline = unicast_cache[key]
+                        for fanout_bw in fanout_bandwidth_values:
+                            if fanout_bw <= 0:
+                                raise ValueError("fanout bandwidth values must be positive")
+                            caches = build_cache_hierarchies(profile, 8)
+                            for address in addresses:
+                                caches[0].l4.insert(address // line_bytes)
+                            multicast = timed_l4_to_l1_multicast(
+                                caches, addresses, target_cores=list(range(target_count)),
+                                chunk_bytes=chunk_bytes,
+                                l4_read_bytes_per_cycle=l4_bw,
+                                fanout_bytes_per_cycle=fanout_bw,
+                                l1_ingress_bytes_per_cycle=l1_bw,
+                            )
+                            cycles = multicast["cycles"]
+                            rows.append({
+                                "working_set_kib": working_set_kib,
+                                "target_core_count": target_count,
+                                "chunk_bytes": chunk_bytes,
+                                "l4_read_bytes_per_cycle": l4_bw,
+                                "fanout_bytes_per_cycle": fanout_bw,
+                                "l1_ingress_bytes_per_cycle": l1_bw,
+                                "unique_bytes": multicast["unique_bytes"],
+                                "bytes_copied": multicast["bytes_copied"],
+                                "unicast_l4_source_bytes_read": baseline["l4_source_bytes_read"],
+                                "multicast_l4_source_bytes_read": multicast["l4_source_bytes_read"],
+                                "l4_source_bytes_saved": baseline["l4_source_bytes_read"] - multicast["l4_source_bytes_read"],
+                                "unicast_l4_source_read_count": baseline["l4_source_read_count"],
+                                "multicast_l4_source_read_count": multicast["l4_source_read_count"],
+                                "fanout_bytes": multicast["fanout_bytes"],
+                                "unicast_cycles": baseline["cycles"],
+                                "multicast_cycles": cycles,
+                                "cycle_delta_multicast_minus_unicast": cycles - baseline["cycles"],
+                                "multicast_speedup_vs_unicast": baseline["cycles"] / max(1, cycles),
+                                "unicast_effective_bytes_per_cycle": baseline["effective_bytes_per_cycle"],
+                                "multicast_effective_bytes_per_cycle": multicast["bytes_copied"] / max(1, cycles),
+                                "fanout_service_cycles": multicast["fanout_next_cycle"],
+                                "l4_source_service_cycles": multicast["l4_source_next_cycle"],
+                                "fanout_wait_cycles": sum(event["wait_cycles"] for event in multicast["fanout_events"]),
+                                "l1_ingress_wait_cycles": sum(event["wait_cycles"] for event in multicast["l1_ingress_events"]),
+                            })
+    return {
+        "experiment": "8-core L4-to-L1 unicast versus multicast distribution comparison",
+        "cores_per_block": 8,
+        "working_set_home": "shared L4; prefill is untimed setup",
+        "unicast_policy": "serialized per-destination L4 reads",
+        "multicast_policy": "one serialized L4 read per chunk plus shared aggregate fanout",
+        "fanout_bandwidth_semantics": "aggregate replicated-payload bytes per cycle; N bytes to K targets consumes N*K bytes",
+        "timing_scope": "L4 source, multicast fanout where applicable, and per-core L1 ingress",
+        "data_ram_baseline_bytes_per_cycle": 64,
+        "hardware_decisions_frozen_by_sweep": [],
+        "open_parameters": [
+            "L4 read bandwidth", "fanout aggregate bandwidth", "per-core L1 ingress bandwidth",
+            "chunk size", "fanout topology and physical replication cost",
+            "source/fanout/ingress queueing", "arbitration", "transfer latency",
+        ],
+        "unicast_baseline_row_count": len(unicast_cache),
+        "multicast_row_count": len(rows),
+        "row_count": len(rows),
+        "results": rows,
+    }
+
+
 def build_cache_hierarchies(p: CoreProfile, core_count: int) -> List[CacheHierarchy]:
     """Build private and shared cache objects using each modeled architecture's topology.
 
@@ -2608,6 +2729,7 @@ def main():
     ap.add_argument("--mshr-sweep", action="store_true", help="sweep per-core Data RAM MSHR capacities 1/2/4/8/16/32")
     ap.add_argument("--vec-me512-isolation", action="store_true", help="compare normal VEC/ME512 workloads with instruction-fetch-bypassed backend isolation")
     ap.add_argument("--l4-l1-sweep", action="store_true", help="sweep direct shared L4-to-private-L1 transfer parameters for one 8-core block")
+    ap.add_argument("--l4-l1-distribution-sweep", action="store_true", help="compare L4-to-L1 unicast and multicast fanout distribution models")
     args = ap.parse_args()
     workloads = build_composite_workload(args.scale)
     if args.l4_l1_sweep:
@@ -2624,6 +2746,21 @@ def main():
                     f"L1={row['l1_ingress_bytes_per_cycle']:>3} "
                     f"cycles={row['cycles']:>7} throughput={row['effective_bytes_per_cycle']:>9.2f} B/cycle"
                 )
+        return
+    if args.l4_l1_distribution_sweep:
+        result = run_l4_l1_distribution_comparison_sweep()
+        if args.json:
+            print(json.dumps(result, indent=2))
+        else:
+            print("8-CORE L4 -> L1 UNICAST / MULTICAST DISTRIBUTION COMPARISON")
+            print(f"Rows: {result['row_count']} (no hardware operating point selected)")
+            for target_count in (1, 2, 4, 8):
+                candidates = [row for row in result["results"] if row["target_core_count"] == target_count]
+                best = min(candidates, key=lambda row: row["multicast_cycles"] / max(1, row["unicast_cycles"]))
+                print(f"targets={target_count}: best multicast/unicast cycle ratio="
+                      f"{best['multicast_cycles'] / max(1, best['unicast_cycles']):.3f}, "
+                      f"source saved={best['l4_source_bytes_saved']} B, "
+                      f"fanout={best['fanout_bytes_per_cycle']} B/cycle")
         return
     if args.vec_me512_isolation:
         result = run_vector_matrix_isolation_sweep(workloads)
