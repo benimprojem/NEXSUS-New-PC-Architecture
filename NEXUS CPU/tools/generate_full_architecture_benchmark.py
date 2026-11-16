@@ -29,12 +29,19 @@ NEXSUS_FEATURES = {
     "p0_capacity_kb": 16, "p0_refill_latency": 48,
 }
 
-def run_mode(workloads, normalized):
+def run_mode(workloads, normalized, execution_only=False):
     results = {}
     for arch in ARCHS:
         profile = SIM.PROFILES[arch]
         cores = 8 if normalized else profile["core_count"]
-        features = NEXSUS_FEATURES if arch == "nexus_balanced_128" else None
+        if arch == "nexus_balanced_128":
+            features = dict(NEXSUS_FEATURES)
+            if execution_only:
+                features["execution_only"] = True
+        else:
+            # Apply the same frontend bypass to every profile in backend-isolation
+            # runs; otherwise reference CPUs get a free zero-cost instruction stream.
+            features = {"execution_only": True} if execution_only else None
         results[arch] = SIM.simulate_cpu(workloads, profile, cores, features)
     for kernel in workloads:
         counts = {results[a]["kernels"][kernel]["ops"] for a in ARCHS}
@@ -84,8 +91,12 @@ def render_report(data):
         us = sum(k["cycles"] / (r["clock_ghz"] * 1000.0) for k in r["kernels"].values())
         lines.append(f"| {LABELS[arch]} | {r['cores_configured']} | {r['clock_ghz']:.2f} GHz | {r['total_cycles']:,} | {us:,.3f} | {r['aggregate_ipc']:.3f} |")
     lines += ["", "*Diagnostic sums across separate kernels, not a standardized overall score. Do not rank systems from this summary row alone.", ""]
-    for mode_key, heading in (("native", "Per-kernel comparison — native core counts"),
-                              ("normalized_8core", "Per-kernel comparison — normalized 8-core")):
+    for mode_key, heading in (
+        ("native", "Per-kernel comparison — native core counts, modeled frontend"),
+        ("normalized_8core", "Per-kernel comparison — normalized 8-core, modeled frontend"),
+        ("execution_only_native", "Backend isolation — native core counts, instruction frontend bypassed"),
+        ("execution_only_8core", "Backend isolation — normalized 8-core, instruction frontend bypassed"),
+    ):
         lines += [f"## {heading}", "",
                   "| Kernel | Logical ops | AMD cycles / µs | Intel cycles / µs | Apple cycles / µs | NEXSUS cycles / µs |",
                   "|---|---:|---:|---:|---:|---:|"]
@@ -104,9 +115,11 @@ def render_report(data):
         "1. Same deterministic operation graph, inputs and per-kernel logical operation count across all profiles.",
         "2. Each profile maps operations to its configured native resources, including Intel AMX and NEXSUS ME512; no scalar-only handicap is imposed.",
         "3. Native mode compares package-scale modeled core counts. Normalized mode uses exactly eight active cores per profile.",
-        "4. Modeled time is cycles divided by configured clock; it is not measured runtime.",
-        "5. Cache coherence, vendor-private predictor details, Apple heterogeneous scheduling, and several physical timings remain approximate or open.",
-        "6. A final silicon comparison requires running identical validated binaries and inputs on physical systems, with each vendor's optimizing compiler and documented flags.",
+        "4. Backend-isolation modes bypass instruction delivery for every profile equally; they isolate execution, data-cache and memory behavior from frontend refill assumptions. NEXSUS Task Workspace remains enabled as a native backend feature.",
+        "5. The modeled-frontend modes retain each profile's instruction delivery model. NEXSUS CodeFlow uses demand-aware 2-KiB page prefetch; conventional profiles use the modeled I-cache.",
+        "6. Modeled time is cycles divided by configured clock; it is not measured runtime.",
+        "7. Cache coherence, vendor-private predictor details, Apple heterogeneous scheduling, and several physical timings remain approximate or open.",
+        "8. A final silicon comparison requires running identical validated binaries and inputs on physical systems, with each vendor's optimizing compiler and documented flags.",
         "",
         "## External standardized validation", "",
         "Use SPEC CPU 2026 as the external real-hardware anchor. It contains 52 benchmarks across four suites: SPECspeed Integer, SPECspeed Floating Point, SPECrate Integer, and SPECrate Floating Point. Run the complete selected suite under official rules and preserve compiler versions/flags. The custom suite remains the architecture-diagnostic companion for NEXSUS-specific resources such as L4 sharing, Task Workspace, CodeFlow and ME512.",
@@ -129,6 +142,8 @@ def main():
         "modes": {
             "native": run_mode(workloads, False),
             "normalized_8core": run_mode(workloads, True),
+            "execution_only_native": run_mode(workloads, False, execution_only=True),
+            "execution_only_8core": run_mode(workloads, True, execution_only=True),
         },
         "result_class": "simulated event/cycle model; not physical silicon measurements",
     }
