@@ -62,7 +62,7 @@ def _run(policy: str) -> dict:
     if policy not in POLICIES:
         raise ValueError(f"unknown policy: {policy}")
     controller = AppRamController(
-        bank_count=8, beat_bytes=8, bytes_per_cycle=32,
+        bank_count=8, beat_bytes=8, bytes_per_cycle=64,
         first_beat_latency=40, beat_interval=1, max_outstanding=8,
     )
     events = _arrivals()
@@ -143,7 +143,7 @@ def run_sweep() -> dict:
             "target_arrival_cycles": [0, 160, 320, 480],
             "speculative_arrival_interval_cycles": 32,
             "controller": {
-                "banks": 8, "beat_bytes": 8, "aggregate_bytes_per_cycle": 32,
+                "banks": 8, "beat_bytes": 8, "aggregate_bytes_per_cycle": 64,
                 "first_beat_latency_cycles": 40, "max_outstanding": 8,
             },
         },
