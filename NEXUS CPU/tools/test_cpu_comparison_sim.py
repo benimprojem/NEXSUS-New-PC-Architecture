@@ -889,6 +889,29 @@ class FMAResourceSweepTests(unittest.TestCase):
         for row in result["results"].values():
             self.assertLessEqual(row["fma_lanes_per_core"], row["fp64_lanes_per_core"])
 
+    def test_fma_latency_changes_dependency_chain_not_issue_throughput(self):
+        workloads = sim.build_composite_workload(scale=1)
+        result = sim.run_fma_latency_sweep(
+            workloads, sim.PROFILES["nexus_balanced_128"],
+            latencies=(3, 4, 5, 6), fp_count=6, fma_count=4,
+        )
+        self.assertEqual(set(result["results"]), {"3", "4", "5", "6"})
+        chain_cycles = []
+        independent_cycles = []
+        fp_cycles = []
+        for row in result["results"].values():
+            self.assertEqual(row["kernels"]["fma_dependency_chain"]["ops"], 256)
+            self.assertEqual(row["kernels"]["fma_throughput"]["ops"], 512)
+            self.assertEqual(row["kernels"]["fp_throughput"]["ops"], 512)
+            self.assertTrue(all(x["ops_preserved"] for x in row["kernels"].values()))
+            chain_cycles.append(row["kernels"]["fma_dependency_chain"]["cycles"])
+            independent_cycles.append(row["kernels"]["fma_throughput"]["cycles"])
+            fp_cycles.append(row["kernels"]["fp_throughput"]["cycles"])
+        self.assertEqual(chain_cycles, sorted(chain_cycles))
+        self.assertEqual(len(set(chain_cycles)), 4)
+        self.assertEqual(len(set(independent_cycles)), 1)
+        self.assertEqual(len(set(fp_cycles)), 1)
+
 
 
 class AppRamControllerTests(unittest.TestCase):
