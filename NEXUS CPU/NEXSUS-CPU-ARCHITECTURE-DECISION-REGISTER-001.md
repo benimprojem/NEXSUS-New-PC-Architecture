@@ -176,6 +176,19 @@ The selected level is the natural preparation/residency point for that collabora
 
 **Within one eight-core block, both four-core L3 groups access the same L4.** An L4-resident line can therefore be served to cores on either side of the L3-group boundary; separate L3/L2 groups do not imply separate L4 homes. The isolation boundary is between eight-core L4 blocks, not between their internal L3 groups. The canonical instance count per eight-core block is **8×L1 / 4×L2 / 2×L3 / 1×L4**.
 
+**FIXED cache instance topology per eight-core block:**
+
+```text
+Core 0–7: 8 × private L1 (1 MiB each)
+Core pairs: 4 × shared L2 (2 MiB each)
+Four-core groups: 2 × shared L3 (8 MiB each)
+Eight-core block: 1 × shared L4 (64 MiB+)
+```
+
+Every core can address its own L1, its pair's L2, its four-core group's L3, and the common eight-core L4 according to access/visibility rules. Both L3 groups inside one eight-core block can access the same L4; an L3-group boundary is **not** an L4 isolation boundary. Only the boundary between distinct eight-core L4 blocks separates L4 homes; cross-block visibility/transfer requires an explicit mechanism.
+
+This topology describes cache **instances and sharing**, not request ports or bandwidth. The numbers 8/4/2/1 must not be interpreted as port counts. Port count, per-level service bandwidth, arbitration, and contention remain configurable/open; the simulator's earlier one-request-per-cycle shared-port setting is only a provisional experiment, not an approved architectural decision.
+
 **OPEN:** cache-line size, associativity, replacement, hit/miss latency, bandwidth/ports, write policy, inclusion/exclusion, coherence/visibility protocol, cross-group transfer, and interaction with the L1–L4 logical memory-domain/zone model. A logical access domain is not automatically the same thing as a physical cache instance.
 
 ---
