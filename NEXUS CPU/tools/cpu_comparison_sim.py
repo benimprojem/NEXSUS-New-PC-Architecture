@@ -235,6 +235,18 @@ def build_composite_workload(scale: int = 1) -> Dict[str, List[Op]]:
                exec_width_bits=512)
     result["vector_throughput"] = ops
 
+    # H0) Per-opcode dependency chains isolate result-forwarding latency.
+    # These intentionally contain no memory operations.
+    for vector_kind in vector_kinds:
+        ops = []
+        previous = None
+        for i in range(64*n):
+            previous = add_op(
+                ops, vector_kind, () if previous is None else (previous,),
+                label=f"{vector_kind} dependent result chain", exec_width_bits=512,
+            )
+        result[f"{vector_kind.lower()}_dependency_chain"] = ops
+
     # H1) Per-operation vector arithmetic streams expose opcode-specific counts.
     for vector_kind in vector_kinds:
         ops = []
@@ -265,6 +277,22 @@ def build_composite_workload(scale: int = 1) -> Dict[str, List[Op]]:
         add_op(ops, "STORE", (accumulator,),
                0x7000000 + tile*128, 64, "ME512 accumulated matrix tile")
     result["me512_matrix"] = ops
+
+    # H2a) Operand-resident ME512 issue throughput: no LOAD/STORE operations.
+    ops = []
+    for i in range(128*n):
+        add_op(ops, "ME512", label="independent ME512 tile MAC", exec_width_bits=512)
+    result["me512_independent_throughput"] = ops
+
+    # H2b) Operand-resident accumulator recurrence isolates ME512 result latency.
+    ops = []
+    previous = None
+    for i in range(128*n):
+        previous = add_op(
+            ops, "ME512", () if previous is None else (previous,),
+            label="dependent ME512 accumulator chain", exec_width_bits=512,
+        )
+    result["me512_dependency_chain"] = ops
 
     # H3) Atomic read-modify-write contention on a small shared address set.
     ops = []
@@ -1987,7 +2015,12 @@ def run_fetch_latency_sweep(workloads, conventional_latencies=(8, 16, 24, 32),
 def run_vector_matrix_isolation_sweep(workloads: Dict[str, List[Op]]) -> dict:
     """Compare normal instruction delivery with a fetch-bypassed backend upper bound."""
     names = ("vector_throughput", "vec_add", "vec_sub", "vec_mul",
-             "vec_fma", "vec_permute", "vec_reduce", "me512_matrix")
+             "vec_fma", "vec_permute", "vec_reduce",
+             "vec_add_dependency_chain", "vec_sub_dependency_chain",
+             "vec_mul_dependency_chain", "vec_fma_dependency_chain",
+             "vec_permute_dependency_chain", "vec_reduce_dependency_chain",
+             "me512_independent_throughput", "me512_dependency_chain",
+             "me512_matrix")
     target = {name: workloads[name] for name in names if name in workloads}
     profiles = ("amd_9950x3d2", "intel_xeon_698x", "apple_m6", "nexus_balanced_128")
     rows = {}
