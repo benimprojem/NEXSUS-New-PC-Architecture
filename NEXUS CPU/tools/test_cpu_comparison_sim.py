@@ -544,19 +544,30 @@ class WorkspaceCodeSlotModelTests(unittest.TestCase):
         self.assertTrue(fetch.lines.lookup(1))
         self.assertEqual(fetch.refill_bytes, 17*64)
 
-    def test_tw0_ping_pong_prefetches_next_2k_page(self):
+    def test_tw0_short_kernel_does_not_prefetch_an_unused_next_page(self):
         fetch = sim.CommandFetchModel(True)
         self.assertFalse(fetch.can_fetch(0, 0))
         fetch.complete(48)
         self.assertTrue(fetch.can_fetch(0, 48))
         self.assertEqual(fetch.p0_buffers[0], 0)
-        self.assertEqual(fetch.p0_pending, (1, 96, 1))
-        self.assertFalse(fetch.can_fetch(2048, 49))
-        fetch.complete(96)
-        self.assertTrue(fetch.can_fetch(2048, 96))
+        self.assertIsNone(fetch.p0_pending)
+        self.assertEqual(fetch.prefetches, 1)
+
+    def test_tw0_ping_pong_prefetches_near_the_end_of_active_page(self):
+        fetch = sim.CommandFetchModel(True)
+        self.assertFalse(fetch.can_fetch(0, 0))
+        fetch.complete(48)
+        self.assertTrue(fetch.can_fetch(0, 48))
+        self.assertIsNone(fetch.p0_pending)
+        # 256 bytes remain: begin filling the alternate 2-KiB bank.
+        self.assertTrue(fetch.can_fetch(1792, 49))
+        self.assertEqual(fetch.p0_pending, (1, 97, 1))
+        self.assertFalse(fetch.can_fetch(2048, 50))
+        fetch.complete(97)
+        self.assertTrue(fetch.can_fetch(2048, 97))
         self.assertEqual(fetch.p0_buffers, [0, 1])
-        self.assertEqual(fetch.p0_pending, (2, 144, 0))
-        self.assertEqual(fetch.prefetches, 3)
+        self.assertIsNone(fetch.p0_pending)
+        self.assertEqual(fetch.prefetches, 2)
 
     def test_nonsequential_branch_redirect_can_reuse_active_bank_safely(self):
         fetch = sim.CommandFetchModel(True)
