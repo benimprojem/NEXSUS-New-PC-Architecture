@@ -563,12 +563,38 @@ jobs:
               print(f'{row["pages"]:>2} pages @ {row["middle_rate_bytes_per_cycle"]:>2} B/cycle: '
                     f'{row["cycles"]:>6} cycles ({row["cycle_change_percent_vs_16"]:+.3f}%)')
           PY
+      - name: Run direct L4-to-L1 transfer design-space sweep
+        run: |
+          python "NEXUS CPU/tools/cpu_comparison_sim.py" --l4-l1-sweep --json > /tmp/nexus-l4-l1-transfer-sweep.json
+          python - <<'PY'
+          import json
+          data = json.load(open("/tmp/nexus-l4-l1-transfer-sweep.json", encoding="utf-8"))
+          assert data["cores_per_block"] == 8
+          assert data["row_count"] == 216
+          assert data["transfer_path"] == "L4 -> selected private L1s; L2/L3 bypassed"
+          assert data["data_ram_baseline_bytes_per_cycle"] == 64
+          assert data["hardware_decisions_frozen_by_sweep"] == []
+          assert len(data["results"]) == 216
+          for row in data["results"]:
+              assert row["unique_bytes"] == row["working_set_kib"] * 1024
+              assert row["bytes_copied"] == row["unique_bytes"] * row["target_core_count"]
+              assert row["cycles"] > 0
+              assert row["effective_bytes_per_cycle"] > 0
+          print("DIRECT L4 -> L1 TRANSFER DESIGN-SPACE SWEEP")
+          print(f'PASS: {data["row_count"]} configurations; no hardware operating point selected.')
+          for row in sorted(data["results"], key=lambda item: item["cycles"])[:8]:
+              print(f'WS={row["working_set_kib"]} KiB targets={row["target_core_count"]} '
+                    f'chunk={row["chunk_bytes"]} L4={row["l4_read_bytes_per_cycle"]} '
+                    f'L1={row["l1_ingress_bytes_per_cycle"]}: {row["cycles"]} cycles, '
+                    f'{row["effective_bytes_per_cycle"]:.2f} B/cycle')
+          PY
       - name: Upload comparison and CS sweep results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: nexus-cpu-comparison-results
           path: |
+            /tmp/nexus-l4-l1-transfer-sweep.json
             /tmp/nexus-cpu-results.json
             /tmp/nexus-vec-me512-isolation.json
             /tmp/nexus-data-mshr-sweep.json
