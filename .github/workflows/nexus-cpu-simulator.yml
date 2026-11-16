@@ -186,8 +186,8 @@ jobs:
           assert data["fma_lanes_per_core"] == 4
           rows = data["results"]
           chain = [rows[str(x)]["kernels"]["fma_dependency_chain"]["cycles"] for x in data["latencies_cycles"]]
-          fma = [rows[str(x)]["kernels"]["fma_throughput"]["cycles"] for x in data["latencies_cycles"]]
-          fp = [rows[str(x)]["kernels"]["fp_throughput"]["cycles"] for x in data["latencies_cycles"]]
+          fma = [rows[str(x)]["kernels"]["fma_throughput"]["issue_span_cycles"] for x in data["latencies_cycles"]]
+          fp = [rows[str(x)]["kernels"]["fp_throughput"]["issue_span_cycles"] for x in data["latencies_cycles"]]
           assert chain == sorted(chain) and len(set(chain)) == 4, chain
           assert len(set(fma)) == 1, fma
           assert len(set(fp)) == 1, fp
@@ -196,7 +196,7 @@ jobs:
           for latency in data["latencies_cycles"]:
               row = rows[str(latency)]["kernels"]
               print(f'{latency} cycles: chain={row["fma_dependency_chain"]["cycles"]} '
-                    f'independent FMA={row["fma_throughput"]["cycles"]} '
+                    f'independent FMA issue span={row["fma_throughput"]["issue_span_cycles"]} '
                     f'FP64={row["fp_throughput"]["cycles"]}')
           PY
       - name: Run Data RAM per-core MSHR capacity sweep
