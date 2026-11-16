@@ -1570,5 +1570,68 @@ class EightCoreArchitectureScalingTests(unittest.TestCase):
         )
 
 
+    def test_timed_data_ram_to_l4_bulk_transfer_fills_shared_home(self):
+        profile = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        caches = sim.build_cache_hierarchies(profile, 8)
+        addresses = [0x400000 + i * 64 for i in range(32)]
+        result = sim.timed_memory_to_l4(
+            caches, addresses, chunk_bytes=256,
+            data_ram_bytes_per_cycle=64, l4_ingress_bytes_per_cycle=64,
+        )
+        self.assertEqual(result["cores"], 8)
+        self.assertEqual(result["l4_home_count"], 1)
+        self.assertEqual(result["bytes_transferred"], 2048)
+        self.assertEqual(result["chunk_count"], 8)
+        self.assertEqual(len(result["source_request_events"]), 8)
+        self.assertEqual(len(result["l4_ingress_events"]), 8)
+        self.assertEqual(result["l4_resident_lines"], 32)
+        self.assertTrue(all(cache.l4 is caches[0].l4 for cache in caches))
+        self.assertTrue(all(
+            caches[core_id].probe(address)[1] == "L4"
+            for core_id in range(8) for address in addresses
+        ))
+        self.assertTrue(all(
+            event["source_complete_cycle"] <= event["ingress_start_cycle"]
+            <= event["ingress_complete_cycle"]
+            for event in result["l4_ingress_events"]
+        ))
+
+    def test_timed_bulk_transfer_chunk_size_and_ingress_are_independent(self):
+        profile = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        addresses = [0x800000 + i * 64 for i in range(64)]
+        results = {}
+        for chunk_bytes in (64, 256, 512):
+            caches = sim.build_cache_hierarchies(profile, 8)
+            results[chunk_bytes] = sim.timed_memory_to_l4(
+                caches, addresses, chunk_bytes=chunk_bytes,
+                data_ram_bytes_per_cycle=64, l4_ingress_bytes_per_cycle=128,
+            )
+            self.assertEqual(results[chunk_bytes]["bytes_transferred"], 4096)
+            self.assertEqual(results[chunk_bytes]["l4_resident_lines"], 64)
+        self.assertEqual(results[64]["chunk_count"], 64)
+        self.assertEqual(results[256]["chunk_count"], 16)
+        self.assertEqual(results[512]["chunk_count"], 8)
+        # The fixed source bandwidth is unchanged; chunk granularity changes
+        # transaction count, not the configured aggregate Data RAM rate.
+        self.assertTrue(all(
+            row["data_ram_bytes_per_cycle"] == 64
+            and row["l4_ingress_bytes_per_cycle"] == 128
+            for row in results.values()
+        ))
+        self.assertEqual(
+            {row["bytes_transferred"] for row in results.values()}, {4096}
+        )
+
+    def test_timed_bulk_transfer_rejects_non_eight_core_or_noncontiguous_ranges(self):
+        profile = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        caches = sim.build_cache_hierarchies(profile, 8)
+        with self.assertRaisesRegex(ValueError, "exactly 8"):
+            sim.timed_memory_to_l4(caches[:4], [0x1000])
+        with self.assertRaisesRegex(ValueError, "contiguous"):
+            sim.timed_memory_to_l4(caches, [0x1000, 0x1080])
+        with self.assertRaisesRegex(ValueError, "positive"):
+            sim.timed_memory_to_l4(caches, [0x1000], chunk_bytes=0)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
