@@ -422,6 +422,15 @@ class CacheHierarchy:
             return self.p.l4_lat, "L4"
         return self.p.dram_lat, "DRAM"
 
+    def prefill(self, address: int, level: str):
+        """Place an untimed shared working-set line at its chosen group level."""
+        targets = {"L1": self.l1, "L2": self.l2,
+                   "L3": self.l3, "L4": self.l4}
+        target = targets.get(level)
+        if target is None:
+            raise ValueError(f"Cannot prefill {level}: cache level is unavailable")
+        target.insert(address // self.line)
+
     def fill(self, address: int, level: str):
         """Install a completed demand line along the modeled inclusive fill path."""
         line = address // self.line
@@ -1195,13 +1204,26 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                        "data_mshr_full_events": 0}
         })
     cache_hierarchies = build_cache_hierarchies(p, len(states))
+    # Optional untimed preloaded working set. Select its home level from the
+    # collaborating core-group width (1/2/4/8+ -> L1/L2/L3/L4). Insert each
+    # line once per distinct shared cache object, not once per participating core.
+    prefill_addresses = features.get("cache_prefill_addresses", ())
+    prefill_level = features.get("cache_prefill_level", "L1")
+    if prefill_addresses:
+        if prefill_level not in ("L1", "L2", "L3", "L4"):
+            raise ValueError(f"Unsupported cache prefill level: {prefill_level}")
+        seen_cache_objects = set()
+        for hierarchy in cache_hierarchies:
+            cache_object = getattr(hierarchy, prefill_level.lower(), None)
+            if cache_object is None:
+                raise ValueError(f"Cache prefill level {prefill_level} is unavailable")
+            if id(cache_object) in seen_cache_objects:
+                continue
+            seen_cache_objects.add(id(cache_object))
+            for address in prefill_addresses:
+                hierarchy.prefill(int(address), prefill_level)
     for core_id, st in enumerate(states):
         st["cache"] = cache_hierarchies[core_id]
-        # Optional untimed preloaded working set. This models operands already
-        # resident before the measured kernel begins; it is not a DRAM transfer
-        # and must not be included in the kernel's request/cycle counters.
-        for address in features.get("cache_prefill_addresses", ()):
-            st["cache"].fill(int(address), "DRAM")
         if is_nexus:
             st["fetch"] = CommandFetchModel(
                 bool(features["p0"]),
@@ -2076,7 +2098,7 @@ def run_vector_matrix_isolation_sweep(workloads: Dict[str, List[Op]]) -> dict:
         "cores_per_profile": 8,
         "same_logical_workloads": list(target),
         "execution_only_definition": "Bypass instruction-fetch readiness only; retain per-core dispatch/issue, execution units, dependencies, Data RAM/cache timing and retirement.",
-        "cache_resident_definition": "Before timed simulation, preload every mixed-kernel data line into the modeled inclusive cache hierarchy on each participating core. Prefill is untimed setup; measured LOAD/STORE operations must hit L1 when the working set fits. This is a warm-cache execution case, not a claim that real hardware can preload all cache levels at zero cost.",
+        "cache_resident_definition": "Before timed simulation, preload each working-set line once per distinct cache group at its selected home level. Default L1 is for one-core work; choose L2/L3/L4 for 2/4/8+ collaborating cores. Prefill is untimed setup; a group sees its shared home level without artificially duplicating the line into every private L1.",
         "results": rows,
     }
 
