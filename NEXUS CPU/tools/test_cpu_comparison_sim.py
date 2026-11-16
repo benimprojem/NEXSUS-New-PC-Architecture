@@ -569,7 +569,7 @@ class VectorArithmeticWorkloadTests(unittest.TestCase):
                          "execution-only backend isolation")
 
 
-class VectorArithmeticWorkloadTests(unittest.TestCase):
+
     def test_vector_arithmetic_opcodes_share_the_vector_issue_resource(self):
         workload = {
             "vector_arithmetic": [
