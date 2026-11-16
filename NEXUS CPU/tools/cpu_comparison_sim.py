@@ -958,7 +958,9 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
                 continue
             vector_factor = (max(1, math.ceil(op.width * 8 / p.vector_bits))
                              if kind == "VEC" or (kind == "ME512" and exec_kind == "VEC") else 1)
-            latency = p.latency.get(exec_kind, 1) * vector_factor
+            base_latency = (p.latency.get("FMA", p.latency.get(exec_kind, 1))
+                            if kind == "FMA" else p.latency.get(exec_kind, 1))
+            latency = base_latency * vector_factor
             if kind in ("LOAD", "STORE", "ATOM"):
                 mem_lat, level = cache.access(op.address)
                 hits[level] += 1
@@ -1272,7 +1274,8 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                             mshr_reserved_this_cycle[core_id] += 1
                         st["hits"][level] += 1
                 item = {"core": core_id, "seq": seq, "slot": slot,
-                        "latency": max(p.latency.get(exec_kind, 1) *
+                        "latency": max((p.latency.get("FMA", p.latency.get(exec_kind, 1))
+                                         if op.kind == "FMA" else p.latency.get(exec_kind, 1)) *
                                        (max(1, math.ceil(op.width * 8 / p.vector_bits)) if op.kind == "VEC" or (op.kind == "ME512" and exec_kind == "VEC") else 1),
                                        mem_lat),
                         "level": level}
@@ -1611,6 +1614,62 @@ def run_fma_resource_sweep(workloads: Dict[str, List[Op]], profile_dict: dict,
 
 
 
+def run_fma_latency_sweep(workloads: Dict[str, List[Op]], profile_dict: dict,
+                          latencies=(3, 4, 5, 6), fp_count=6, fma_count=4) -> dict:
+    """Sweep FMA result latency independently from its one-op-per-cycle issue slots."""
+    target = {name: workloads[name] for name in (
+        "fp_throughput", "fma_throughput", "fma_dependency_chain", "fp_fma_mixed"
+    )}
+    expected_ops = {name: len(ops) for name, ops in target.items()}
+    rows = {}
+    for fma_latency in latencies:
+        profile = dict(profile_dict)
+        profile["units"] = {**profile_dict["units"], "FP": fp_count}
+        profile["latency"] = {**profile_dict["latency"], "FMA": int(fma_latency)}
+        profile["execution_topology"] = {
+            **(profile_dict.get("execution_topology", {}) or {}),
+            "FMA_LANES": fma_count,
+        }
+        run = simulate_cpu(target, profile, 8,
+                           {"task_workspace": False, "code_slots": False})
+        kernels = {}
+        for name, row in run["kernels"].items():
+            kernels[name] = {
+                "ops": row["ops"],
+                "ops_preserved": row["ops"] == expected_ops[name],
+                "cycles": row["cycles"],
+                "ipc": row["aggregate_ipc"],
+                "execution_unit_blocked_op_cycles": row["stall_counters"]["execution_unit_blocked_op_cycles"],
+                "dependency_blocked_op_cycles": row["stall_counters"]["dependency_blocked_op_cycles"],
+            }
+        rows[str(fma_latency)] = {
+            "fma_latency_cycles": int(fma_latency),
+            "fp64_lanes_per_core": fp_count,
+            "fma_lanes_per_core": fma_count,
+            "total_cycles": run["total_cycles"],
+            "total_ops": run["total_ops"],
+            "kernels": kernels,
+        }
+    if any(not row["ops_preserved"] for variant in rows.values()
+           for row in variant["kernels"].values()):
+        raise AssertionError("FMA latency sweep changed logical operation count")
+    return {
+        "experiment": "NEXSUS FMA result-latency sensitivity with fixed FP6/FMA4 topology",
+        "cores": 8,
+        "fp64_lanes_per_core": fp_count,
+        "fma_lanes_per_core": fma_count,
+        "latencies_cycles": [int(x) for x in latencies],
+        "same_logical_workload": expected_ops,
+        "results": rows,
+        "assumptions": (
+            "FMA uses the first FMA_LANES slots of the FP64 lane pool and retains "
+            "one-op-per-cycle initiation per lane; only result latency changes. "
+            "This isolates dependency-chain latency from issue throughput. "
+            "Simulator estimates, not silicon measurements."
+        ),
+    }
+
+
 def run_data_mshr_sweep(profile_dict: dict, capacities=(1, 2, 4, 8, 16, 32, 64, 128),
                         ops_per_core=128) -> dict:
     """Sweep per-core Data RAM MSHRs on cold-load and mixed compute/load traces."""
@@ -1896,6 +1955,7 @@ def main():
     ap.add_argument("--execution-sweep", action="store_true", help="compare baseline and mixed-width NEXSUS INT/FP resources")
     ap.add_argument("--resource-sweep", action="store_true", help="sweep per-core INT/FP unit counts with fixed workloads")
     ap.add_argument("--fma-sweep", action="store_true", help="compare 2/4 FMA lanes with 6/8 total FP64 lanes")
+    ap.add_argument("--fma-latency-sweep", action="store_true", help="sweep FMA result latency with FP6/FMA4 held fixed")
     ap.add_argument("--mshr-sweep", action="store_true", help="sweep per-core Data RAM MSHR capacities 1/2/4/8/16/32")
     args = ap.parse_args()
     workloads = build_composite_workload(args.scale)
@@ -1909,6 +1969,17 @@ def main():
                 print(f"{name} entries/core: cycles={row['cycles']} "
                       f"max={max(row['max_outstanding_per_core'])} "
                       f"full-events={row['total_full_events']}")
+        return
+    if args.fma_latency_sweep:
+        result = run_fma_latency_sweep(workloads, PROFILES["nexus_balanced_128"])
+        if args.json:
+            print(json.dumps(result, indent=2))
+        else:
+            print("NEXSUS FMA RESULT-LATENCY SWEEP")
+            for name, row in result["results"].items():
+                chain = row["kernels"]["fma_dependency_chain"]
+                throughput = row["kernels"]["fma_throughput"]
+                print(f"{name} cycles: chain={chain['cycles']} independent={throughput['cycles']}")
         return
     if args.fma_sweep:
         result = run_fma_resource_sweep(workloads, PROFILES["nexus_balanced_128"])
