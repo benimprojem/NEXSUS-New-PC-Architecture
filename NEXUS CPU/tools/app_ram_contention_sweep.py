@@ -37,7 +37,7 @@ def _case(burst_bytes: int, relation: str, policy: str) -> dict:
     controller = AppRamController(
         bank_count=8,
         beat_bytes=8,
-        bytes_per_cycle=32,
+        bytes_per_cycle=64,
         first_beat_latency=40,
         beat_interval=1,
         max_outstanding=8,
@@ -95,7 +95,7 @@ def run_contention_sweep() -> dict:
         "controller_geometry": {
             "banks": 8,
             "beat_bytes": 8,
-            "aggregate_bytes_per_cycle": 32,
+            "aggregate_bytes_per_cycle": 64,
             "first_beat_latency_cycles": 40,
             "max_outstanding": 8,
         },
