@@ -1736,6 +1736,44 @@ class EightCoreArchitectureScalingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "bandwidth values must be positive"):
             sim.timed_l4_to_l1_multicast(caches, addresses, fanout_bytes_per_cycle=0)
 
+    def test_l4_unicast_multicast_comparison_pairs_same_workloads_and_accounts_traffic(self):
+        result = sim.run_l4_l1_distribution_comparison_sweep(
+            working_set_kib_values=(64,),
+            chunk_bytes_values=(64, 256),
+            l4_read_bandwidth_values=(64, 128),
+            fanout_bandwidth_values=(64, 256),
+            l1_ingress_bandwidth_values=(64, 128),
+            target_core_counts=(1, 2, 4, 8),
+        )
+        self.assertEqual(result["row_count"], 64)
+        self.assertEqual(result["unicast_baseline_row_count"], 16)
+        self.assertEqual(result["multicast_row_count"], 64)
+        self.assertEqual(result["hardware_decisions_frozen_by_sweep"], [])
+        self.assertEqual(result["data_ram_baseline_bytes_per_cycle"], 64)
+        self.assertIn("N*K", result["fanout_bandwidth_semantics"])
+        for row in result["results"]:
+            with self.subTest(targets=row["target_core_count"], fanout=row["fanout_bytes_per_cycle"]):
+                self.assertEqual(row["multicast_l4_source_bytes_read"], 64 * 1024)
+                self.assertEqual(row["unicast_l4_source_bytes_read"],
+                                 64 * 1024 * row["target_core_count"])
+                self.assertEqual(row["l4_source_bytes_saved"],
+                                 64 * 1024 * (row["target_core_count"] - 1))
+                self.assertEqual(row["fanout_bytes"], row["bytes_copied"])
+                self.assertGreater(row["unicast_cycles"], 0)
+                self.assertGreater(row["multicast_cycles"], 0)
+                self.assertGreater(row["multicast_effective_bytes_per_cycle"], 0)
+                self.assertGreater(row["multicast_speedup_vs_unicast"], 0)
+                if row["target_core_count"] == 1:
+                    self.assertEqual(row["l4_source_bytes_saved"], 0)
+
+    def test_l4_unicast_multicast_comparison_rejects_invalid_fanout_bandwidth(self):
+        with self.assertRaisesRegex(ValueError, "fanout bandwidth values must be positive"):
+            sim.run_l4_l1_distribution_comparison_sweep(
+                working_set_kib_values=(64,), chunk_bytes_values=(64,),
+                l4_read_bandwidth_values=(64,), fanout_bandwidth_values=(0,),
+                l1_ingress_bandwidth_values=(64,), target_core_counts=(2,),
+            )
+
     def test_l4_to_l1_sweep_covers_transfer_dimensions_without_freezing_them(self):
         result = sim.run_l4_l1_transfer_sweep(
             working_set_kib_values=(64,),
