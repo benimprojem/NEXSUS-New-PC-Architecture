@@ -1393,12 +1393,12 @@ class CommandFetchModel:
 
 
 class AppRamController:
-    """Independent App RAM instruction-source controller.
+    """Fabric-managed App RAM ports: one independent 64-B/cycle path per core.
 
-    Separate from SharedMemoryController: this controller serves instruction
-    fetches only. Integrated CommandFetchModel instances submit instruction-page
-    requests here; downstream C0 -> CS -> EB staging delays remain modeled
-    separately as a pipeline approximation.
+    Each core has its own bank scheduling, byte-bandwidth timeline and
+    outstanding-request capacity. Requests from different cores therefore
+    progress concurrently; there is no fictitious chip-wide 64-B/cycle bus.
+    The System Fabric coordinates the independent core ports.
     """
     def __init__(self, bank_count: int = 8, beat_bytes: int = 8,
                  bytes_per_cycle: int = 64, first_beat_latency: int = 40,
@@ -1409,8 +1409,8 @@ class AppRamController:
         self.first_beat_latency = max(0, int(first_beat_latency))
         self.beat_interval = max(1, int(beat_interval))
         self.max_outstanding = max(1, int(max_outstanding))
-        self.bank_busy = [0] * self.bank_count
-        self.bus_next_byte = 0
+        self.bank_busy = {}
+        self.bus_next_byte = {}
         self.inflight = {}
         self.rr_cursor = 0
         self.accepted = 0
@@ -1419,16 +1419,20 @@ class AppRamController:
         self.transferred_bytes = 0
         self.request_cycles = []
         self.request_events = []
+        self.bytes_by_core = {}
 
     def _bank(self, address: int) -> int:
         return (int(address) // self.beat_bytes) % self.bank_count
+
+    def _core_banks(self, core: int) -> list[int]:
+        return self.bank_busy.setdefault(int(core), [0] * self.bank_count)
 
     def complete(self, cycle: int):
         for key in [k for k, ready in self.inflight.items() if ready <= cycle]:
             del self.inflight[key]
 
     def reserve_batch(self, cycle: int, requests: List[dict]) -> dict:
-        """Admit same-cycle requests; each has id, core, address and bytes."""
+        """Admit same-cycle requests independently on each core's App RAM port."""
         self.complete(cycle)
         if not requests:
             return {}
@@ -1436,70 +1440,63 @@ class AppRamController:
         start = self.rr_cursor % len(cores)
         rotated = cores[start:] + cores[:start]
         rank = {core: i for i, core in enumerate(rotated)}
-        # Higher-priority instruction requests are admitted first. Requests
-        # without an explicit priority retain the previous round-robin/core-ID
-        # ordering, so existing workloads remain behaviorally unchanged.
         ordered = sorted(
             requests,
-            key=lambda r: (
-                -int(r.get("priority", 0)),
-                rank[int(r["core"])],
-                str(r["id"]),
-            ),
+            key=lambda r: (-int(r.get("priority", 0)),
+                           rank[int(r["core"])], str(r["id"])),
         )
         result = {}
         for req in ordered:
             req_id = req["id"]
+            core = int(req["core"])
             if req_id in self.inflight:
                 raise ValueError(f"duplicate in-flight App RAM request id: {req_id}")
-            if len(self.inflight) >= self.max_outstanding:
+            core_inflight = sum(1 for item in self.inflight.values() if item["core"] == core)
+            if core_inflight >= self.max_outstanding:
                 self.rejected_queue_full += 1
-                result[req_id] = {"accepted": False, "reason": "queue_full"}
+                result[req_id] = {"accepted": False, "reason": "core_queue_full"}
                 continue
             address = int(req["address"])
             size = max(1, int(req["bytes"]))
             beats = math.ceil(size / self.beat_bytes)
             touched = set()
+            bank_busy = self._core_banks(core)
             bank_complete = cycle
             for beat in range(beats):
                 bank = self._bank(address + beat * self.beat_bytes)
                 touched.add(bank)
-                bank_start = max(cycle, self.bank_busy[bank])
+                bank_start = max(cycle, bank_busy[bank])
                 if bank_start > cycle:
                     self.bank_conflicts += 1
-                self.bank_busy[bank] = bank_start + self.beat_interval
-                bank_complete = max(bank_complete, self.bank_busy[bank])
-            bus_start_byte = max(cycle * self.bytes_per_cycle, self.bus_next_byte)
+                bank_busy[bank] = bank_start + self.beat_interval
+                bank_complete = max(bank_complete, bank_busy[bank])
+            bus_start_byte = max(cycle * self.bytes_per_cycle,
+                                 self.bus_next_byte.get(core, 0))
             bus_complete = math.ceil((bus_start_byte + size) / self.bytes_per_cycle)
-            self.bus_next_byte = bus_start_byte + size
+            self.bus_next_byte[core] = bus_start_byte + size
             ready = max(
                 cycle + self.first_beat_latency + max(0, bank_complete - cycle),
                 bus_complete,
             )
-            self.inflight[req_id] = ready
+            self.inflight[req_id] = {"ready": ready, "core": core}
             self.accepted += 1
             self.transferred_bytes += size
+            self.bytes_by_core[core] = self.bytes_by_core.get(core, 0) + size
             self.request_cycles.append(cycle)
             result[req_id] = {
                 "accepted": True, "bank_count_touched": len(touched),
-                "ready_cycle": ready, "queue_occupancy": len(self.inflight),
+                "ready_cycle": ready, "queue_occupancy": core_inflight + 1,
+                "core": core, "core_bytes_per_cycle": self.bytes_per_cycle,
             }
             self.request_events.append({
-                "request_id": str(req_id),
-                "core": int(req["core"]),
-                "address": address,
-                "bytes": size,
-                "request_cycle": cycle,
-                "bank_count_touched": len(touched),
-                "ready_cycle": ready,
-                "queue_occupancy": len(self.inflight),
+                "request_id": str(req_id), "core": core, "address": address,
+                "bytes": size, "request_cycle": cycle,
+                "bank_count_touched": len(touched), "ready_cycle": ready,
+                "queue_occupancy": core_inflight + 1,
             })
         self.rr_cursor = (start + 1) % len(cores)
         return result
 
-
-def profile_from_dict(d: dict) -> CoreProfile:
-    return CoreProfile(**d)
 
 class SharedMemoryController:
     """Global DRAM bank/bus reservation primitive for lockstep multicore scheduling.
