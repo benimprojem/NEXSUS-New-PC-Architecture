@@ -101,7 +101,7 @@ Code Slots are equal pool resources, not permanently assigned to tasks. CST fill
 
 | Stage / resource | Current model setting |
 |---|---:|
-| App RAM instruction path | 64 B/cycle |
+| App RAM instruction path | 64 B/cycle/core; 512 B/cycle for 8 cores |
 | App RAM→C0 refill stage | 16 B/cycle |
 | C0→CS | 20 B/cycle |
 | CS→EB | 20 B/cycle |
@@ -117,6 +117,10 @@ These are simulator operating points, not fixed silicon timing or final RTL para
 ### 5.1 Separate memory paths
 
 **FIXED**
+- Each CPU core has its own independent 64 B/cycle App RAM instruction-fetch connection.
+- Eight cores can fetch concurrently: 8 × 64 B/cycle = 512 B/cycle aggregate App RAM connection capacity.
+- System Fabric coordinates the eight core-facing App RAM paths; do not model them as one shared 64 B/cycle bus or one global per-core queue.
+- App RAM bank scheduling and outstanding-request capacity are modeled per core connection; same-core requests may contend locally.
 - App RAM and Data RAM are separate memory systems with independent controllers and paths; they may progress concurrently.
 - App RAM is the instruction source. Data RAM stores mutable data, task state, and protected OS/context backing.
 - Data RAM is not an instruction-fetch source.
@@ -298,7 +302,8 @@ Items already specified in architecture documents are not to be redesigned; they
 
 ## 11. Conflict resolution and change log
 
-- The 2026-11-13 architecture revision restores Data RAM aggregate bandwidth to 64 B/cycle and confirms 32-entry RA/FA/DA/MA banks. Older 64-entry register tables are superseded.
+- The 2026-11-13 architecture revision restores Data RAM aggregate bandwidth to 64 B/cycle and confirms 32-entry RA/FA/DA/MA banks.
+- The 2026-11-16 App RAM connection correction establishes 64 B/cycle per core and 512 B/cycle aggregate for the eight-core block; System Fabric coordinates independent core-facing paths. Older 64-entry register tables are superseded.
 - The 2026-11-16 memory-path naming decision establishes C0, CS, CST, EB, OW, TW, CP, and XW as current terms. PX, P0–P7, Ping-Pong, SPM0, and L0I are legacy terms.
 - The latest explicit execution-resource decision fixes INT=8, FP64=6, FMA=4, VEC=2, ME512=1.
 - Cache sharing is already defined and simulator-tested: private L1, L2 shared per 2 cores, L3 per 4 cores, and L4 per 8-core group. The latest explicit capacity decision fixes these to L1=1 MiB/core, L2=2 MiB/2-core group, L3=8 MiB/4-core group, and L4=64 MiB+/8-core group.
