@@ -137,6 +137,40 @@ CI checks that operation counts remain identical and that isolated runs have zer
 
 No VEC or ME512 unit-count change is authorized by the earlier 826-cycle result. The new isolation sweep must complete before drawing throughput conclusions.
 
+
+### 8.1 First measured VEC / ME512 isolation results — CI 43792221933
+
+The isolation sweep completed successfully on all four profiles with eight configured cores and identical logical operation counts. The full JSON is preserved in the `nexus-cpu-comparison-results` workflow artifact as `nexus-vec-me512-isolation.json`.
+
+**NEXSUS VEC results (128 operations per opcode):**
+
+| Kernel | Normal delivery | Fetch-bypassed backend | Normal fetch wait | Backend issue span |
+|---|---:|---:|---:|---:|
+| VEC_ADD | 826 cycles | 10 cycles | 4,744 | 8 cycles |
+| VEC_SUB | 826 cycles | 10 cycles | 4,744 | 8 cycles |
+| VEC_MUL | 826 cycles | 10 cycles | 4,744 | 8 cycles |
+| VEC_FMA | 826 cycles | 10 cycles | 4,744 | 8 cycles |
+| VEC_PERMUTE | 826 cycles | 10 cycles | 4,744 | 8 cycles |
+| VEC_REDUCE | 826 cycles | 10 cycles | 4,744 | 8 cycles |
+| Mixed vector throughput (256 ops) | 834 cycles | 18 cycles | 4,744 | 16 cycles |
+
+The 10-cycle backend completion for 128 independent vector operations is consistent with the fixed two-VEC-unit-per-core topology across eight cores (16 aggregate issue slots/cycle), plus completion/retirement overhead. It does **not** measure dependent-chain latency. All six opcodes currently share the same generic VEC latency, so the equal values are expected and cannot justify opcode-specific latency claims.
+
+For context, fetch-bypassed per-opcode completion was 11 cycles on AMD, 11 on Intel, and 16 on Apple in their current modeled profiles. These are simulator outputs, not silicon measurements.
+
+**ME512 matrix workload:**
+
+| Profile | Normal delivery | Fetch-bypassed backend | Backend issue span | Backend dependency-blocked op-cycles | Backend memory-latency exposure |
+|---|---:|---:|---:|---:|---:|
+| AMD 9950X3D2 model | 1,059 | 1,027 | 904 | 76,639 | 133,525 |
+| Intel Xeon 698X model | 590 | 558 | 408 | 40,288 | 72,279 |
+| Apple M6 model | 588 | 556 | 455 | 40,116 | 70,387 |
+| NEXSUS Balanced 128 | 1,107 | 504 | 384 | 36,676 | 64,544 |
+
+ME512's tiled workload contains operand loads, a dependent accumulator chain for each tile, and a result store. The remaining backend cost is therefore a mixture of operand delivery, memory service, and accumulator dependencies; it is not a pure ME512 arithmetic latency measurement. The bypassed mode changes when operations become eligible and consequently changes overlap/counter totals. Treat its cycle result as a controlled fetch-bypass run, not as a mathematically isolated arithmetic-unit latency.
+
+**Next measurement refinement:** add separate operand-resident ME512 independent-throughput and dependent-accumulator-chain kernels, plus equivalent VEC dependency-chain kernels. Keep the existing tiled load/MAC/store workload as the end-to-end operand-feed case. This will separate (1) unit issue capacity, (2) result-forwarding latency, and (3) Data RAM/operand-feed pressure without changing the fixed VEC=2 or ME512=1 resource counts.
+
 ## 9. Next engineering steps
 
 1. Integrate the concurrent C0 → CS → EB scheduler into the main CPU fetch model without changing the 64-bit App RAM read lane.
