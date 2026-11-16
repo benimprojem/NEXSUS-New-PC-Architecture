@@ -120,6 +120,37 @@ CI run: [43777281592](https://github.com/benimprojem/NEXSUS-New-PC-Architecture/
 The target-prefetch overlap sweep completed successfully in CI run [43780989982](https://github.com/benimprojem/NEXSUS-New-PC-Architecture/actions/runs/43780989982). It remains an idealized upper-bound experiment: BTB accuracy, App RAM contention, partial refill cancellation, and wrong-path interference are not modeled together.
 
 
+## Latest integrated frontend confirmation — CI run 43782024110
+
+The latest simulator workflow completed successfully on commit `45c615658e52e7af97908b99e0703ea78dd2c3dc`. All regression tests and all frontend sweeps passed, including the focused legacy P0/P1-to-C0 / EB-consume interaction matrix, middle-stage rate sweep, workload-length sweep, integrated redirect, target-prefetch overlap, wrong-path cleanup, and App RAM arbitration/fairness tests. The full result bundle is attached to the workflow artifact `nexus-cpu-comparison-results`.
+
+### Canonical naming for the modeled path
+
+The simulator still exposes some historical parameter labels. Read them through this mapping; do not treat them as additional hardware blocks:
+
+- Legacy `P0/P1→C0` rate: App RAM-to-Code Cache (C0) refill path.
+- `C0→CS`: Code Cache (C0)-to-Code Slots (CS0–CS7) staging.
+- Legacy `CS→EB`: Code Stream Transfer (CST), from a selected Code Slot into the inactive Execution Buffer (EB) bank.
+- `EB consume`: instruction delivery from the active EB bank to fetch/decode.
+
+The canonical hardware path remains **App RAM → C0 → CS0–CS7 → CST → EB → Instruction Fetch/Decode/Execute**. Historical P0/P1 labels are simulator implementation terminology only and must not be promoted into the current architecture naming.
+
+### Latest interaction sweep
+
+The 29-case P0/P1-to-C0 and EB-consume matrix retired all 32 pages in every case. With the middle stages fixed at 16 B/cycle:
+
+| App RAM-to-C0 / EB consume (B/cycle) | Total cycles |
+|---:|---:|
+| 8 / 8 | 8876 |
+| 12 / 12 | 6071 |
+| 16 / 16 | 4652 |
+| 24 / 24 | 4568 |
+| 32 / 32 | 4524 |
+
+This confirms that the low-rate 8/8 configuration is the clear bottleneck. The 16/16 point captures most of the gain; 32/32 improves this 32-page run by only a further 2.75% relative to 16/16. The middle-stage and workload-length results continue to support **20 B/cycle for C0→CS and CST** as the balanced provisional choice. Keep **16 B/cycle for App RAM-to-C0 and EB consume**, **64 B/cycle App RAM bandwidth**, and **queue depth 2** as the current modeled operating point.
+
+These remain discrete-cycle simulator results, not RTL, FPGA, area/power, or silicon validation. The run validates the simulator and its modeled scenarios; it does not freeze a physical implementation.
+
 ## App RAM target versus wrong-path arbitration
 
 CI run: [43780989982](https://github.com/benimprojem/NEXSUS-New-PC-Architecture/actions/runs/43780989982), commit `6bdb756c3f0f1c2b19f64435ccb61beccc9ab40d`. The run passed all regression and architecture sweeps, including the 15-case two-request contention test and the eight-core fairness sweep. Both JSON reports are included in the CI artifact.
