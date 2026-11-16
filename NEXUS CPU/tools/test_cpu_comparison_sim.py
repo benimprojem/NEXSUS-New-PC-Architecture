@@ -399,6 +399,43 @@ class SharedCacheGroupTests(unittest.TestCase):
         self.assertFalse(caches[4].l2.lookup(line))
         self.assertFalse(caches[4].l1.lookup(line))
 
+    def test_memory_to_l4_partitioned_distribution_targets_each_home(self):
+        p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        caches = sim.build_cache_hierarchies(p, 16)
+        addresses = [i * 64 for i in range(8)]
+        counts = sim.distribute_memory_to_l4(caches, addresses, "partitioned")
+        self.assertEqual(counts, {0: 4, 1: 4})
+        for index, address in enumerate(addresses):
+            self.assertEqual(caches[0].probe(address)[1],
+                             "L4" if index % 2 == 0 else "DRAM")
+            self.assertEqual(caches[8].probe(address)[1],
+                             "L4" if index % 2 == 1 else "DRAM")
+
+    def test_memory_to_l4_replicated_and_selective_multicast(self):
+        p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        caches = sim.build_cache_hierarchies(p, 24)
+        addresses = [0x10000, 0x10040]
+        counts = sim.distribute_memory_to_l4(caches, addresses, "replicated")
+        self.assertEqual(counts, {0: 2, 1: 2, 2: 2})
+        for core in (0, 8, 16):
+            for address in addresses:
+                self.assertEqual(caches[core].probe(address)[1], "L4")
+        caches = sim.build_cache_hierarchies(p, 24)
+        counts = sim.distribute_memory_to_l4(
+            caches, addresses, "selective_multicast", target_blocks=[0, 2])
+        self.assertEqual(counts, {0: 2, 2: 2})
+        self.assertEqual(caches[0].probe(addresses[0])[1], "L4")
+        self.assertEqual(caches[8].probe(addresses[0])[1], "DRAM")
+        self.assertEqual(caches[16].probe(addresses[0])[1], "L4")
+
+    def test_memory_to_l4_distribution_rejects_invalid_targets(self):
+        p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        caches = sim.build_cache_hierarchies(p, 16)
+        with self.assertRaises(ValueError):
+            sim.distribute_memory_to_l4(caches, [0], "selective_multicast")
+        with self.assertRaises(ValueError):
+            sim.distribute_memory_to_l4(caches, [0], "replicated", target_blocks=[2])
+
     def test_l4_is_shared_by_eight_core_group_not_next_group(self):
         p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
         caches = sim.build_cache_hierarchies(p, 16)
