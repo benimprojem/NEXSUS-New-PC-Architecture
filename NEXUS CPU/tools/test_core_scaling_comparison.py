@@ -33,7 +33,13 @@ for policy in policies:
             controller = nexus["kernels"][kernel]["app_ram_controller"]
             assert controller is not None
             assert controller["per_core_bytes_per_cycle"] == 64
-            assert controller["aggregate_bytes_per_cycle"] == 64 * count
+            active_cores = controller["active_core_count"]
+            assert 1 <= active_cores <= count
+            assert controller["aggregate_bytes_per_cycle"] == 64 * active_cores
+            # These kernels distribute work across every configured core.
+            # Scalar/pointer-graph/hot-workset controls intentionally remain single-core.
+            if kernel not in {"scalar_control", "pointer_graph", "tw_hot_workset"}:
+                assert active_cores == count, (count, kernel, active_cores)
 
 print("PASS: 1/2/4/8-core scaling, four architectures, ten identical logical workloads.")
 print("PASS: fixed and per-core-scaled DRAM controls; NEXSUS AppRAM remains 64 B/cycle/core.")
