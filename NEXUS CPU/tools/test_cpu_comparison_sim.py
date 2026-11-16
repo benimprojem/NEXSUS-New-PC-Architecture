@@ -1539,7 +1539,7 @@ class EightCoreArchitectureScalingTests(unittest.TestCase):
 
         # App RAM is full, but that must not block an independent Data RAM miss.
         app_rejected = app.reserve_batch(1, [
-            {"id": "instruction-page-1", "core": 1,
+            {"id": "instruction-page-1", "core": 0,
              "address": 0x2000, "bytes": 64},
         ])["instruction-page-1"]
         data_second = data.reserve_batch(1, [
