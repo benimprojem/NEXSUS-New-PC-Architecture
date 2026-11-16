@@ -29,11 +29,18 @@ NEXSUS_FEATURES = {
     "p0_capacity_kb": 16, "p0_refill_latency": 48,
 }
 
-def run_mode(workloads, normalized, execution_only=False):
+def run_mode(workloads, normalized, execution_only=False, common_memory=False):
     results = {}
     for arch in ARCHS:
-        profile = SIM.PROFILES[arch]
+        profile = dict(SIM.PROFILES[arch])
         cores = 8 if normalized else profile["core_count"]
+        if common_memory:
+            # A second controlled comparison: same core count, reference clock,
+            # DRAM latency and aggregate DRAM bandwidth. Keep each architecture's
+            # execution resources, caches and instruction-delivery design intact.
+            profile["frequency_ghz"] = 3.0
+            profile["dram_lat"] = 120
+            profile["dram_bytes_per_cycle"] = 32
         if arch == "nexus_balanced_128":
             features = dict(NEXSUS_FEATURES)
             if execution_only:
@@ -80,7 +87,7 @@ def render_report(data):
         "| Intel Xeon 698X / Granite Rapids | 86 | 2.0 GHz base | x86-64, AMX, 86 P-cores |",
         "| Apple M6 | 12 | 3.0 GHz assumption | ARM vector; homogeneous approximation of 2 super + 4 performance + 6 efficiency cores |",
         "| NEXSUS Balanced 128 | 8 | 3.0 GHz assumption | L1/L2/L3/L4, 512-bit VEC, ME512, Task Workspace, CodeFlow |", "",
-        "The simulator allows each profile to use its configured execution resources. Clock, cache latency, issue width, and several vendor-private details are model assumptions. Apple core classes are not yet scheduled separately. NEXSUS values are proposals, not measured silicon limits.", "",
+        "The simulator allows each profile to use its configured execution resources. Native and core-count-normalized modes retain each profile's modeled clock and memory bandwidth; they are not bandwidth-equal comparisons. The common-memory 8-core mode fixes all profiles at 3.0 GHz, 120-cycle DRAM latency and 32 B/cycle aggregate DRAM bandwidth while retaining their modeled execution resources, caches and instruction-delivery designs. Clock, cache latency, issue width, and several vendor-private details are model assumptions. Apple core classes are not yet scheduled separately. NEXSUS values are proposals, not measured silicon limits.", "",
         "## Native core-count summary", "",
         "| Architecture | Cores | Clock | Sum cycles* | Sum modeled time (µs)* | Aggregate IPC* |",
         "|---|---:|---:|---:|---:|---:|",
@@ -93,7 +100,8 @@ def render_report(data):
     lines += ["", "*Diagnostic sums across separate kernels, not a standardized overall score. Do not rank systems from this summary row alone.", ""]
     for mode_data, mode_key, heading in (
         (data["modes"], "native", "Per-kernel comparison — native core counts, modeled frontend"),
-        (data["modes"], "normalized_8core", "Per-kernel comparison — normalized 8-core, modeled frontend"),
+        (data["modes"], "normalized_8core", "Per-kernel comparison — 8-core, native clock and memory profile"),
+        (data["modes"], "normalized_8core_common_memory", "Per-kernel comparison — 8-core, common 3.0 GHz / 32 B/cycle DRAM"),
         (data["backend_isolation"], "native", "Backend isolation — native core counts, instruction frontend bypassed"),
         (data["backend_isolation"], "normalized_8core", "Backend isolation — normalized 8-core, instruction frontend bypassed"),
     ):
@@ -114,12 +122,13 @@ def render_report(data):
         "## Interpretation limits", "",
         "1. Same deterministic operation graph, inputs and per-kernel logical operation count across all profiles.",
         "2. Each profile maps operations to its configured native resources, including Intel AMX and NEXSUS ME512; no scalar-only handicap is imposed.",
-        "3. Native mode compares package-scale modeled core counts. Normalized mode uses exactly eight active cores per profile.",
-        "4. Backend-isolation modes bypass instruction delivery for every profile equally; they isolate execution, data-cache and memory behavior from frontend refill assumptions. NEXSUS Task Workspace remains enabled as a native backend feature.",
-        "5. The modeled-frontend modes retain each profile's instruction delivery model. NEXSUS CodeFlow transfers only valid command bytes and prefetches only a known next page into the alternate EB bank; conventional profiles use the modeled I-cache.",
-        "6. Modeled time is cycles divided by configured clock; it is not measured runtime.",
-        "7. Cache coherence, vendor-private predictor details, Apple heterogeneous scheduling, and several physical timings remain approximate or open.",
-        "8. A final silicon comparison requires running identical validated binaries and inputs on physical systems, with each vendor's optimizing compiler and documented flags.",
+        "3. Native mode compares package-scale modeled core counts. Core-count-normalized mode uses exactly eight active cores but retains each profile's own clock and DRAM bandwidth; it must not be described as fully normalized.",
+        "4. Common-memory 8-core mode uses eight cores, 3.0 GHz, 120-cycle DRAM latency and 32 B/cycle aggregate DRAM bandwidth for every profile. Execution units, cache organization and instruction-fetch design remain profile-specific.",
+        "5. Backend-isolation modes bypass instruction delivery for every profile equally; they isolate execution, data-cache and memory behavior from frontend refill assumptions. NEXSUS Task Workspace remains enabled as a native backend feature.",
+        "6. The modeled-frontend modes retain each profile's instruction delivery model. NEXSUS CodeFlow transfers only valid command bytes and prefetches only a known next page into the alternate EB bank; conventional profiles use the modeled I-cache.",
+        "7. Modeled time is cycles divided by configured clock; it is not measured runtime.",
+        "8. Cache coherence, vendor-private predictor details, Apple heterogeneous scheduling, and several physical timings remain approximate or open.",
+        "9. A final silicon comparison requires running identical validated binaries and inputs on physical systems, with each vendor's optimizing compiler and documented flags.",
         "",
         "## External standardized validation", "",
         "Use SPEC CPU 2026 as the external real-hardware anchor. It contains 52 benchmarks across four suites: SPECspeed Integer, SPECspeed Floating Point, SPECrate Integer, and SPECrate Floating Point. Run the complete selected suite under official rules and preserve compiler versions/flags. The custom suite remains the architecture-diagnostic companion for NEXSUS-specific resources such as L4 sharing, Task Workspace, CodeFlow and ME512.",
@@ -142,6 +151,7 @@ def main():
         "modes": {
             "native": run_mode(workloads, False),
             "normalized_8core": run_mode(workloads, True),
+            "normalized_8core_common_memory": run_mode(workloads, True, common_memory=True),
         },
         "backend_isolation": {
             "native": run_mode(workloads, False, execution_only=True),
@@ -150,7 +160,7 @@ def main():
         "result_class": "simulated event/cycle model; not physical silicon measurements",
     }
     rows = []
-    for mode in ("native", "normalized_8core"):
+    for mode in ("native", "normalized_8core", "normalized_8core_common_memory"):
         for arch in ARCHS:
             result = data["modes"][mode][arch]
             for kernel in workloads:
