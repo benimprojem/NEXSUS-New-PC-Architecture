@@ -228,7 +228,7 @@ def build_composite_workload(scale: int = 1) -> Dict[str, List[Op]]:
     # H) Independent 512-bit vector arithmetic mix. Each opcode uses the VEC
     # issue resource; dependency chains are kept separate from issue throughput.
     ops = []
-    vector_kinds = ("VEC_ADD", "VEC_MUL", "VEC_FMA", "VEC_PERMUTE")
+    vector_kinds = ("VEC_ADD", "VEC_SUB", "VEC_MUL", "VEC_FMA", "VEC_PERMUTE", "VEC_REDUCE")
     for i in range(256*n):
         add_op(ops, vector_kinds[i % len(vector_kinds)],
                label="independent 512-bit vector arithmetic",
