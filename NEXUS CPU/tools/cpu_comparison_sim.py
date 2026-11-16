@@ -485,6 +485,43 @@ class CacheHierarchy:
         return latency, level
 
 
+def distribute_memory_to_l4(caches: List[CacheHierarchy], addresses: List[int],
+                            mode: str = "partitioned",
+                            target_blocks: Optional[List[int]] = None) -> Dict[int, int]:
+    """Untimed setup: place memory-sourced lines directly in selected L4 homes.
+
+    This models destination/visibility placement only, not transfer cycles or
+    bandwidth. Each eight-core block owns one L4 home. Partitioned mode assigns
+    successive lines round-robin across selected blocks; replicated/selective
+    modes install every line in each selected block's L4.
+    """
+    if not caches:
+        raise ValueError("Cannot distribute to L4: no core cache hierarchies supplied")
+    block_count = math.ceil(len(caches) / 8)
+    selected = list(range(block_count)) if target_blocks is None else list(target_blocks)
+    if not selected or len(set(selected)) != len(selected):
+        raise ValueError("target_blocks must contain unique valid L4 block indices")
+    if any(block < 0 or block >= block_count for block in selected):
+        raise ValueError(f"target_blocks index outside available L4 blocks (0..{block_count - 1})")
+    if mode not in ("partitioned", "replicated", "selective_multicast"):
+        raise ValueError(f"Unsupported L4 distribution mode: {mode}")
+    if mode == "selective_multicast" and target_blocks is None:
+        raise ValueError("selective_multicast requires explicit target_blocks")
+
+    homes = {block: caches[block * 8].l4 for block in selected}
+    if any(home is None for home in homes.values()):
+        raise ValueError("Cannot distribute to L4: selected block has no L4 cache")
+    counts = {block: 0 for block in selected}
+    for index, address in enumerate(addresses):
+        destinations = ([selected[index % len(selected)]] if mode == "partitioned"
+                        else selected)
+        line = address // caches[0].line
+        for block in destinations:
+            homes[block].insert(line)
+            counts[block] += 1
+    return counts
+
+
 def build_cache_hierarchies(p: CoreProfile, core_count: int) -> List[CacheHierarchy]:
     """Build private and shared cache objects using each modeled architecture's topology.
 
