@@ -25,6 +25,7 @@ Bu bileşenler araştırma ve tasarım önerileridir; tamamlanmış veya silikon
 - [Türkçe belge merkezi](Türkçe/README.md)
 
 ### CPU — mimari, ISA ve bellek
+- [Cache topology and sharing decision 001](Türkçe/NEXSUS-CPU-CACHE-TOPOLOGY-001.md) — 8×L1 / 4×L2 / 2×L3 / 1×L4 per eight-core block
 - [CPU ana mimarisi](NEXUS%20CPU/Yeni%20Nesil%20Ayr%C4%B1%C5%9Ft%C4%B1r%C4%B1lm%C4%B1%C5%9F%20Register%20Tabanl%C4%B1%20CPU%20Mimarisi.md)
 - [ISA ve yürütme modeli](NEXUS%20CPU/NEXSUS-CPU-ISA-001.md)
 - [64-bit Instruction Encoding](NEXUS%20CPU/NEXSUS-CPU-INSTRUCTION-ENCODING-001.md)
