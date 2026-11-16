@@ -1,42 +1,65 @@
 # NEXSUS CPU — Functional Workspace Naming
 
 **Document ID:** NEXSUS-CPU-WORKSPACE-NAMING-001  
-**Status:** Naming baseline  
-**Rule:** Purpose-based names are canonical. Legacy SPM labels are compatibility aliases only.
+**Status:** Canonical workspace naming reference  
+**Date:** 2026-11-16
 
-## Canonical memory/workspace map
+## 1. Naming rule
 
-| Legacy label | Canonical name | Capacity / organization | Primary purpose |
-|---|---|---:|---|
-| SPM0 | **EB — Execution Buffer** | 4 KiB; 2 × 2 KiB ping-pong banks | Active instruction stream; CFM fills inactive bank and swaps |
-| SPM1 | **OW — OS Workpad** | 8 KiB | OS-local scratch/workspace; not a task context |
-| SPM2 | **TW — Task Workpad** | 8 KiB | Task/user-local scratch workspace |
-| SPM3–SPM6 | **CTP — Context Pool** | 4 × 8 KiB banks; 16 × 2 KiB slots/core | Saved/restored architectural context frames |
-| SPM7 | **XW — Exception Workpad** | 8 KiB; 8 × 1 KiB slices | Exception/interrupt entry, temporary frame and recovery workspace |
+Use expanded canonical names with their symbols on first mention. Do not use the former SPM labels as current names. They remain only in the legacy crosswalk in Section 4.
 
-## Naming rules
+## 2. Canonical workspace map
 
-- Use **EB, OW, TW, CTP, XW** in new architecture documents, diagrams, simulator output and implementation names.
-- Do not append a zero to a singleton resource: **EB**, not EB0. Banked resources may use indices when addressing a particular bank/slice (e.g. CTP bank 0).
-- SPM0…SPM7 may appear only in a migration note, compatibility mapping or historical citation. SPM is no longer a canonical resource class.
-- Names describe function and ownership, not a claim that these are all CPU physical SRAMs. Implementation may realize them as dedicated arrays, partitions or protected regions, provided capacity, isolation and timing contracts are preserved.
-- **EB is code staging, not a context slot. CTP is context storage, not executable code.** Their ownership, valid bits and scheduling are independent.
+| Legacy label | Expanded canonical name | Canonical symbol | Capacity / organization | Primary purpose |
+|---|---|---|---:|---|
+| SPM0 | Execution Buffer | EB | 4 KiB; 2 × 2 KiB banks | CPU-visible instruction-code workspace; CodeFlow Manager fills the inactive bank |
+| SPM1 | Operating-System Workspace | OW | 8 KiB | Privileged OS/kernel scratch and control data; not a task context |
+| SPM2 | Task Workspace | TW | 8 KiB | Current task/user-local scratch and working data |
+| SPM3–SPM6 | Context Pool | CP0–CP3 | 4 × 8 KiB banks; 16 × 2 KiB slots/core | Saved/restored architectural register-context images |
+| SPM7 | Exception Workspace | XW | 8 KiB; 8 × 1 KiB slices | Exception/interrupt entry scratch and handler workspace |
 
-## Data-path overview
+## 3. Workspace ownership and separation
+
+- **Execution Buffer (EB)** stores executable instruction bytes only. It is not a register-context slot.
+- **Operating-System Workspace (OW)** is privileged OS/kernel working storage.
+- **Task Workspace (TW)** is task-owned working storage and follows task isolation/privilege rules.
+- **Context Pool (CP0–CP3)** stores saved architectural context images. A context may spill to protected Data RAM when no resident slot is available.
+- **Exception Workspace (XW)** is reserved for exception/interrupt entry and handler scratch. It is not a persistent error log.
+- Workspace names describe function and ownership. They do not imply that every workspace is a separate physical SRAM chip or controller. Implementation may use dedicated arrays, partitions, or protected regions while preserving capacity, isolation, and timing contracts.
+- **Code Slots (CS0–CS7)** and **Context Pool (CP0–CP3)** are different resource classes. Never conflate executable-code residency with register-context residency.
+
+## 4. Legacy-name crosswalk
+
+| Legacy label | Canonical name | Migration note |
+|---|---|---|
+| SPM0 | Execution Buffer (EB) | Dual-bank 4 KiB instruction workspace |
+| SPM1 | Operating-System Workspace (OW) | 8 KiB |
+| SPM2 | Task Workspace (TW) | 8 KiB |
+| SPM3–SPM6 | Context Pool (CP0–CP3) | Four 8 KiB banks |
+| SPM7 | Exception Workspace (XW) | 8 KiB; eight 1 KiB slices |
+
+SPM0–SPM7 may appear only when explaining or migrating older documents, source, or simulator records.
+
+## 5. Data-path and workspace overview
 
 ```text
-App RAM -> C0 Code Cache -> CS0..CS7 -> EB (ping-pong execution banks)
-OS services ---------------------------> OW
-Task/user scratch ---------------------> TW
-Context save/restore <----------------> CTP
-Exception/interrupt handling ----------> XW
+Application RAM (App RAM)
+    → Code Cache (C0)
+    → Code Slots (CS0–CS7)
+    → Code Stream Transfer (CST)
+    → Execution Buffer (EB: two 2 KiB banks)
+    → Active Execution Page (selected EB bank)
+
+OS services ---------------------------> Operating-System Workspace (OW)
+Task/user scratch ---------------------> Task Workspace (TW)
+Context save/restore <----------------> Context Pool (CP0–CP3)
+Exception/interrupt handling ----------> Exception Workspace (XW)
 ```
 
-## Migration checklist
+The two EB banks may operate in ping-pong fashion. “Ping-pong” describes the bank-switching method; it is not a separate workspace or additional pipeline stage.
 
-1. Replace canonical SPM0 references with EB.
-2. Replace SPM1 with OW; SPM2 with TW.
-3. Replace the four context banks SPM3–SPM6 with CTP (bank/slice indices remain explicit).
-4. Replace SPM7 with XW.
-5. Keep a legacy alias table where older documents or tooling need compatibility.
-6. Never conflate CS Code Slots with CTP Context Pool.
+## 6. Related specifications
+
+- **NEXSUS-CPU-CODEFLOW-NAMING-001.md** — canonical Code Cache, Code Slots, CodeFlow Manager, Code Stream Transfer, and Execution Buffer terminology.
+- **NEXSUS-CPU-MEMORY-PATH-AND-NAMING-001.md** — complete instruction path, memory domains, expanded naming, and legacy crosswalk.
+- **NEXSUS-CPU-EXCEPTION-FRAME-001.md** — exception frame and protected exception storage.
