@@ -1873,5 +1873,31 @@ class EightCoreArchitectureScalingTests(unittest.TestCase):
             )
 
 
+class PerCoreCodeFlowTopologyTests(unittest.TestCase):
+    def test_each_core_has_independent_64bit_c0_cs_eb_rates(self):
+        fetchers = [sim.CommandFetchModel(True, codeflow_enabled=True, core_id=i)
+                    for i in range(8)]
+        for fetch in fetchers:
+            self.assertEqual(fetch.c0_to_cs_bytes_per_cycle, 8)
+            self.assertEqual(fetch.cs_to_eb_bytes_per_cycle, 8)
+        self.assertEqual(len({id(fetch.p0_buffers) for fetch in fetchers}), 8)
+        self.assertEqual(len({id(fetch) for fetch in fetchers}), 8)
+
+    def test_app_ram_aggregate_bandwidth_is_eight_core_64bit_lanes(self):
+        controller = sim.AppRamController(
+            bank_count=8, beat_bytes=8, bytes_per_cycle=64,
+            first_beat_latency=4, beat_interval=1, max_outstanding=8,
+        )
+        requests = [
+            {"id": f"c{i}", "core": i, "address": i * 8, "bytes": 8}
+            for i in range(8)
+        ]
+        result = controller.reserve_batch(0, requests)
+        self.assertEqual(controller.transferred_bytes, 64)
+        self.assertEqual(controller.accepted, 8)
+        self.assertTrue(all(result[f"c{i}"]["accepted"] for i in range(8)))
+        self.assertEqual(controller.bus_next_byte, 64)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
