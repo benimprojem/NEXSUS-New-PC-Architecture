@@ -1306,6 +1306,10 @@ class FMAResourceSweepTests(unittest.TestCase):
 
 
 class AppRamControllerTests(unittest.TestCase):
+    def test_default_app_ram_bandwidth_matches_nexus_architecture(self):
+        ctrl = sim.AppRamController()
+        self.assertEqual(ctrl.bytes_per_cycle, 64)
+
     def test_app_ram_controller_has_independent_bounded_queue(self):
         ctrl = sim.AppRamController(first_beat_latency=10, max_outstanding=1)
         first = ctrl.reserve_batch(0, [
