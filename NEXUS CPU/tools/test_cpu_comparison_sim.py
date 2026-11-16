@@ -276,7 +276,7 @@ class CachePortContentionTests(unittest.TestCase):
         port = sim.CachePort(ports=1, lines_per_port_cycle=1)
         self.assertEqual(port.reserve(0, 128, 64), 0)
         self.assertEqual(port.reserve(0, 64, 64), 2)
-        self.assertEqual(port.reserve(2, 64, 64), 0)
+        self.assertEqual(port.reserve(3, 64, 64), 0)
 
 
 class NEXSUSCacheTopologyTests(unittest.TestCase):
