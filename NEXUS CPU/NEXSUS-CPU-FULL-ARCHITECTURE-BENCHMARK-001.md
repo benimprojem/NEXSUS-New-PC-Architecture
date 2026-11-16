@@ -406,11 +406,12 @@ Report cold-start and warm/reuse runs separately. The current 64 KiB L0I capacit
 
 ## 15. Execution implementation update — 2026-11-16
 
-The current simulator implementation has expanded beyond the original 18-kernel planning list. The deterministic composite workload currently contains 25 diagnostic kernels:
+The current simulator implementation has expanded beyond the original 18-kernel planning list. The deterministic composite workload currently contains 37 diagnostic kernels:
 
 - Scalar/control and memory: `scalar_control`, `pointer_graph`, `streaming`, `branch_stress`, `atomic_contention`.
 - Integer/FP/vector: `integer_throughput`, `integer128_throughput`, `fp_throughput`, `fma_throughput`, `fma_dependency_chain`, `fp_fma_mixed`, `vector_throughput`.
 - Matrix and mixed-resource: `numeric_tile`, `me512_matrix`, `me512_independent_throughput`, `me512_dependency_chain`, `vec_me512_memory_overlap`.
+- Vector opcode isolation: `vec_add`, `vec_sub`, `vec_mul`, `vec_fma`, `vec_permute`, `vec_reduce`, plus one dependency-chain test for each opcode.
 - Task, interrupt, and NEXSUS-specific: `parallel_tasks`, `irq_exception_stress`, `tw_hot_workset`, `tw_capacity_sweep`, `cs_sequential`, `cs_branch`, `cs_working_set`, `cs_starvation`.
 
 The full report generator runs every current kernel in two distinct modes:
