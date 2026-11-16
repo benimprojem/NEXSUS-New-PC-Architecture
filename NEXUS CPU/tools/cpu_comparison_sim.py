@@ -1879,6 +1879,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 bool(features["p0"]),
                 p0_capacity_bytes=int(features.get("p0_capacity_kb", 16)) * 1024,
                 p0_refill_latency=int(features.get("p0_refill_latency", 48)),
+                p0_buffer_bytes=int(features.get("p0_buffer_bytes", 2048)),
                 page_descriptors=(features.get("px_page_descriptors") or
                                   build_command_page_descriptors(
                                       shard, int(features.get("p0_buffer_bytes", 2048))
