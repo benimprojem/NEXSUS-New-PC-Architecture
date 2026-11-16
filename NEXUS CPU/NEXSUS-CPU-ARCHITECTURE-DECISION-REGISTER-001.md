@@ -160,9 +160,21 @@ The following capacities are **FIXED by the latest explicit architecture decisio
 | L3 | 8 MiB | Shared by each group of four cores | **FIXED** |
 | L4 | 64 MiB or more | Shared by each group of eight cores; not shared with the next group | **FIXED** |
 
-The simulator already contains and tests this grouping: L1 private, L2 per 2-core group, L3 per 4-core group, and L4 per 8-core group. These sharing scopes and capacities are both fixed decisions; do not reopen them during routine work.
+The simulator contains and tests this grouping: L1 private, L2 per 2-core group, L3 per 4-core group, and L4 per 8-core group. These sharing scopes and capacities are both fixed decisions; do not reopen them during routine work.
 
-**OPEN:** cache-line size, associativity, replacement, hit/miss latency, bandwidth/ports, write policy, inclusion/exclusion, coherence protocol, and interaction with the L1–L4 logical memory-domain/zone model. A logical access domain is not automatically the same thing as a physical cache instance.
+**FIXED working-set placement rule — select the home level by the number of collaborating cores:**
+
+| Collaborating cores | Working-set home | Role |
+|---|---|---|
+| 1 | L1 | Private execution working set |
+| 2 | L2 | Pair-shared working set |
+| 3–4 | L3 | Four-core shared working set |
+| 5–8 | L4 | Eight-core shared working set |
+| More than 8 | One L4 home per eight-core group | Cross-group sharing is not implied; it requires explicit inter-group transfer/visibility rules |
+
+The selected level is the natural preparation/residency point for that collaboration scope. All participating cores read and share data from that common cache object. Lower levels may be populated naturally by demand accesses and the eventual fill policy; the simulator must not fake a group-shared working set by copying it into every private L1. Untimed prefill is a measurement setup operation, not a claim that real hardware loads data at zero cost.
+
+**OPEN:** cache-line size, associativity, replacement, hit/miss latency, bandwidth/ports, write policy, inclusion/exclusion, coherence/visibility protocol, cross-group transfer, and interaction with the L1–L4 logical memory-domain/zone model. A logical access domain is not automatically the same thing as a physical cache instance.
 
 ---
 
