@@ -1202,7 +1202,7 @@ class CommandFetchModel:
                 self.p0_buffers[bank] = block
                 self.p0_pending = None
             return
-        ready_lines = [line for line, ready in self.pending.items() if ready["ready"] <= cycle]
+        ready_lines = [line for line, ready in self.pending.items() if ready <= cycle]
         for line in ready_lines:
             self.lines.insert(line)
             del self.pending[line]
@@ -1496,6 +1496,10 @@ class AppRamController:
             })
         self.rr_cursor = (start + 1) % len(cores)
         return result
+
+
+def profile_from_dict(d: dict) -> CoreProfile:
+    return CoreProfile(**d)
 
 
 class SharedMemoryController:
