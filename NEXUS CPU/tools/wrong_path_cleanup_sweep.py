@@ -41,12 +41,18 @@ def run_cleanup_sweep(
                 # Queue flush and P0/P1 slot-tag invalidation use independent
                 # control resources, so cleanup completes at the slower one.
                 cleanup_cycles = max(flush_cycles, int(invalidate_cycles))
-                slot_release = resolution + cleanup_cycles if conflict else resolution
+                slot_release = resolution + cleanup_cycles if conflict else None
                 for overlap in overlaps:
                     if overlap < 0:
                         raise ValueError("overlap must be nonnegative")
                     requested_start = resolution - min(int(overlap), delivery)
-                    fetch_start = max(requested_start, slot_release)
+                    # Without a destination-slot conflict, speculative fetch
+                    # starts at its requested lead time. With a conflict, the
+                    # occupied slot imposes a hard lower bound on fetch start.
+                    fetch_start = (
+                        max(requested_start, slot_release)
+                        if conflict else requested_start
+                    )
                     actual_overlap = min(delivery, max(0, resolution - fetch_start))
                     target_fetch_done = fetch_start + delivery
                     target_ready = max(
