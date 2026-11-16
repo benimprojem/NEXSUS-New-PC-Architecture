@@ -1401,7 +1401,7 @@ class AppRamController:
     separately as a pipeline approximation.
     """
     def __init__(self, bank_count: int = 8, beat_bytes: int = 8,
-                 bytes_per_cycle: int = 32, first_beat_latency: int = 40,
+                 bytes_per_cycle: int = 64, first_beat_latency: int = 40,
                  beat_interval: int = 1, max_outstanding: int = 16):
         self.bank_count = max(1, int(bank_count))
         self.beat_bytes = max(1, int(beat_bytes))
