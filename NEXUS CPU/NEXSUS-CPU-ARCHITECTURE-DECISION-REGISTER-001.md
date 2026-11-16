@@ -259,7 +259,7 @@ Items already specified in architecture documents are not to be redesigned; they
 - [ ] Verify independent App RAM and Data RAM progress under concurrent load.
 
 ### D. Cache hierarchy specification and model
-- [ ] Define physical scope/sharing while preserving L1=1 MiB, L2=2 MiB, L3=8 MiB, L4=64 MiB+.
+- [x] Define physical scope/sharing and collaboration-scope working-set home: L1=1 MiB/core, L2=2 MiB/pair, L3=8 MiB/four-core group, L4=64 MiB+/eight-core group.
 - [ ] Define cache line, associativity, replacement, hit/miss timing, bandwidth, and ports.
 - [ ] Define write policy and coherence/visibility rules.
 - [ ] Integrate cache behavior with existing memory-domain ownership and access validation.
