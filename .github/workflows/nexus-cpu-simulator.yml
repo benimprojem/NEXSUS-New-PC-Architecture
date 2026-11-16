@@ -632,7 +632,7 @@ jobs:
           from pathlib import Path
           root = Path("/tmp/nexus-full-architecture-benchmark")
           data = json.loads((root / "full-architecture-results.json").read_text(encoding="utf-8"))
-          assert len(data["kernel_names"]) == 25, len(data["kernel_names"])
+          assert len(data["kernel_names"]) == 37, len(data["kernel_names"])
           assert set(data["modes"]) == {"native", "normalized_8core"}
           expected = {"amd_9950x3d2", "intel_xeon_698x", "apple_m6", "nexus_balanced_128"}
           for mode in data["modes"].values():
@@ -642,7 +642,7 @@ jobs:
                   assert len({mode[arch]["kernels"][kernel]["ops"] for arch in expected}) == 1
           assert (root / "full-architecture-results.md").stat().st_size > 1000
           assert (root / "full-architecture-results.csv").stat().st_size > 1000
-          print("PASS: 25 kernels, four architecture profiles, native and normalized-8-core tables.")
+          print(f"PASS: {len(data[\"kernel_names\"])} kernels, four architecture profiles, native and normalized-8-core tables.")
           PY
       - name: Upload comparison and CS sweep results
         if: always()
