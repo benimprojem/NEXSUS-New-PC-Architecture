@@ -6,6 +6,7 @@ import csv
 import importlib.util
 import json
 import os
+import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -13,6 +14,7 @@ SPEC = importlib.util.spec_from_file_location("cpu_comparison_sim", HERE / "cpu_
 if SPEC is None or SPEC.loader is None:
     raise RuntimeError("Cannot load cpu_comparison_sim.py")
 SIM = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = SIM
 SPEC.loader.exec_module(SIM)
 
 ARCHS = ("amd_9950x3d2", "intel_xeon_698x", "apple_m6", "nexus_balanced_128")
