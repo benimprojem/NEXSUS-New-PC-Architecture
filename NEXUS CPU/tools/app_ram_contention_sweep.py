@@ -95,7 +95,9 @@ def run_contention_sweep() -> dict:
         "controller_geometry": {
             "banks": 8,
             "beat_bytes": 8,
-            "aggregate_bytes_per_cycle": 64,
+            "per_core_bytes_per_cycle": 64,
+            "active_core_count": 1,
+            "aggregate_active_bytes_per_cycle": 64,
             "first_beat_latency_cycles": 40,
             "max_outstanding": 8,
         },
