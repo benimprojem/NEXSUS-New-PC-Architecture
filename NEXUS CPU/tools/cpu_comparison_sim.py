@@ -730,6 +730,126 @@ def timed_l4_to_l1(caches: List[CacheHierarchy], addresses: List[int],
     }
 
 
+def timed_l4_to_l1_multicast(caches: List[CacheHierarchy], addresses: List[int],
+                              target_cores: Optional[List[int]] = None,
+                              chunk_bytes: int = 256,
+                              l4_read_bytes_per_cycle: int = 64,
+                              fanout_bytes_per_cycle: int = 256,
+                              l1_ingress_bytes_per_cycle: int = 64,
+                              l4_read_latency: int = 0,
+                              fanout_latency: int = 0,
+                              l1_ingress_latency: int = 0) -> dict:
+    """Timed one-read/many-destination L4 multicast into selected private L1s.
+
+    The shared fanout bandwidth is aggregate replicated-payload bandwidth:
+    a chunk of N bytes sent to K destinations consumes N*K fanout bytes.
+    L4 reads are serialized; fanout may overlap the next L4 read; each L1
+    ingress is independently scheduled after fanout completion. This is an
+    explicit topology scenario, not a free multicast assumption.
+    """
+    if len(caches) != 8:
+        raise ValueError("multicast L4-to-L1 transfer requires exactly 8 core caches")
+    l4 = caches[0].l4
+    if l4 is None or any(cache.l4 is not l4 for cache in caches):
+        raise ValueError("all 8 cores must share the same L4 home")
+    if not addresses:
+        raise ValueError("multicast L4-to-L1 transfer requires at least one address")
+    targets = list(range(8)) if target_cores is None else list(target_cores)
+    if not targets or len(set(targets)) != len(targets):
+        raise ValueError("target_cores must contain unique valid core indices")
+    if any(core < 0 or core >= 8 for core in targets):
+        raise ValueError("target_cores index outside available cores (0..7)")
+    if min(chunk_bytes, l4_read_bytes_per_cycle, fanout_bytes_per_cycle,
+           l1_ingress_bytes_per_cycle) <= 0:
+        raise ValueError("chunk size and all bandwidth values must be positive")
+    if min(l4_read_latency, fanout_latency, l1_ingress_latency) < 0:
+        raise ValueError("transfer latencies cannot be negative")
+
+    line_bytes = caches[0].line
+    ordered_addresses = [int(address) for address in addresses]
+    if any(address % line_bytes for address in ordered_addresses):
+        raise ValueError(f"all transfer addresses must be {line_bytes}-byte aligned")
+    if any(b - a != line_bytes for a, b in zip(ordered_addresses, ordered_addresses[1:])):
+        raise ValueError("multicast L4-to-L1 addresses must describe one contiguous cache-line range")
+    if chunk_bytes < line_bytes or chunk_bytes % line_bytes:
+        raise ValueError(f"chunk_bytes must be a positive multiple of cache-line size ({line_bytes})")
+    missing = [address for address in ordered_addresses
+               if not l4.lookup(address // line_bytes)]
+    if missing:
+        raise ValueError(f"L4 source miss at address 0x{missing[0]:x}; multicast requires resident L4 lines")
+
+    lines_per_chunk = chunk_bytes // line_bytes
+    chunks = [ordered_addresses[start:start + lines_per_chunk]
+              for start in range(0, len(ordered_addresses), lines_per_chunk)]
+    l4_next_cycle = l4_read_latency
+    fanout_next_cycle = fanout_latency
+    l1_next_cycle = {core: 0 for core in targets}
+    source_events, fanout_events, destination_events = [], [], []
+    for chunk_index, chunk in enumerate(chunks):
+        width = len(chunk) * line_bytes
+        source_start = l4_next_cycle
+        source_done = source_start + max(1, math.ceil(width / l4_read_bytes_per_cycle))
+        l4_next_cycle = source_done
+
+        replicated_bytes = width * len(targets)
+        fanout_start = max(source_done, fanout_next_cycle)
+        fanout_done = fanout_start + max(1, math.ceil(replicated_bytes / fanout_bytes_per_cycle))
+        fanout_next_cycle = fanout_done
+        source_events.append({
+            "chunk_index": chunk_index, "bytes": width,
+            "start_cycle": source_start, "complete_cycle": source_done,
+        })
+        fanout_events.append({
+            "chunk_index": chunk_index, "source_bytes": width,
+            "replicated_bytes": replicated_bytes,
+            "start_cycle": fanout_start, "complete_cycle": fanout_done,
+            "wait_cycles": fanout_start - source_done,
+        })
+        for core in targets:
+            ingress_start = max(fanout_done, l1_next_cycle[core])
+            ingress_done = ingress_start + max(1, math.ceil(width / l1_ingress_bytes_per_cycle)) + l1_ingress_latency
+            l1_next_cycle[core] = ingress_done
+            destination_events.append({
+                "core": core, "chunk_index": chunk_index, "bytes": width,
+                "start_cycle": ingress_start, "complete_cycle": ingress_done,
+                "wait_cycles": ingress_start - fanout_done,
+            })
+            for address in chunk:
+                caches[core].l1.insert(address // line_bytes)
+
+    unique_bytes = len(ordered_addresses) * line_bytes
+    return {
+        "cores": 8, "l4_home_count": 1, "target_cores": targets,
+        "unique_bytes": unique_bytes,
+        "bytes_copied": unique_bytes * len(targets),
+        "l4_source_bytes_read": unique_bytes,
+        "l4_source_read_count": len(chunks),
+        "fanout_bytes": unique_bytes * len(targets),
+        "fanout_chunk_count": len(chunks),
+        "distribution_policy": "one serialized L4 read per chunk; explicit shared multicast fanout",
+        "cache_lines_per_core": len(ordered_addresses), "chunk_bytes": chunk_bytes,
+        "chunk_count": len(chunks),
+        "l4_read_bytes_per_cycle": l4_read_bytes_per_cycle,
+        "fanout_bytes_per_cycle": fanout_bytes_per_cycle,
+        "fanout_bandwidth_semantics": "aggregate replicated-payload bytes per cycle",
+        "l1_ingress_bytes_per_cycle": l1_ingress_bytes_per_cycle,
+        "l4_read_latency": l4_read_latency, "fanout_latency": fanout_latency,
+        "l1_ingress_latency": l1_ingress_latency,
+        "l4_source_events": source_events, "fanout_events": fanout_events,
+        "l1_ingress_events": destination_events,
+        "l4_source_next_cycle": l4_next_cycle,
+        "fanout_next_cycle": fanout_next_cycle,
+        "l1_resident_lines": {
+            core: sum(1 for address in ordered_addresses
+                      if caches[core].l1.lookup(address // line_bytes))
+            for core in targets
+        },
+        "cycles": max(event["complete_cycle"] for event in destination_events),
+        "transfer_path": "L4 -> shared multicast fanout -> selected private L1s (L2/L3 bypassed)",
+        "model_scope": "single 8-core block; one shared L4 source; aggregate fanout resource; independent per-core L1 ingress",
+    }
+
+
 def run_l4_l1_transfer_sweep(
     working_set_kib_values: Tuple[int, ...] = (64, 256),
     chunk_bytes_values: Tuple[int, ...] = (64, 256, 1024),
