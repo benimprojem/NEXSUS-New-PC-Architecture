@@ -76,7 +76,7 @@ def _case(burst_bytes: int, relation: str, policy: str) -> dict:
         "requests_accepted": controller.accepted,
         "assumption": (
             "Same-cycle requests are admitted in priority order; each request "
-            "reserves its bank beats and aggregate App RAM bus bytes."
+            "reserves bank beats and bytes on that core's independent App RAM connection."
         ),
     }
 
@@ -93,7 +93,8 @@ def run_contention_sweep() -> dict:
         "experiment": "App RAM correct-target / wrong-path contention",
         "cases": len(cases),
         "controller_geometry": {
-            "banks": 8,
+            "modeled_banks_per_active_core": 8,
+            "physical_bank_topology": "OPEN; simulator abstraction only",
             "beat_bytes": 8,
             "per_core_bytes_per_cycle": 64,
             "active_core_count": 1,
