@@ -117,4 +117,31 @@ A focused sweep now varies only the NEXSUS frontend recovery penalty across **4,
 
 CI run: [43777281592](https://github.com/benimprojem/NEXSUS-New-PC-Architecture/actions/runs/43777281592) succeeded, including the branch recovery sweep and all regression tests. The penalty is still a model assumption, not a measured NEXSUS hardware latency.
 
-The next experiment sweeps speculative target-page prefetch overlap against the 630-cycle serialized target-delivery estimate. This idealized sweep exposes overlap as an explicit input; it does not yet model BTB accuracy, memory bandwidth contention, partial refill cancellation, or wrong-path resource interference. Its CI result is pending.
+The target-prefetch overlap sweep completed successfully in CI run [43780989982](https://github.com/benimprojem/NEXSUS-New-PC-Architecture/actions/runs/43780989982). It remains an idealized upper-bound experiment: BTB accuracy, App RAM contention, partial refill cancellation, and wrong-path interference are not modeled together.
+
+
+## App RAM target versus wrong-path arbitration
+
+CI run: [43780989982](https://github.com/benimprojem/NEXSUS-New-PC-Architecture/actions/runs/43780989982), commit `6bdb756c3f0f1c2b19f64435ccb61beccc9ab40d`. The run passed all regression and architecture sweeps, including the 15-case two-request contention test and the eight-core fairness sweep. Both JSON reports are included in the CI artifact.
+
+The isolated 2 KiB same-cycle conflict shows the value of admission priority: target-first makes the correct target ready at cycle **72**, versus **128** when the wrong-path request is admitted first. With disjoint banks, the short 16/32-byte requests complete at the same cycle; priority does not create a benefit when there is no bank conflict.
+
+The eight-core stream contains 32 correct-target and 128 speculative 2 KiB page requests (327,680 bytes total), with eight banks, 32 B/cycle aggregate App RAM bandwidth, and eight outstanding slots.
+
+| Admission policy | Target mean wait | Target max wait | Speculative mean wait | Speculative max wait | Final completion |
+|---|---:|---:|---:|---:|---:|
+| Equal | 6846 | 9248 | 3802.56 | 7968 | 10240 |
+| Target first | **456** | **1376** | 5400.06 | 9440 | 10240 |
+| Target first + global age promotion (128 cycles) | 5838 | 9248 | 4054.56 | 8096 | 10240 |
+
+All 160 requests were admitted and all bytes were transferred under every policy. The total completion time, queue-full retry count, and bank-conflict count were identical across policies. The policy changes which class gets served first; it does not increase the modeled controller's total throughput.
+
+### Decision
+
+- Keep **correct-target-first admission** as the provisional App RAM arbitration rule when a request is known to be on the resolved execution path.
+- Do not prioritize wrong-path speculative fetches ahead of a ready correct-target request when they compete for the same banks/bus.
+- Do **not** adopt the tested global 128-cycle age promotion: it largely erases the target-latency benefit and does not provide a better overall trade-off in this workload.
+- Preserve per-core round-robin ordering within equal-priority requests. A future continuous-stream hardware model should validate bounded service/fairness for speculative and background requests; the current finite synthetic stream cannot prove starvation freedom.
+- Priority affects admission only; it does not preempt an already admitted transfer. App RAM remains fully independent of Data RAM.
+
+The target-first policy cuts mean correct-target admission wait by about **93.3%** versus equal priority in this synthetic stream, while increasing the worst speculative wait by about **18.5%**. This is a deliberate latency trade-off for the instruction path, not a claim of higher aggregate bandwidth. All figures are discrete-cycle model estimates, not RTL or silicon measurements.
