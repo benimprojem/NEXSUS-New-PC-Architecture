@@ -1152,7 +1152,7 @@ class CommandFetchModel:
                  conventional_capacity_bytes: int = 32768,
                  p0_refill_latency: int = 48, conventional_refill_latency: int = 8,
                  p0_buffer_bytes: int = 2048, page_descriptors: dict | None = None,
-                 pool_miss_latency: int = 120, code_cache_bytes: int = 65536, app_first_beat_latency: int = 40, app_beat_interval: int = 1, c0_to_cs_bytes_per_cycle: int = 8, cs_to_eb_bytes_per_cycle: int = 8, codeflow_enabled: bool = False,
+                 pool_miss_latency: int = 120, code_cache_bytes: int = 65536, app_first_beat_latency: int = 40, app_beat_interval: int = 1, c0_to_cs_bytes_per_cycle: int = 16, cs_to_eb_bytes_per_cycle: int = 16, codeflow_enabled: bool = False,
                  app_ram_controller=None, core_id: int = 0,
                  known_page_ids=None):
         self.enabled = enabled
