@@ -1202,7 +1202,7 @@ class CommandFetchModel:
                 self.p0_buffers[bank] = block
                 self.p0_pending = None
             return
-        ready_lines = [line for line, ready in self.pending.items() if ready <= cycle]
+        ready_lines = [line for line, ready in self.pending.items() if ready["ready"] <= cycle]
         for line in ready_lines:
             self.lines.insert(line)
             del self.pending[line]
@@ -2126,12 +2126,16 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 "full_cycles_per_core": [st["mshr_full_cycles"] for st in states],
                 "total_full_cycles": sum(st["mshr_full_cycles"] for st in states),
             },
-            "app_controller": ({"bank_count": app_controller.bank_count,
-                                "max_outstanding": app_controller.max_outstanding,
+            "app_controller": ({"bank_count_per_core": app_controller.bank_count,
+                                "per_core_bytes_per_cycle": app_controller.bytes_per_cycle,
+                                "active_core_count": len(states),
+                                "aggregate_bytes_per_cycle": app_controller.bytes_per_cycle * len(states),
+                                "max_outstanding_per_core": app_controller.max_outstanding,
                                 "accepted": app_controller.accepted,
                                 "queue_rejections": app_controller.rejected_queue_full,
                                 "bank_conflicts": app_controller.bank_conflicts,
                                 "transferred_bytes": app_controller.transferred_bytes,
+                                "bytes_by_core": app_controller.bytes_by_core,
                                 "request_cycles": sorted(set(app_controller.request_cycles)),
                                 "request_events": app_controller.request_events}
                                if app_controller is not None else None),
