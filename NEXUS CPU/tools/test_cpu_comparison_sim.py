@@ -1042,21 +1042,42 @@ class WorkloadPartitionTests(unittest.TestCase):
 
 
 class IntegratedCodeFlowTests(unittest.TestCase):
-    def test_c0_miss_waits_for_app_ram_and_two_transfer_stages(self):
-        fetch = sim.CommandFetchModel(True, codeflow_enabled=True)
+    def test_c0_miss_transfers_only_the_valid_command_bytes(self):
+        fetch = sim.CommandFetchModel(
+            True, codeflow_enabled=True, known_page_ids={0},
+            page_descriptors={0: {"valid_bytes": 8, "marker": "CF_END"}},
+        )
         self.assertFalse(fetch.can_fetch(0, 0))
-        # 2 KiB / 8-byte lane = 256 beats; 40-cycle first beat + 255 intervals + final beat.
-        app_cycles = 40 + 255 * 1 + 1
-        ready = 48 + app_cycles + 128 + 128
+        # One 8-byte command: one App RAM beat and one cycle in each 16-B/cycle stage.
+        ready = 48 + 41 + 1 + 1
         fetch.complete(ready - 1)
         self.assertFalse(fetch.can_fetch(0, ready - 1))
         fetch.complete(ready)
         self.assertTrue(fetch.can_fetch(0, ready))
-        self.assertEqual(fetch.app_beats, 512)  # requested page plus one-page lookahead
-        self.assertEqual(fetch.app_bytes, 4096)  # cold page + lookahead
-        self.assertEqual(fetch.c0_misses, 2)  # cold page + next-page lookahead
-        self.assertEqual(fetch.code_slot_cycles, 256)  # demand + lookahead
-        self.assertEqual(fetch.code_stream_cycles, 256)  # demand + lookahead
+        self.assertEqual(fetch.app_beats, 1)
+        self.assertEqual(fetch.app_bytes, 8)
+        self.assertEqual(fetch.c0_misses, 1)
+        self.assertEqual(fetch.code_slot_cycles, 1)
+        self.assertEqual(fetch.code_stream_cycles, 1)
+
+    def test_command_page_descriptors_follow_actual_code_extent(self):
+        one_page = sim.build_command_page_descriptors([
+            sim.Op(0, "INT", command_address=0),
+        ])
+        self.assertEqual(one_page[0], {
+            "logical_page_id": 0, "valid_bytes": 8, "marker": "CF_END",
+        })
+        two_pages = sim.build_command_page_descriptors([
+            sim.Op(0, "INT", command_address=0),
+            sim.Op(1, "INT", command_address=2048),
+        ])
+        self.assertEqual(two_pages[0], {
+            "logical_page_id": 0, "valid_bytes": 8,
+            "marker": "CF_NEXT", "next_logical_page_id": 1,
+        })
+        self.assertEqual(two_pages[1], {
+            "logical_page_id": 1, "valid_bytes": 8, "marker": "CF_END",
+        })
 
     def test_codeflow_beat_interval_changes_ready_cycle(self):
         ready_cycles = []
@@ -1077,11 +1098,11 @@ class IntegratedCodeFlowTests(unittest.TestCase):
                     "app_source_cycles", "code_slot_transfer_cycles",
                     "code_stream_transfer_cycles"):
             self.assertIn(key, counters)
-        self.assertEqual(counters["app_ram_beats"], 512)  # demand page + lookahead
-        self.assertEqual(counters["app_ram_bytes"], 4096)  # demand page + lookahead
-        # Integrated App RAM service overlaps the later C0->CS->EB stages;
-        # retain a lower-bound check without assuming serialized stage latency.
-        self.assertGreater(result["kernels"]["code"]["cycles"], 300)
+        self.assertEqual(counters["app_ram_beats"], 1)  # exactly one 8-byte command
+        self.assertEqual(counters["app_ram_bytes"], 8)
+        self.assertEqual(counters["code_slot_transfer_cycles"], 1)
+        self.assertEqual(counters["code_stream_transfer_cycles"], 1)
+        self.assertGreater(result["kernels"]["code"]["cycles"], 50)
 
 
 
