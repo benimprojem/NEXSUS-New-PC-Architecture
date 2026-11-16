@@ -256,6 +256,8 @@ class SelectedNexusProfileTests(unittest.TestCase):
 class SharedCacheGroupTests(unittest.TestCase):
     def test_l1_is_private_but_l2_is_shared_by_pair(self):
         p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        self.assertEqual((p.l1_kb, p.l2_kb, p.l3_kb, p.l4_kb),
+                         (1024, 2048, 8192, 65536))
         caches = sim.build_cache_hierarchies(p, 8)
         self.assertIsNot(caches[0].l1, caches[1].l1)
         self.assertIs(caches[0].l2, caches[1].l2)
