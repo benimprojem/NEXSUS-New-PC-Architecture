@@ -552,25 +552,29 @@ class VectorArithmeticWorkloadTests(unittest.TestCase):
         workload = {
             "vector_arithmetic": [
                 sim.Op(0, "VEC_ADD", exec_width_bits=512),
-                sim.Op(1, "VEC_MUL", exec_width_bits=512),
-                sim.Op(2, "VEC_FMA", exec_width_bits=512),
-                sim.Op(3, "VEC_PERMUTE", exec_width_bits=512),
+                sim.Op(1, "VEC_SUB", exec_width_bits=512),
+                sim.Op(2, "VEC_MUL", exec_width_bits=512),
+                sim.Op(3, "VEC_FMA", exec_width_bits=512),
+                sim.Op(4, "VEC_PERMUTE", exec_width_bits=512),
+                sim.Op(5, "VEC_REDUCE", exec_width_bits=512),
             ]
         }
         for key in ("amd_9950x3d2", "intel_xeon_698x", "apple_m6", "nexus_balanced_128"):
             with self.subTest(profile=key):
                 result = sim.simulate_cpu(workload, sim.PROFILES[key])
                 row = result["kernels"]["vector_arithmetic"]
-                self.assertEqual(row["ops"], 4)
+                self.assertEqual(row["ops"], 6)
                 self.assertGreater(row["cycles"], 0)
         self.assertEqual(sim.execution_resource_kind("VEC_ADD", "ME512"), "VEC")
+        self.assertEqual(sim.execution_resource_kind("VEC_SUB", "ME512"), "VEC")
         self.assertEqual(sim.execution_resource_kind("VEC_MUL", "ME512"), "VEC")
         self.assertEqual(sim.execution_resource_kind("VEC_FMA", "ME512"), "VEC")
         self.assertEqual(sim.execution_resource_kind("VEC_PERMUTE", "ME512"), "VEC")
+        self.assertEqual(sim.execution_resource_kind("VEC_REDUCE", "ME512"), "VEC")
 
     def test_vector_workload_contains_all_arithmetic_classes(self):
         workload = sim.build_composite_workload(scale=1)
-        for name in ("vec_add", "vec_mul", "vec_fma", "vec_permute"):
+        for name in ("vec_add", "vec_sub", "vec_mul", "vec_fma", "vec_permute", "vec_reduce"):
             with self.subTest(kernel=name):
                 self.assertEqual(len(workload[name]), 128)
                 self.assertTrue(all(op.exec_width_bits == 512 for op in workload[name]))
