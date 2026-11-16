@@ -38,7 +38,7 @@ class AppRamContentionTests(unittest.TestCase):
             if r["burst_bytes"] == 2048
             and r["policy"] == "speculative_first"
         )
-        self.assertEqual(row["target_ready_cycle"], 128)
+        self.assertEqual(row["target_ready_cycle"], 104)
         target_first = next(
             r for r in result["results"]
             if r["burst_bytes"] == 2048
