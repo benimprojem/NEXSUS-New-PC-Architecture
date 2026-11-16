@@ -642,7 +642,7 @@ jobs:
                   assert len({mode[arch]["kernels"][kernel]["ops"] for arch in expected}) == 1
           assert (root / "full-architecture-results.md").stat().st_size > 1000
           assert (root / "full-architecture-results.csv").stat().st_size > 1000
-          print(f"PASS: {len(data[\"kernel_names\"])} kernels, four architecture profiles, native and normalized-8-core tables.")
+          print(f"PASS: {len(data['kernel_names'])} kernels, four architecture profiles, native and normalized-8-core tables.")
           PY
       - name: Upload comparison and CS sweep results
         if: always()
