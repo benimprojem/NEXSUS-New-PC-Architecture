@@ -1338,8 +1338,9 @@ class AppRamControllerTests(unittest.TestCase):
         self.assertTrue(first["c1-a"]["accepted"])
         self.assertFalse(second["c0-b"]["accepted"])
         self.assertFalse(second["c1-b"]["accepted"])
-        ctrl.complete(10)
-        third = ctrl.reserve_batch(10, [
+        ready = max(first["c0-a"]["ready_cycle"], first["c1-a"]["ready_cycle"])
+        ctrl.complete(ready)
+        third = ctrl.reserve_batch(ready, [
             {"id": "c0-c", "core": 0, "address": 0x5000, "bytes": 8},
             {"id": "c1-c", "core": 1, "address": 0x6000, "bytes": 8},
         ])
@@ -1501,8 +1502,13 @@ class EightCoreArchitectureScalingTests(unittest.TestCase):
             {tuple(signature) for signature in data_request_signatures.values()},
             {tuple(data_request_signatures[1])},
         )
-        self.assertGreater(rows[1]["app_controller"]["queue_rejections"], 0)
-        self.assertEqual(rows[32]["app_controller"]["queue_rejections"], 0)
+        self.assertEqual(rows[1]["app_controller"]["per_core_bytes_per_cycle"], 64)
+        self.assertEqual(rows[1]["app_controller"]["aggregate_bytes_per_cycle"], 512)
+        self.assertEqual(rows[1]["app_controller"]["active_core_count"], 8)
+        self.assertTrue(all(
+            row["app_controller"]["queue_rejections"] == 0
+            for row in rows.values()
+        ), "independent per-core ports should not create cross-core queue rejection")
         for depth, result in rows.items():
             data = result["controller"]
             dram_hits = sum(core["hits"]["DRAM"] for core in result["cores"])
