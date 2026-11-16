@@ -364,6 +364,28 @@ jobs:
           print("Slot conflict:", [(r["requested_overlap_cycles"], r["target_ready_cycle"]) for r in blocked])
           PY
 
+      - name: Run App RAM target versus wrong-path contention sweep
+        run: |
+          python -m py_compile "NEXUS CPU/tools/app_ram_contention_sweep.py" "NEXUS CPU/tools/test_app_ram_contention_sweep.py" "NEXUS CPU/tools/cpu_comparison_sim.py"
+          (cd "NEXUS CPU/tools" && python test_app_ram_contention_sweep.py)
+          python "NEXUS CPU/tools/app_ram_contention_sweep.py" --json > /tmp/nexus-app-ram-contention.json
+          python - <<'PY'
+          import json
+          data = json.load(open("/tmp/nexus-app-ram-contention.json", encoding="utf-8"))
+          assert data["cases"] == 15
+          rows = data["results"]
+          assert len(rows) == 15
+          page = {r["policy"]: r for r in rows if r["burst_bytes"] == 2048}
+          assert page["target_first"]["target_ready_cycle"] == 72
+          assert page["speculative_first"]["target_ready_cycle"] == 128
+          assert page["target_first"]["target_ready_cycle"] < page["speculative_first"]["target_ready_cycle"]
+          print("APP RAM TARGET / WRONG-PATH CONTENTION")
+          for r in rows:
+              print(f'{r["burst_bytes"]:>4} B {r["bank_relation"]:<13} {r["policy"]:<17} '
+                    f'target={r["target_ready_cycle"]} speculative={r["speculative_ready_cycle"]} '
+                    f'bank_conflicts={r["bank_conflicts"]}')
+          PY
+
       - name: Run integrated frontend parameter sweep
         run: |
           python "NEXUS CPU/tools/p0p1_l0i_px_integrated_sweep.py" --pages 32 --json > /tmp/nexus-integrated-frontend-sweep.json
