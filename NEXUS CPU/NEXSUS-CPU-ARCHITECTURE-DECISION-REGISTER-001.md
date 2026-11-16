@@ -189,6 +189,15 @@ Every core can address its own L1, its pair's L2, its four-core group's L3, and 
 
 This topology describes cache **instances and sharing**, not request ports or bandwidth. The numbers 8/4/2/1 must not be interpreted as port counts. Port count, per-level service bandwidth, arbitration, and contention remain configurable/open; the simulator's earlier one-request-per-cycle shared-port setting is only a provisional experiment, not an approved architectural decision.
 
+**FIXED multi-block data distribution principle:** For workloads spanning more than eight cores, data may be staged directly from Data RAM/main memory into the L4 homes of the participating eight-core blocks. Shared-data distribution is sourced from memory directly to the selected L4 homes; it does not require one L4 block to forward data through another L4 block. Each block then serves its own cores through its local L3/L2/L1 hierarchy.
+
+Supported architectural distribution choices:
+- **Partitioned:** disjoint data chunks are assigned to individual L4 blocks; each block receives its chunk directly from memory.
+- **Replicated/shared read-mostly:** the same read-only or explicitly shared data range is delivered directly from memory to each selected L4 home.
+- **Selective multicast:** only the chosen subset of L4 homes receives a shared range directly from memory.
+
+This establishes the data-source and route principle, not yet the transfer protocol. Address-range ownership, destination selection, chunk size/alignment, scheduling, bandwidth reservation, write/update visibility, and completion/fault handling remain OPEN. Writable replicas must not be assumed coherent; an explicit ownership/update protocol is required before concurrent writes are permitted.
+
 **OPEN:** cache-line size, associativity, replacement, hit/miss latency, bandwidth/ports, write policy, inclusion/exclusion, coherence/visibility protocol, cross-group transfer, and interaction with the L1–L4 logical memory-domain/zone model. A logical access domain is not automatically the same thing as a physical cache instance.
 
 ---
