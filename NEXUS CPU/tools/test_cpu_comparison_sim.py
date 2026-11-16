@@ -254,6 +254,22 @@ class SelectedNexusProfileTests(unittest.TestCase):
 
 
 class SharedCacheGroupTests(unittest.TestCase):
+    def test_working_set_prefill_uses_the_collaboration_scope_home_level(self):
+        p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        cases = (
+            ("L1", 0, 0, 1),
+            ("L2", 0, 1, 2),
+            ("L3", 0, 3, 4),
+            ("L4", 0, 7, 8),
+        )
+        for level, owner, peer, outside in cases:
+            with self.subTest(level=level):
+                caches = sim.build_cache_hierarchies(p, 16)
+                address = 0x700000 + (len(level) * 64)
+                caches[owner].prefill(address, level)
+                self.assertEqual(caches[peer].probe(address)[1], level)
+                self.assertEqual(caches[outside].probe(address)[1], "DRAM")
+
     def test_l1_is_private_but_l2_is_shared_by_pair(self):
         p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
         self.assertEqual((p.l1_kb, p.l2_kb, p.l3_kb, p.l4_kb),
@@ -696,7 +712,8 @@ class ME512WorkloadTests(unittest.TestCase):
         self.assertGreater(result["stall_counters"]["memory_latency_exposure_cycles"], 0)
 
         # Same logical kernel, but its data set is already resident before
-        # timing starts. The 192 measured memory operations must now hit L1.
+        # timing starts. The eight-core working set is homed in shared L4;
+        # lower levels may be populated naturally as demand accesses complete.
         warm_addresses = sorted({
             op.address for op in ops if op.kind in ("LOAD", "STORE", "ATOM")
         })
@@ -704,14 +721,17 @@ class ME512WorkloadTests(unittest.TestCase):
             {"vec_me512_memory_overlap": ops},
             sim.PROFILES["nexus_balanced_128"], 8,
             {"execution_only": True,
-             "cache_prefill_addresses": warm_addresses},
+             "cache_prefill_addresses": warm_addresses,
+             "cache_prefill_level": "L4"},
         )["kernels"]["vec_me512_memory_overlap"]
         self.assertEqual(warm["ops"], len(ops))
-        self.assertEqual(warm["cache_accesses"]["L1"], 192)
+        self.assertEqual(
+            sum(warm["cache_accesses"][level]
+                for level in ("L1", "L2", "L3", "L4", "DRAM")),
+            192,
+        )
         self.assertEqual(warm["cache_accesses"]["DRAM"], 0)
-        self.assertEqual(warm["cache_accesses"]["L2"], 0)
-        self.assertEqual(warm["cache_accesses"]["L3"], 0)
-        self.assertEqual(warm["cache_accesses"]["L4"], 0)
+        self.assertGreater(warm["cache_accesses"]["L4"], 0)
 
     def test_me512_tiled_workload_retires_on_all_architectures(self):
         workload = {"me512_matrix": sim.build_composite_workload(scale=1)["me512_matrix"]}
