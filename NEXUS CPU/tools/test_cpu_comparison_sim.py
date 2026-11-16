@@ -1746,7 +1746,7 @@ class EightCoreArchitectureScalingTests(unittest.TestCase):
             target_core_counts=(1, 2, 4, 8),
         )
         self.assertEqual(result["row_count"], 64)
-        self.assertEqual(result["unicast_baseline_row_count"], 16)
+        self.assertEqual(result["unicast_baseline_row_count"], 32)
         self.assertEqual(result["multicast_row_count"], 64)
         self.assertEqual(result["hardware_decisions_frozen_by_sweep"], [])
         self.assertEqual(result["data_ram_baseline_bytes_per_cycle"], 64)
