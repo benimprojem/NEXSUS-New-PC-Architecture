@@ -674,6 +674,17 @@ class ME512WorkloadTests(unittest.TestCase):
         self.assertEqual(sum(op.kind == "ME512" for op in ops), 128)
         self.assertEqual(sum(op.kind == "LOAD" for op in ops), 128)
         self.assertEqual(sum(op.kind == "STORE" for op in ops), 64)
+        by_seq = {op.seq: op for op in ops}
+        for op in ops:
+            if op.kind in ("VEC_ADD", "ME512"):
+                self.assertEqual(len(op.deps), 1)
+                self.assertEqual(by_seq[op.deps[0]].kind, "LOAD")
+            elif op.kind == "STORE":
+                self.assertEqual(len(op.deps), 2)
+                self.assertEqual(
+                    {by_seq[dep].kind for dep in op.deps},
+                    {"VEC_ADD", "ME512"},
+                )
         result = sim.simulate_cpu(
             {"vec_me512_memory_overlap": ops},
             sim.PROFILES["nexus_balanced_128"], 8,
