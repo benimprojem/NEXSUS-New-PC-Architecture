@@ -121,10 +121,12 @@ These are simulator operating points, not fixed silicon timing or final RTL para
 - Eight cores can fetch concurrently: 8 × 64 B/cycle = 512 B/cycle aggregate App RAM connection capacity.
 - System Fabric coordinates the eight core-facing App RAM paths; do not model them as one shared 64 B/cycle bus or one global per-core queue.
 - App RAM bank scheduling and outstanding-request capacity are modeled per core connection; same-core requests may contend locally.
+- **Model boundary:** the simulator's eight-bank/per-core scheduling is an abstraction for local contention tests, not a frozen physical App RAM bank count, bank layout, or port implementation. Physical App RAM organization and the detailed System Fabric arbitration/fairness policy remain **OPEN**.
 - App RAM and Data RAM are separate memory systems with independent controllers and paths; they may progress concurrently.
 - App RAM is the instruction source. Data RAM stores mutable data, task state, and protected OS/context backing.
 - Data RAM is not an instruction-fetch source.
 - App RAM and Data RAM must not be collapsed into one global controller or queue.
+- Physical App RAM bank topology/address mapping, implementation port structure, and Fabric arbitration/fairness policy require a separate focused design decision.
 
 ### 5.2 Data RAM bandwidth and bank group
 
@@ -272,6 +274,7 @@ Items already specified in architecture documents are not to be redesigned; they
 - [ ] Diagnose and fix regression failure in workflow [43787870423](https://github.com/benimprojem/NEXSUS-New-PC-Architecture/actions/runs/43787870423).
 - [ ] Rerun FMA result-latency sweep (3/4/5/6 cycles) with FP64=6 and FMA=4 held fixed.
 - [ ] Record dependency-chain latency separately from independent FMA issue throughput.
+- [ ] Re-run App RAM target/wrong-path contention and eight-core fairness sweeps after fixing the test syntax and stale workflow expectation; keep physical bank topology marked OPEN.
 
 ### B. Register and execution connectivity
 - [ ] Confirm physical register read/write port counts.
