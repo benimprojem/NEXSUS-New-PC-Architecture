@@ -601,6 +601,21 @@ class VectorArithmeticWorkloadTests(unittest.TestCase):
                 self.assertEqual(len(workload[name]), 128)
                 self.assertTrue(all(op.exec_width_bits == 512 for op in workload[name]))
 
+    def test_vector_dependency_kernels_are_serial_and_memory_free(self):
+        workload = sim.build_composite_workload(scale=1)
+        for name in (
+            "vec_add_dependency_chain", "vec_sub_dependency_chain",
+            "vec_mul_dependency_chain", "vec_fma_dependency_chain",
+            "vec_permute_dependency_chain", "vec_reduce_dependency_chain",
+        ):
+            with self.subTest(kernel=name):
+                ops = workload[name]
+                self.assertEqual(len(ops), 64)
+                self.assertEqual(ops[0].deps, ())
+                self.assertTrue(all(ops[i].deps == (i - 1,) for i in range(1, len(ops))))
+                self.assertTrue(all(op.exec_width_bits == 512 for op in ops))
+                self.assertTrue(all(op.kind.startswith("VEC_") for op in ops))
+
 
 class ME512WorkloadTests(unittest.TestCase):
     def test_me512_workload_retires_on_all_architectures(self):
@@ -633,6 +648,24 @@ class ME512WorkloadTests(unittest.TestCase):
         self.assertTrue(all(op.exec_width_bits == 512 for op in mac_ops))
         self.assertTrue(all(len(op.deps) == 3 for op in mac_ops if op.deps and
                             any(workload[d].kind == "ME512" for d in op.deps)))
+
+    def test_me512_operand_resident_throughput_and_dependency_kernels(self):
+        workloads = sim.build_composite_workload(scale=1)
+        independent = workloads["me512_independent_throughput"]
+        chain = workloads["me512_dependency_chain"]
+        self.assertEqual(len(independent), 128)
+        self.assertTrue(all(op.kind == "ME512" and not op.deps for op in independent))
+        self.assertEqual(len(chain), 128)
+        self.assertEqual(chain[0].deps, ())
+        self.assertTrue(all(chain[i].deps == (i - 1,) for i in range(1, len(chain))))
+        self.assertTrue(all(op.exec_width_bits == 512 for op in independent + chain))
+        for key in ("amd_9950x3d2", "intel_xeon_698x", "apple_m6", "nexus_balanced_128"):
+            for name in ("me512_independent_throughput", "me512_dependency_chain"):
+                with self.subTest(profile=key, kernel=name):
+                    result = sim.simulate_cpu({name: workloads[name]}, sim.PROFILES[key], 8,
+                                              {"execution_only": True})
+                    self.assertEqual(result["kernels"][name]["ops"], 128)
+                    self.assertGreater(result["kernels"][name]["cycles"], 0)
 
     def test_me512_tiled_workload_retires_on_all_architectures(self):
         workload = {"me512_matrix": sim.build_composite_workload(scale=1)["me512_matrix"]}
