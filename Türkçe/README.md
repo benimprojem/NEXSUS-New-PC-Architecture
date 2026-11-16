@@ -5,6 +5,7 @@ NEXSUS, CPU, bellek, depolama, firmware ve çevre birimlerini tek bir bütünle�
 Bu klasör, İngilizce ana teknik belgelerin Türkçe karşılıklarını içerir. Her belge aynı kimlik numarasıyla eşleştirilir; mimari kararlar, ölçüler, parametreler ve doğrulama durumu iki dilde aynı tutulur.
 
 ## CPU belgeleri
+- [Cache topolojisi ve paylaşım kararı 001](NEXSUS-CPU-CACHE-TOPOLOGY-001.md) — 8×L1 / 4×L2 / 2×L3 / 1×L4; L4, iki L3 grubunca ortak erişilir
 
 ### Kod yolu / CodeFlow
 - [CodeFlow ve çalışma alanları adlandırma standardı](NEXSUS-CPU-CODEFLOW-NAMING-001.md) — tekil birimde sayı eki yok
