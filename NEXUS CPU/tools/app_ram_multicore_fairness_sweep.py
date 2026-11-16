@@ -143,7 +143,9 @@ def run_sweep() -> dict:
             "target_arrival_cycles": [0, 160, 320, 480],
             "speculative_arrival_interval_cycles": 32,
             "controller": {
-                "banks": 8, "beat_bytes": 8, "aggregate_bytes_per_cycle": 64,
+                "banks": 8, "beat_bytes": 8, "per_core_bytes_per_cycle": 64,
+                "core_count": CORE_COUNT,
+                "aggregate_bytes_per_cycle": 64 * CORE_COUNT,
                 "first_beat_latency_cycles": 40, "max_outstanding": 8,
             },
         },
@@ -154,7 +156,7 @@ def run_sweep() -> dict:
         "results": results,
         "limitations": [
             "Finite synthetic eight-core request stream; not a full frontend/branch execution model.",
-            "The controller admits whole requests and reserves their bank/bus service; priority cannot preempt admitted work.",
+            "Each core has an independent 64-B/cycle port and local banks/queue; priority cannot preempt admitted work on that core.",
             "No coherence, cancellation timing, or actual branch-resolution feedback is modeled.",
             "App RAM is independent of Data RAM.",
             "All results are discrete-cycle simulator estimates, not hardware measurements.",
