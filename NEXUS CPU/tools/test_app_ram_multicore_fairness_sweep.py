@@ -19,6 +19,15 @@ def main() -> None:
         assert row["last_completion_cycle"] > 0, policy
         assert row["by_request_class"]["target"]["requests"] == 32, policy
         assert row["by_request_class"]["speculative"]["requests"] == 128, policy
+        assert set(row["per_core"]) == {str(core) for core in range(8)}, policy
+        for core, core_row in row["per_core"].items():
+            assert core_row["requests"] == 20, (policy, core)
+            assert core_row["target_requests"] == 4, (policy, core)
+            assert core_row["speculative_requests"] == 16, (policy, core)
+            assert core_row["bytes_transferred"] == 20 * 2048, (policy, core)
+        fairness = row["core_fairness"]
+        assert fairness["equal_bytes_across_cores"] is True, policy
+        assert fairness["bytes_spread"] == 0, policy
         assert row["by_request_class"]["target"]["max_admission_wait_cycles"] >= 0, policy
         assert row["by_request_class"]["speculative"]["max_admission_wait_cycles"] >= 0, policy
     aging = data["results"]["target_first_aging"]
@@ -27,8 +36,11 @@ def main() -> None:
     for policy, row in data["results"].items():
         target = row["by_request_class"]["target"]
         spec = row["by_request_class"]["speculative"]
+        fairness = row["core_fairness"]
         print(
             f"{policy}: cycles={row['last_completion_cycle']} "
+            f"core_bytes_spread={fairness['bytes_spread']} "
+            f"core_mean_latency_spread={fairness['mean_latency_spread_cycles']} "
             f"target_wait_max={target['max_admission_wait_cycles']} "
             f"spec_wait_max={spec['max_admission_wait_cycles']} "
             f"queue_retries={row['queue_full_retries']}"
