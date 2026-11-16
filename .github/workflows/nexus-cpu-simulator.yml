@@ -595,6 +595,34 @@ jobs:
                         f'{best["cycles"]} cycles, chunk={best["chunk_bytes"]}, '
                         f'L4={best["l4_read_bytes_per_cycle"]}, L1={best["l1_ingress_bytes_per_cycle"]}')
           PY
+      - name: Run L4 unicast versus multicast distribution comparison
+        run: |
+          python "NEXUS CPU/tools/cpu_comparison_sim.py" --l4-l1-distribution-sweep --json > /tmp/nexus-l4-l1-distribution-comparison.json
+          python - <<'PY'
+          import json
+          data = json.load(open("/tmp/nexus-l4-l1-distribution-comparison.json", encoding="utf-8"))
+          assert data["cores_per_block"] == 8
+          assert data["row_count"] == 648
+          assert data["unicast_baseline_row_count"] == 216
+          assert data["multicast_row_count"] == 648
+          assert data["hardware_decisions_frozen_by_sweep"] == []
+          assert data["data_ram_baseline_bytes_per_cycle"] == 64
+          for row in data["results"]:
+              assert row["multicast_l4_source_bytes_read"] == row["unique_bytes"]
+              assert row["unicast_l4_source_bytes_read"] == row["unique_bytes"] * row["target_core_count"]
+              assert row["fanout_bytes"] == row["bytes_copied"]
+              assert row["multicast_cycles"] > 0 and row["unicast_cycles"] > 0
+              assert row["multicast_speedup_vs_unicast"] > 0
+          print("L4 UNICAST / MULTICAST DISTRIBUTION COMPARISON")
+          print(f'PASS: {data["row_count"]} multicast rows paired with {data["unicast_baseline_row_count"]} unicast baselines.')
+          for count in (1, 2, 4, 8):
+              rows = [row for row in data["results"] if row["target_core_count"] == count]
+              best = min(rows, key=lambda row: row["multicast_cycles"] / row["unicast_cycles"])
+              worst = max(rows, key=lambda row: row["multicast_cycles"] / row["unicast_cycles"])
+              print(f'targets={count}: best cycle ratio={best["multicast_cycles"] / best["unicast_cycles"]:.3f}; '
+                    f'worst={worst["multicast_cycles"] / worst["unicast_cycles"]:.3f}; '
+                    f'L4 bytes saved={best["l4_source_bytes_saved"]}')
+          PY
       - name: Upload comparison and CS sweep results
         if: always()
         uses: actions/upload-artifact@v4
