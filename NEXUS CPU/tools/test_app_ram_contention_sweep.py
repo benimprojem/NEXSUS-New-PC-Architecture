@@ -7,6 +7,7 @@ class AppRamContentionTests(unittest.TestCase):
     def test_matrix_and_request_accounting(self):
         result = run_contention_sweep()
         self.assertEqual(result["cases"], 15)
+        self.assertEqual(result["controller_geometry"]["aggregate_bytes_per_cycle"], 64)
         self.assertEqual(len(result["results"]), 15)
         for row in result["results"]:
             self.assertEqual(row["requests_accepted"], 2)
