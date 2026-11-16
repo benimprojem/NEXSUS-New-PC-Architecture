@@ -116,7 +116,7 @@ def render_report(data):
         "2. Each profile maps operations to its configured native resources, including Intel AMX and NEXSUS ME512; no scalar-only handicap is imposed.",
         "3. Native mode compares package-scale modeled core counts. Normalized mode uses exactly eight active cores per profile.",
         "4. Backend-isolation modes bypass instruction delivery for every profile equally; they isolate execution, data-cache and memory behavior from frontend refill assumptions. NEXSUS Task Workspace remains enabled as a native backend feature.",
-        "5. The modeled-frontend modes retain each profile's instruction delivery model. NEXSUS CodeFlow uses demand-aware 2-KiB page prefetch; conventional profiles use the modeled I-cache.",
+        "5. The modeled-frontend modes retain each profile's instruction delivery model. NEXSUS CodeFlow transfers only valid command bytes and prefetches only a known next page into the alternate EB bank; conventional profiles use the modeled I-cache.",
         "6. Modeled time is cycles divided by configured clock; it is not measured runtime.",
         "7. Cache coherence, vendor-private predictor details, Apple heterogeneous scheduling, and several physical timings remain approximate or open.",
         "8. A final silicon comparison requires running identical validated binaries and inputs on physical systems, with each vendor's optimizing compiler and documented flags.",
