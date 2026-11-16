@@ -102,7 +102,7 @@ Code Slots are equal pool resources, not permanently assigned to tasks. CST fill
 | Stage / resource | Current model setting |
 |---|---:|
 | App RAM instruction path | 64 B/cycle |
-| P0/P1→C0 equivalent refill stage (legacy simulator label) | 16 B/cycle |
+| App RAM→C0 refill stage | 16 B/cycle |
 | C0→CS | 20 B/cycle |
 | CS→EB | 20 B/cycle |
 | EB consume | 16 B/cycle |
