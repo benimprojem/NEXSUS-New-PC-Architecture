@@ -294,16 +294,20 @@ def build_composite_workload(scale: int = 1) -> Dict[str, List[Op]]:
         )
     result["me512_dependency_chain"] = ops
 
-    # H2c) Mixed VEC + ME512 + Data RAM stream. Independent arithmetic
-    # operations and memory traffic are interleaved to expose resource overlap.
+    # H2c) Mixed VEC + ME512 + memory stream with real operand dependencies.
+    # Both execution units consume each loaded operand; stores wait for both
+    # arithmetic results. This exposes cache/DRAM feed latency and resource overlap.
     ops = []
     for i in range(128*n):
-        add_op(ops, "VEC_ADD", label="mixed VEC arithmetic", exec_width_bits=512)
-        add_op(ops, "ME512", label="mixed ME512 tile MAC", exec_width_bits=512)
-        add_op(ops, "LOAD", address=0xA000000 + (i % 256) * 64,
-               width=64, label="mixed Data RAM operand load")
+        load = add_op(ops, "LOAD", address=0xA000000 + (i % 256) * 64,
+                      width=64, label="mixed Data RAM operand load")
+        vec = add_op(ops, "VEC_ADD", (load,), label="mixed VEC arithmetic",
+                     exec_width_bits=512)
+        me512 = add_op(ops, "ME512", (load,), label="mixed ME512 tile MAC",
+                       exec_width_bits=512)
         if i % 2 == 0:
-            add_op(ops, "STORE", address=0xB000000 + (i % 128) * 64,
+            add_op(ops, "STORE", (vec, me512),
+                   address=0xB000000 + (i % 128) * 64,
                    width=64, label="mixed Data RAM result store")
     result["vec_me512_memory_overlap"] = ops
 
