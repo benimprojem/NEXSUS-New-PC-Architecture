@@ -112,6 +112,21 @@ def add_op(ops: List[Op], kind: str, deps=(), address=0, width=8, label="", comm
                   exec_width_bits))
     return seq
 
+def execution_resource_kind(kind: str, matrix_unit: str) -> str:
+    """Map arithmetic opcodes to the physical issue resource."""
+    if kind == "FMA":
+        return "FP"
+    if kind == "ME512":
+        return matrix_unit
+    if kind.startswith("VEC_"):
+        return "VEC"
+    return kind
+
+
+def is_vector_operation(kind: str) -> bool:
+    return kind == "VEC" or kind.startswith("VEC_")
+
+
 def build_composite_workload(scale: int = 1) -> Dict[str, List[Op]]:
     """One deterministic algorithm suite; every CPU receives the same logical work."""
     n = max(1, scale)
@@ -210,20 +225,45 @@ def build_composite_workload(scale: int = 1) -> Dict[str, List[Op]]:
         add_op(ops, "FMA", label="mixed FP64/FMA fused stream")
     result["fp_fma_mixed"] = ops
 
-    # H) Independent vector throughput. This is a generic vector-unit test;
-    # it is not yet a faithful ME512 matrix instruction model.
+    # H) Independent 512-bit vector arithmetic mix. Each opcode uses the VEC
+    # issue resource; dependency chains are kept separate from issue throughput.
     ops = []
+    vector_kinds = ("VEC_ADD", "VEC_MUL", "VEC_FMA", "VEC_PERMUTE")
     for i in range(256*n):
-        add_op(ops, "VEC", width=64, label="independent 512-bit logical vector throughput")
+        add_op(ops, vector_kinds[i % len(vector_kinds)],
+               label="independent 512-bit vector arithmetic",
+               exec_width_bits=512)
     result["vector_throughput"] = ops
 
-    # H2) ME512 matrix/vector accelerator path; reference CPUs map to VEC.
+    # H1) Per-operation vector arithmetic streams expose opcode-specific counts.
+    for vector_kind in vector_kinds:
+        ops = []
+        for i in range(128*n):
+            add_op(ops, vector_kind, label=f"{vector_kind} independent throughput",
+                   exec_width_bits=512)
+        result[vector_kind.lower()] = ops
+
+    # H2) ME512 tiled matrix multiply-accumulate. Each tile consumes A/B
+    # operands across K steps and chains the partial accumulator before store.
+    # This models a 512-bit tile MAC operation, not a finalized matrix ISA.
     ops = []
-    for tile in range(64*n):
-        a = add_op(ops, "LOAD", (), 0x5000000 + tile*128, 64, "ME512 input A")
-        b = add_op(ops, "LOAD", (), 0x6000000 + tile*128, 64, "ME512 input B")
-        m = add_op(ops, "ME512", (a,b), width=64, label="ME512 512-bit tile operation")
-        add_op(ops, "STORE", (m,), 0x7000000 + tile*128, 64, "ME512 output")
+    tile_count = 16*n
+    k_steps = 8
+    for tile in range(tile_count):
+        accumulator = None
+        for k in range(k_steps):
+            a = add_op(ops, "LOAD", (), 0x5000000 + (tile*k_steps+k)*128,
+                       64, "ME512 matrix A tile")
+            b = add_op(ops, "LOAD", (), 0x6000000 + (tile*k_steps+k)*128,
+                       64, "ME512 matrix B tile")
+            deps = (a, b) if accumulator is None else (a, b, accumulator)
+            accumulator = add_op(
+                ops, "ME512", deps, width=64,
+                label="ME512 512-bit tile multiply-accumulate",
+                exec_width_bits=512,
+            )
+        add_op(ops, "STORE", (accumulator,),
+               0x7000000 + tile*128, 64, "ME512 accumulated matrix tile")
     result["me512_matrix"] = ops
 
     # H3) Atomic read-modify-write contention on a small shared address set.
@@ -932,8 +972,8 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
                 stalls["issue_width_blocked_op_cycles"] += 1
                 continue
             kind = op.kind
-            exec_kind = "FP" if kind == "FMA" else (p.matrix_unit if kind == "ME512" else kind)
-            resource = "FP" if exec_kind == "FMA" else ("LOAD" if exec_kind == "LOAD" else ("STORE" if exec_kind == "STORE" else exec_kind))
+            exec_kind = execution_resource_kind(kind, p.matrix_unit)
+            resource = exec_kind
             slots = unit_busy.get(resource, [])
             selected_slots = None
             topology = getattr(p, "execution_topology", {}) or {}
@@ -956,8 +996,8 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
             if not selected_slots:
                 stalls["execution_unit_blocked_op_cycles"] += 1
                 continue
-            vector_factor = (max(1, math.ceil(op.width * 8 / p.vector_bits))
-                             if kind == "VEC" or (kind == "ME512" and exec_kind == "VEC") else 1)
+            vector_factor = (max(1, math.ceil(op.exec_width_bits / p.vector_bits))
+                             if is_vector_operation(kind) or (kind == "ME512" and exec_kind == "VEC") else 1)
             base_latency = (p.latency.get("FMA", p.latency.get(exec_kind, 1))
                             if kind == "FMA" else p.latency.get(exec_kind, 1))
             latency = base_latency * vector_factor
@@ -1216,8 +1256,8 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 if issued_now >= p.issue:
                     st["stalls"]["issue_width_blocked_op_cycles"] += 1
                     continue
-                exec_kind = "FP" if op.kind == "FMA" else (p.matrix_unit if op.kind == "ME512" else op.kind)
-                resource = "FP" if exec_kind == "FMA" else ("LOAD" if exec_kind == "LOAD" else ("STORE" if exec_kind == "STORE" else exec_kind))
+                exec_kind = execution_resource_kind(op.kind, p.matrix_unit)
+                resource = exec_kind
                 slots = st["unit_busy"].get(resource, [])
                 topology = getattr(p, "execution_topology", {}) or {}
                 selected_slots = None
@@ -1276,7 +1316,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 item = {"core": core_id, "seq": seq, "slot": slot,
                         "latency": max((p.latency.get("FMA", p.latency.get(exec_kind, 1))
                                          if op.kind == "FMA" else p.latency.get(exec_kind, 1)) *
-                                       (max(1, math.ceil(op.width * 8 / p.vector_bits)) if op.kind == "VEC" or (op.kind == "ME512" and exec_kind == "VEC") else 1),
+                                       (max(1, math.ceil(op.exec_width_bits / p.vector_bits)) if is_vector_operation(op.kind) or (op.kind == "ME512" and exec_kind == "VEC") else 1),
                                        mem_lat),
                         "level": level}
                 if level == "DRAM":
