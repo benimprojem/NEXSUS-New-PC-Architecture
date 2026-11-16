@@ -386,6 +386,28 @@ jobs:
                     f'bank_conflicts={r["bank_conflicts"]}')
           PY
 
+      - name: Run eight-core App RAM arbitration fairness sweep
+        run: |
+          python -m py_compile "NEXUS CPU/tools/app_ram_multicore_fairness_sweep.py" "NEXUS CPU/tools/test_app_ram_multicore_fairness_sweep.py"
+          (cd "NEXUS CPU/tools" && python test_app_ram_multicore_fairness_sweep.py)
+          python "NEXUS CPU/tools/app_ram_multicore_fairness_sweep.py" --json > /tmp/nexus-app-ram-multicore-fairness.json
+          python - <<'PY'
+          import json
+          data = json.load(open("/tmp/nexus-app-ram-multicore-fairness.json", encoding="utf-8"))
+          assert set(data["results"]) == {"equal", "target_first", "target_first_aging"}
+          for policy, row in data["results"].items():
+              assert row["total_requests_admitted"] == 160, policy
+              assert row["total_bytes_transferred"] == 160 * 2048, policy
+          print("EIGHT-CORE APP RAM ARBITRATION FAIRNESS")
+          for policy, row in data["results"].items():
+              target = row["by_request_class"]["target"]
+              spec = row["by_request_class"]["speculative"]
+              print(f'{policy}: cycles={row["last_completion_cycle"]} '
+                    f'target_wait_max={target["max_admission_wait_cycles"]} '
+                    f'spec_wait_max={spec["max_admission_wait_cycles"]} '
+                    f'retries={row["queue_full_retries"]}')
+          PY
+
       - name: Run integrated frontend parameter sweep
         run: |
           python "NEXUS CPU/tools/p0p1_l0i_px_integrated_sweep.py" --pages 32 --json > /tmp/nexus-integrated-frontend-sweep.json
@@ -515,4 +537,6 @@ jobs:
             /tmp/nexus-p0p1-integrated-redirect.json
             /tmp/nexus-branch-latency-sweep.json
             /tmp/nexus-target-prefetch-overlap.json
+            /tmp/nexus-app-ram-contention.json
+            /tmp/nexus-app-ram-multicore-fairness.json
           if-no-files-found: ignore
