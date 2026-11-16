@@ -175,6 +175,30 @@ jobs:
                     f'{fma["execution_unit_blocked_op_cycles"]}/'
                     f'{mixed["execution_unit_blocked_op_cycles"]}')
           PY
+      - name: Run fixed FP6/FMA4 FMA result-latency sweep
+        run: |
+          python "NEXUS CPU/tools/cpu_comparison_sim.py" --fma-latency-sweep --scale 1 --json > /tmp/nexus-fma-latency-sweep.json
+          python - <<'PY'
+          import json
+          data = json.load(open("/tmp/nexus-fma-latency-sweep.json", encoding="utf-8"))
+          assert data["latencies_cycles"] == [3, 4, 5, 6]
+          assert data["fp64_lanes_per_core"] == 6
+          assert data["fma_lanes_per_core"] == 4
+          rows = data["results"]
+          chain = [rows[str(x)]["kernels"]["fma_dependency_chain"]["cycles"] for x in data["latencies_cycles"]]
+          fma = [rows[str(x)]["kernels"]["fma_throughput"]["cycles"] for x in data["latencies_cycles"]]
+          fp = [rows[str(x)]["kernels"]["fp_throughput"]["cycles"] for x in data["latencies_cycles"]]
+          assert chain == sorted(chain) and len(set(chain)) == 4, chain
+          assert len(set(fma)) == 1, fma
+          assert len(set(fp)) == 1, fp
+          assert all(item["ops_preserved"] for row in rows.values() for item in row["kernels"].values())
+          print("FMA RESULT-LATENCY SENSITIVITY")
+          for latency in data["latencies_cycles"]:
+              row = rows[str(latency)]["kernels"]
+              print(f'{latency} cycles: chain={row["fma_dependency_chain"]["cycles"]} '
+                    f'independent FMA={row["fma_throughput"]["cycles"]} '
+                    f'FP64={row["fp_throughput"]["cycles"]}')
+          PY
       - name: Run Data RAM per-core MSHR capacity sweep
         run: |
           python "NEXUS CPU/tools/cpu_comparison_sim.py" --mshr-sweep --json > /tmp/nexus-data-mshr-sweep.json
