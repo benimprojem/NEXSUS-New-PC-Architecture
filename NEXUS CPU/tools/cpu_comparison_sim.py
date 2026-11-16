@@ -1092,7 +1092,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
             "ops": shard, "cache": None, "fetch": None,
             "spm_busy_until": 0,
             "spm": {"accesses": 0, "bytes": 0, "port_conflicts": 0, "overflow": 0, "fallback_bytes": 0},
-            "ready_at": [0] * len(shard), "done": [False] * len(shard),
+            "ready_at": [0] * len(shard), "done": [False] * len(shard), "issue_cycles": [],
             "issued": [False] * len(shard), "dispatched": [False] * len(shard),
             "rob": deque(), "unit_busy": {k: [0] * v for k, v in p.units.items()},
             "next_frontend": 0, "frontend_blocked_until": 0, "retired": 0, "last_pc": None,
@@ -1289,6 +1289,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                     item["request_id"] = None
                 # Mark as selected now; completion timing is finalized below.
                 st["issued"][seq] = True
+                st["issue_cycles"].append(cycle)
                 for slot_index in selected_slots:
                     slots[slot_index] = cycle + 1
                 item["branch"] = op.kind == "BR"
@@ -1384,6 +1385,7 @@ def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=N
         stall_keys = list(per_core[0]["stalls"]) if per_core else []
         results[name] = {
             "cycles": elapsed_cycles, "ops": total_ops,
+            "issue_span_cycles": (max(x["issue_cycles"] for x in per_core if x["issue_cycles"]) - min(x["issue_cycles"] for x in per_core if x["issue_cycles"]) + 1) if any(x["issue_cycles"] for x in per_core) else 0,
             "aggregate_ipc": round(total_ops/max(1, elapsed_cycles), 3),
             "core_cycles_sum": elapsed_cycles * len(per_core),
             "active_cores": len(per_core),
@@ -1638,6 +1640,7 @@ def run_fma_latency_sweep(workloads: Dict[str, List[Op]], profile_dict: dict,
                 "ops": row["ops"],
                 "ops_preserved": row["ops"] == expected_ops[name],
                 "cycles": row["cycles"],
+                "issue_span_cycles": row["issue_span_cycles"],
                 "ipc": row["aggregate_ipc"],
                 "execution_unit_blocked_op_cycles": row["stall_counters"]["execution_unit_blocked_op_cycles"],
                 "dependency_blocked_op_cycles": row["stall_counters"]["dependency_blocked_op_cycles"],
