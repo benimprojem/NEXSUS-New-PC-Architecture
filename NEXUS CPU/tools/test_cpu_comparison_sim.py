@@ -270,6 +270,21 @@ class SharedCacheGroupTests(unittest.TestCase):
                 self.assertEqual(caches[peer].probe(address)[1], level)
                 self.assertEqual(caches[outside].probe(address)[1], "DRAM")
 
+    def test_l4_home_prefill_obeys_capacity_and_does_not_spill_down(self):
+        p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        p.l4_kb = 1  # 16 lines at the profile's 64-byte line size
+        cache = sim.CacheHierarchy(p)
+        cache.prefill(0x10000, "L4")
+        cache.prefill(0x10040, "L4")
+        self.assertEqual(cache.probe(0x10000)[1], "L4")
+        self.assertFalse(cache.l3.lookup(0x10000 // cache.line))
+        # Fill beyond L4 capacity; oldest prefilled line must be evicted.
+        for i in range(16):
+            cache.prefill(0x20000 + i * cache.line, "L4")
+        self.assertEqual(cache.probe(0x10000)[1], "DRAM")
+        self.assertEqual(cache.probe(0x10040)[1], "DRAM")
+        self.assertEqual(cache.probe(0x20000 + 15 * cache.line)[1], "L4")
+
     def test_l1_is_private_but_l2_is_shared_by_pair(self):
         p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
         self.assertEqual((p.l1_kb, p.l2_kb, p.l3_kb, p.l4_kb),
