@@ -684,6 +684,24 @@ class ME512WorkloadTests(unittest.TestCase):
         self.assertGreater(result["cache_accesses"]["DRAM"], 0)
         self.assertGreater(result["stall_counters"]["memory_latency_exposure_cycles"], 0)
 
+        # Same logical kernel, but its data set is already resident before
+        # timing starts. The 192 measured memory operations must now hit L1.
+        warm_addresses = sorted({
+            op.address for op in ops if op.kind in ("LOAD", "STORE", "ATOM")
+        })
+        warm = sim.simulate_cpu(
+            {"vec_me512_memory_overlap": ops},
+            sim.PROFILES["nexus_balanced_128"], 8,
+            {"execution_only": True,
+             "cache_prefill_addresses": warm_addresses},
+        )["kernels"]["vec_me512_memory_overlap"]
+        self.assertEqual(warm["ops"], len(ops))
+        self.assertEqual(warm["cache_accesses"]["L1"], 192)
+        self.assertEqual(warm["cache_accesses"]["DRAM"], 0)
+        self.assertEqual(warm["cache_accesses"]["L2"], 0)
+        self.assertEqual(warm["cache_accesses"]["L3"], 0)
+        self.assertEqual(warm["cache_accesses"]["L4"], 0)
+
     def test_me512_tiled_workload_retires_on_all_architectures(self):
         workload = {"me512_matrix": sim.build_composite_workload(scale=1)["me512_matrix"]}
         for key in ("amd_9950x3d2", "intel_xeon_698x", "apple_m6", "nexus_balanced_128"):
