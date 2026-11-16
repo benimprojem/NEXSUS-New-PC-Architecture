@@ -1428,7 +1428,7 @@ class AppRamController:
         return self.bank_busy.setdefault(int(core), [0] * self.bank_count)
 
     def complete(self, cycle: int):
-        for key in [k for k, ready in self.inflight.items() if ready <= cycle]:
+        for key in [k for k, item in self.inflight.items() if item["ready"] <= cycle]:
             del self.inflight[key]
 
     def reserve_batch(self, cycle: int, requests: List[dict]) -> dict:
