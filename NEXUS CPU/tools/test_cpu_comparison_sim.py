@@ -279,6 +279,36 @@ class CachePortContentionTests(unittest.TestCase):
         self.assertEqual(port.reserve(2, 64, 64), 0)
 
 
+class NEXSUSCacheTopologyTests(unittest.TestCase):
+    def test_eight_core_block_has_8_l1_4_l2_2_l3_1_l4_instances(self):
+        p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        caches = sim.build_cache_hierarchies(p, 8)
+        self.assertEqual(len({id(c.l1) for c in caches}), 8)
+        self.assertEqual(len({id(c.l2) for c in caches}), 4)
+        self.assertEqual(len({id(c.l3) for c in caches}), 2)
+        self.assertEqual(len({id(c.l4) for c in caches}), 1)
+
+    def test_distinct_l3_groups_exchange_shared_lines_through_l4(self):
+        p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        caches = sim.build_cache_hierarchies(p, 8)
+        address = 0xD000
+        caches[0].prefill(address, "L4")
+        self.assertIsNot(caches[0].l3, caches[4].l3)
+        self.assertIsNot(caches[0].l2, caches[4].l2)
+        self.assertIs(caches[0].l4, caches[4].l4)
+        self.assertEqual(caches[4].probe(address)[1], "L4")
+
+    def test_shared_l3_and_l4_port_contention_matches_topology(self):
+        p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        caches = sim.build_cache_hierarchies(p, 8)
+        self.assertEqual(caches[0].reserve("L3", 0, 64), 0)
+        self.assertEqual(caches[3].reserve("L3", 0, 64), 1)
+        self.assertEqual(caches[4].reserve("L3", 0, 64), 0)
+        self.assertEqual(caches[0].reserve("L4", 0, 64), 0)
+        self.assertEqual(caches[4].reserve("L4", 0, 64), 1)
+        self.assertEqual(caches[7].reserve("L4", 0, 64), 2)
+
+
 class SharedCacheGroupTests(unittest.TestCase):
     def test_working_set_prefill_uses_the_collaboration_scope_home_level(self):
         p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
