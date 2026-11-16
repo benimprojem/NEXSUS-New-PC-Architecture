@@ -174,6 +174,8 @@ The simulator contains and tests this grouping: L1 private, L2 per 2-core group,
 
 The selected level is the natural preparation/residency point for that collaboration scope. All participating cores read and share data from that common cache object. Lower levels may be populated naturally by demand accesses and the eventual fill policy; the simulator must not fake a group-shared working set by copying it into every private L1. Untimed prefill is a measurement setup operation, not a claim that real hardware loads data at zero cost.
 
+**Within one eight-core block, both four-core L3 groups access the same L4.** An L4-resident line can therefore be served to cores on either side of the L3-group boundary; separate L3/L2 groups do not imply separate L4 homes. The isolation boundary is between eight-core L4 blocks, not between their internal L3 groups. The canonical instance count per eight-core block is **8×L1 / 4×L2 / 2×L3 / 1×L4**.
+
 **OPEN:** cache-line size, associativity, replacement, hit/miss latency, bandwidth/ports, write policy, inclusion/exclusion, coherence/visibility protocol, cross-group transfer, and interaction with the L1–L4 logical memory-domain/zone model. A logical access domain is not automatically the same thing as a physical cache instance.
 
 ---
