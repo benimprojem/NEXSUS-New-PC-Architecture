@@ -1128,18 +1128,17 @@ class CommandFetchModel:
                  p0_buffer_bytes: int = 2048, page_descriptors: dict | None = None,
                  pool_miss_latency: int = 120, code_cache_bytes: int = 65536, app_first_beat_latency: int = 40, app_beat_interval: int = 1, c0_to_cs_bytes_per_cycle: int = 16, cs_to_eb_bytes_per_cycle: int = 16, codeflow_enabled: bool = False,
                  app_ram_controller=None, core_id: int = 0,
-                 prefetch_distance_bytes: int = 256):
+                 known_page_ids=None):
         self.enabled = enabled
         self.capacity_bytes = p0_capacity_bytes if enabled else conventional_capacity_bytes
         self.lines = LRU(self.capacity_bytes, 64)
         self.refill_latency = p0_refill_latency if enabled else conventional_refill_latency
         self.p0_buffer_bytes = p0_buffer_bytes
-        # Start the next-page ping-pong transfer only near the end of the
-        # active page; short kernels must not fetch an unused second page.
-        self.prefetch_distance_bytes = min(
-            self.p0_buffer_bytes,
-            max(0, int(prefetch_distance_bytes)),
-        )
+        # When supplied by the workload builder, this prevents speculative
+        # refills beyond the actual command stream while preserving early
+        # ping-pong prefetch for pages that really exist.
+        self.known_page_ids = (None if known_page_ids is None
+                               else {int(page_id) for page_id in known_page_ids})
         self.page_descriptors = {int(k): v for k, v in (page_descriptors or {}).items()}
         self.codeflow_enabled = codeflow_enabled
         self.app_ram_controller = app_ram_controller
@@ -1183,7 +1182,10 @@ class CommandFetchModel:
     def _next_logical_page(self, block: int):
         descriptor = self.page_descriptors.get(block)
         if descriptor is None:
-            return block + 1
+            next_block = block + 1
+            if self.known_page_ids is not None and next_block not in self.known_page_ids:
+                return None
+            return next_block
         valid_bytes = int(descriptor.get("valid_bytes", self.p0_buffer_bytes))
         marker = descriptor.get("marker")
         if descriptor.get("stream_end", False):
@@ -1326,15 +1328,7 @@ class CommandFetchModel:
                 self.hits += 1
                 self.buffer_hits += 1
                 next_block = self._next_logical_page(block)
-                descriptor = self.page_descriptors.get(block)
-                valid_page_bytes = int(
-                    descriptor.get("valid_bytes", self.p0_buffer_bytes)
-                    if descriptor is not None else self.p0_buffer_bytes
-                )
-                prefetch_start = max(
-                    0, valid_page_bytes - self.prefetch_distance_bytes
-                )
-                if next_block is not None and offset >= prefetch_start:
+                if next_block is not None:
                     self._start_p0_prefetch(next_block, cycle)
                 return True
             self.wait_cycles += 1
@@ -1857,7 +1851,11 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 cs_to_eb_bytes_per_cycle=int(features.get("cs_to_eb_bytes_per_cycle", 16)),
                 app_ram_controller=app_controller if bool(features.get("codeflow", False)) else None,
                 core_id=core_id,
-                prefetch_distance_bytes=int(features.get("p0_prefetch_distance_bytes", 256)),
+                known_page_ids={
+                    max(0, (op.command_address if op.command_address >= 0 else op.seq * 8))
+                    // int(features.get("p0_buffer_bytes", 2048))
+                    for op in shard
+                },
                 conventional_capacity_bytes=int(features.get("conventional_icache_kb", 32)) * 1024,
                 conventional_refill_latency=int(features.get("conventional_refill_latency", 8)),
             )
