@@ -50,13 +50,25 @@ Her core, izin ve görünürlük kurallarına göre aşağıdaki cache alanları
 
 Bu seçim, çalışma kümesinin doğal yerleşim/ hazırlık seviyesini tanımlar. Simülatörde her L1'e kopyalayarak ortak L3/L4 paylaşımı taklit edilmez. Untimed prefill yalnızca ölçüm hazırlığıdır; donanımda ücretsiz yükleme anlamına gelmez.
 
-## 4. Topoloji ve port ayrımı
+## 4. Sekizden fazla core: bellekten L4 dağıtımı
+
+Birden fazla sekiz-core bloğu kullanan iş yüklerinde her bloğun ayrı L4 home'u bulunur. Veri, gerektiğinde Data RAM/ana bellekten doğrudan hedef L4 home'larına parçalar halinde dağıtılabilir. Paylaşılan verinin dağıtım kaynağı bellektir; bir L4'ün diğer L4'e zincirleme veri aktarması zorunlu değildir.
+
+| Dağıtım biçimi | Bellekten L4'e davranış | Kullanım |
+|---|---|---|
+| Bölümlü (partitioned) | Farklı veri parçaları farklı L4 home'larına gider | Her core grubu farklı veri işler |
+| Kopyalı/paylaşılan (replicated) | Aynı salt-okunur/paylaşılan aralık seçilen L4 home'larına doğrudan yüklenir | Birden fazla grup aynı veriyi okur |
+| Seçmeli çoklu hedef (selective multicast) | Veri yalnızca seçilmiş L4 home'larına dağıtılır | Kısmi grup paylaşımı |
+
+Bu karar veri kaynağı ve dağıtım yolunu tanımlar. Parça boyutu, hedef seçimi, adres aralığı sahipliği, transfer planlama, bant genişliği rezervasyonu ve tamamlanma/hata yönetimi henüz açık tasarım konularıdır. Yazılabilir kopyalar otomatik olarak tutarlı kabul edilmez; eşzamanlı yazma için açık sahiplik/güncelleme protokolü gerekir.
+
+## 5. Topoloji ve port ayrımı
 
 **8×L1 / 4×L2 / 2×L3 / 1×L4 cache örnek sayısıdır; port sayısı veya bant genişliği değildir.**
 
 Cache portları, servis kapasitesi, erişim gecikmesi, arbitraj ve contention parametreleri henüz mimari olarak kesinleşmemiştir. Simülatörde kullanılan tek-istek/cycle ortak port varsayımı geçici bir deney parametresidir; FIXED karar değildir.
 
-## 5. Durum
+## 6. Durum
 
 - Cache kapasitesi ve paylaşım kapsamı: **FIXED**
 - Sekiz-core L4 içinde iki L3 grubunun ortak L4'e erişmesi: **FIXED**
