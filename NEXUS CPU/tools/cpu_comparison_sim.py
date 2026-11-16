@@ -726,6 +726,86 @@ def timed_l4_to_l1(caches: List[CacheHierarchy], addresses: List[int],
         "model_scope": "single 8-core block; one shared L4 source; independent per-core L1 ingress",
     }
 
+
+def run_l4_l1_transfer_sweep(
+    working_set_kib_values: Tuple[int, ...] = (64, 256),
+    chunk_bytes_values: Tuple[int, ...] = (64, 256, 1024),
+    l4_read_bandwidth_values: Tuple[int, ...] = (64, 128, 256),
+    l1_ingress_bandwidth_values: Tuple[int, ...] = (64, 128, 256),
+    target_core_counts: Tuple[int, ...] = (1, 2, 4, 8),
+) -> dict:
+    """Explore direct L4->L1 transfer settings for one 8-core NEXSUS block.
+
+    This is a parameter sweep, not a selected/frozen hardware operating point.
+    L4 is preloaded as untimed setup; only the direct L4 read and destination
+    L1 ingress path are timed. Data RAM is intentionally outside this sweep.
+    """
+    profile = profile_from_dict(PROFILES["nexus_balanced_128"])
+    rows = []
+    for working_set_kib in working_set_kib_values:
+        if working_set_kib <= 0:
+            raise ValueError("working-set sizes must be positive")
+        line_bytes = profile.line_bytes
+        total_bytes = working_set_kib * 1024
+        if total_bytes % line_bytes:
+            raise ValueError("working-set size must be a multiple of cache-line size")
+        if working_set_kib * 1024 > profile.l4_kb * 1024:
+            raise ValueError("working set exceeds the configured L4 capacity")
+        addresses = [
+            0x10000000 + offset
+            for offset in range(0, total_bytes, line_bytes)
+        ]
+        for chunk_bytes in chunk_bytes_values:
+            for l4_bw in l4_read_bandwidth_values:
+                for l1_bw in l1_ingress_bandwidth_values:
+                    for target_count in target_core_counts:
+                        if target_count < 1 or target_count > 8:
+                            raise ValueError("target core counts must be in the range 1..8")
+                        caches = build_cache_hierarchies(profile, 8)
+                        shared_l4 = caches[0].l4
+                        for address in addresses:
+                            shared_l4.insert(address // line_bytes)
+                        result = timed_l4_to_l1(
+                            caches, addresses,
+                            target_cores=list(range(target_count)),
+                            chunk_bytes=chunk_bytes,
+                            l4_read_bytes_per_cycle=l4_bw,
+                            l1_ingress_bytes_per_cycle=l1_bw,
+                        )
+                        elapsed = max(1, result["cycles"])
+                        rows.append({
+                            "working_set_kib": working_set_kib,
+                            "target_core_count": target_count,
+                            "chunk_bytes": chunk_bytes,
+                            "l4_read_bytes_per_cycle": l4_bw,
+                            "l1_ingress_bytes_per_cycle": l1_bw,
+                            "unique_bytes": result["unique_bytes"],
+                            "bytes_copied": result["bytes_copied"],
+                            "chunk_count_per_core": result["chunk_count_per_core"],
+                            "cycles": result["cycles"],
+                            "effective_bytes_per_cycle": result["bytes_copied"] / elapsed,
+                            "l4_source_service_cycles": result["l4_source_next_cycle"],
+                            "l1_ingress_wait_cycles": sum(
+                                event["wait_cycles"]
+                                for event in result["l1_ingress_events"]
+                            ),
+                        })
+    return {
+        "experiment": "8-core direct shared L4-to-private-L1 transfer design-space sweep",
+        "cores_per_block": 8,
+        "transfer_path": "L4 -> selected private L1s; L2/L3 bypassed",
+        "data_ram_baseline_bytes_per_cycle": 64,
+        "timing_scope": "L4 source read and per-core L1 ingress only; L4 prefill is untimed setup",
+        "hardware_decisions_frozen_by_sweep": [],
+        "open_parameters": [
+            "chunk_bytes", "L4 read bandwidth", "per-core L1 ingress bandwidth",
+            "source and ingress queueing", "arbitration", "transfer latency",
+        ],
+        "row_count": len(rows),
+        "results": rows,
+    }
+
+
 def build_cache_hierarchies(p: CoreProfile, core_count: int) -> List[CacheHierarchy]:
     """Build private and shared cache objects using each modeled architecture's topology.
 
@@ -2401,8 +2481,24 @@ def main():
     ap.add_argument("--fma-latency-sweep", action="store_true", help="sweep FMA result latency with FP6/FMA4 held fixed")
     ap.add_argument("--mshr-sweep", action="store_true", help="sweep per-core Data RAM MSHR capacities 1/2/4/8/16/32")
     ap.add_argument("--vec-me512-isolation", action="store_true", help="compare normal VEC/ME512 workloads with instruction-fetch-bypassed backend isolation")
+    ap.add_argument("--l4-l1-sweep", action="store_true", help="sweep direct shared L4-to-private-L1 transfer parameters for one 8-core block")
     args = ap.parse_args()
     workloads = build_composite_workload(args.scale)
+    if args.l4_l1_sweep:
+        result = run_l4_l1_transfer_sweep()
+        if args.json:
+            print(json.dumps(result, indent=2))
+        else:
+            print("8-CORE DIRECT L4 -> L1 TRANSFER DESIGN-SPACE SWEEP")
+            print(f"Rows: {result['row_count']} (no hardware operating point selected)")
+            for row in result["results"]:
+                print(
+                    f"WS={row['working_set_kib']:>3} KiB targets={row['target_core_count']} "
+                    f"chunk={row['chunk_bytes']:>4}B L4={row['l4_read_bytes_per_cycle']:>3} "
+                    f"L1={row['l1_ingress_bytes_per_cycle']:>3} "
+                    f"cycles={row['cycles']:>7} throughput={row['effective_bytes_per_cycle']:>9.2f} B/cycle"
+                )
+        return
     if args.vec_me512_isolation:
         result = run_vector_matrix_isolation_sweep(workloads)
         if args.json:
