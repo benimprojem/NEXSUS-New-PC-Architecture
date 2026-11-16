@@ -80,6 +80,30 @@ The input generator must be deterministic. Each kernel has a small reference imp
 | K17 | Atomic contention | Shared-address read-modify-write operations across cores | Atomic unit throughput, memory serialization, bank/bus contention |
 | K18 | IRQ/exception service | Deterministic interrupt-service proxy with context entry/exit | IRQ unit latency, context-frame overhead and dependent-work recovery |
 
+### 4.1 Vector and matrix arithmetic coverage
+
+K05 must not be represented by a single generic vector opcode. Its diagnostic sub-kernels should cover:
+
+- 512-bit vector add and subtract;
+- 512-bit vector multiply;
+- 512-bit vector fused multiply-add;
+- 512-bit permutation/shuffle;
+- horizontal reduction and dependent accumulation;
+- mixed independent streams to measure issue throughput separately from dependency latency.
+
+The current simulator exposes `VEC_ADD`, `VEC_MUL`, `VEC_FMA`, and `VEC_PERMUTE) as distinct issue opcodes. They map to the two VEC resources and use an explicit 512-bit execution width. Opcode-specific numerical semantics and latency are not yet frozen.
+
+K06/K16 must exercise a real tiled matrix algorithm rather than one isolated tile instruction. The minimum diagnostic pattern is: load A/B tile operands, issue dependent tile multiply-accumulate operations across K, preserve the partial accumulator chain, then store the completed output tile. Measure separately:
+
+- ME512 issue throughput and dependent MAC latency;
+- A/B operand delivery rate and queue occupancy;
+- accumulator forwarding/read-after-write behavior;
+- tile reuse and reload traffic;
+- result writeback/drain rate;
+- overlap with ordinary VEC and memory operations.
+
+The current simulator implements a provisional 16-output-tile × 8-K-step workload. One ME512 operation currently represents one 512-bit tile MAC; tile dimensions, accumulator precision, numerical rounding, and physical operand/register banking remain open architecture parameters. A timing result is not a correctness proof: each arithmetic kernel must also be checked against an independent numerical oracle before the benchmark suite is considered complete.
+
 ## 5. Branch prediction and control-flow experiment
 
 Short branch distance does not eliminate the need for prediction: a misprediction still discards speculative front-end work and can leave a wide issue engine underfed. NEXSUS should evaluate a compact predictor before considering a large high-power design.
