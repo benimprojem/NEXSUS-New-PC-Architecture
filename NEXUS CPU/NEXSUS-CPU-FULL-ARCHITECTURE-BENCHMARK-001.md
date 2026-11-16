@@ -402,3 +402,28 @@ Compare at minimum:
 7. case 4 under competing tasks and dispatch deadlines.
 
 Report cold-start and warm/reuse runs separately. The current 64 KiB L0I capacity is the baseline proposal; 16/32/128 KiB capacity points may be swept as sensitivity variants, not silently substituted for the baseline.
+
+
+## 15. Execution implementation update — 2026-11-16
+
+The current simulator implementation has expanded beyond the original 18-kernel planning list. The deterministic composite workload currently contains 25 diagnostic kernels:
+
+- Scalar/control and memory: `scalar_control`, `pointer_graph`, `streaming`, `branch_stress`, `atomic_contention`.
+- Integer/FP/vector: `integer_throughput`, `integer128_throughput`, `fp_throughput`, `fma_throughput`, `fma_dependency_chain`, `fp_fma_mixed`, `vector_throughput`.
+- Matrix and mixed-resource: `numeric_tile`, `me512_matrix`, `me512_independent_throughput`, `me512_dependency_chain`, `vec_me512_memory_overlap`.
+- Task, interrupt, and NEXSUS-specific: `parallel_tasks`, `irq_exception_stress`, `tw_hot_workset`, `tw_capacity_sweep`, `cs_sequential`, `cs_branch`, `cs_working_set`, `cs_starvation`.
+
+The full report generator runs every current kernel in two distinct modes:
+
+1. Native configured core count: AMD 16, Intel Xeon 698X 86, Apple M6 12, NEXSUS 8.
+2. Normalized mode: exactly eight active cores for every profile.
+
+Each profile receives the same deterministic logical operation graph and operation count. Operations are mapped to the resources configured for that profile; for example, Intel matrix operations use the modeled AMX resource and NEXSUS uses ME512. The generated artifact contains Markdown, CSV, and JSON outputs with per-kernel cycles, modeled time, IPC, DRAM accesses, branch misses, frontend wait, memory-latency exposure, execution-unit blocked operation-cycles, and Task Workspace overflow.
+
+The current Apple M6 timing model is still a homogeneous 12-core approximation. The real 2-super/4-performance/6-efficiency scheduling classes are not yet separately simulated. All clock and timing values remain model inputs. Native and normalized outputs are simulation results, not measured silicon performance.
+
+### 15.1 External real-hardware benchmark anchor
+
+Use **SPEC CPU 2026** as the standardized external validation suite when physical systems and licensed benchmark packages are available. It contains 52 benchmarks in four suites: SPECspeed Integer (13), SPECspeed Floating Point (13), SPECrate Integer (14), and SPECrate Floating Point (12). SPEC CPU 2026 is designed to stress processor, memory hierarchy, and compiler behavior using workloads derived from real applications and is portable across x86 and ARM platforms.
+
+The SPEC suite complements, rather than replaces, the custom architecture diagnostics. It provides application-derived performance comparison; the custom suite isolates proposed NEXSUS mechanisms such as L4 sharing, Task Workspace, CodeFlow and ME512. Do not claim a SPEC score until the official package has been run under its reporting rules on physical target systems.
