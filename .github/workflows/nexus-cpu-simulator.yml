@@ -572,21 +572,28 @@ jobs:
           assert data["cores_per_block"] == 8
           assert data["row_count"] == 216
           assert data["transfer_path"] == "L4 -> selected private L1s; L2/L3 bypassed"
+          assert data["distribution_policy"] == "serialized per-destination L4 reads; multicast is not modeled"
           assert data["data_ram_baseline_bytes_per_cycle"] == 64
           assert data["hardware_decisions_frozen_by_sweep"] == []
           assert len(data["results"]) == 216
           for row in data["results"]:
               assert row["unique_bytes"] == row["working_set_kib"] * 1024
               assert row["bytes_copied"] == row["unique_bytes"] * row["target_core_count"]
+              assert row["l4_source_bytes_read"] == row["bytes_copied"]
+              assert row["l4_source_read_count"] == row["chunk_count_per_core"] * row["target_core_count"]
               assert row["cycles"] > 0
               assert row["effective_bytes_per_cycle"] > 0
           print("DIRECT L4 -> L1 TRANSFER DESIGN-SPACE SWEEP")
           print(f'PASS: {data["row_count"]} configurations; no hardware operating point selected.')
-          for row in sorted(data["results"], key=lambda item: item["cycles"])[:8]:
-              print(f'WS={row["working_set_kib"]} KiB targets={row["target_core_count"]} '
-                    f'chunk={row["chunk_bytes"]} L4={row["l4_read_bytes_per_cycle"]} '
-                    f'L1={row["l1_ingress_bytes_per_cycle"]}: {row["cycles"]} cycles, '
-                    f'{row["effective_bytes_per_cycle"]:.2f} B/cycle')
+          print("BEST THROUGHPUT BY WORKING SET AND TARGET COUNT (UNICAST SOURCE MODEL)")
+          for ws in sorted({row["working_set_kib"] for row in data["results"]}):
+              for count in (1, 2, 4, 8):
+                  candidates = [row for row in data["results"]
+                                if row["working_set_kib"] == ws and row["target_core_count"] == count]
+                  best = max(candidates, key=lambda item: item["effective_bytes_per_cycle"])
+                  print(f'WS={ws} KiB targets={count}: {best["effective_bytes_per_cycle"]:.2f} B/cycle, '
+                        f'{best["cycles"]} cycles, chunk={best["chunk_bytes"]}, '
+                        f'L4={best["l4_read_bytes_per_cycle"]}, L1={best["l1_ingress_bytes_per_cycle"]}')
           PY
       - name: Upload comparison and CS sweep results
         if: always()
