@@ -575,14 +575,14 @@ class WorkspaceCodeSlotModelTests(unittest.TestCase):
         fetch.complete(48)
         self.assertTrue(fetch.can_fetch(0, 48))
         self.assertFalse(fetch.can_fetch(2048, 49))
-        fetch.complete(96)
-        self.assertTrue(fetch.can_fetch(2048, 96))
-        fetch.complete(144)  # sequential prefetch of logical page 2
+        fetch.complete(97)
+        self.assertTrue(fetch.can_fetch(2048, 97))
+        self.assertIsNone(fetch.p0_pending)
         # A branch target to page 3 reuses the currently active B bank.
-        self.assertFalse(fetch.can_fetch(6144, 144, sequential=False))
-        self.assertEqual(fetch.p0_pending, (3, 192, 1))
-        fetch.complete(192)
-        self.assertTrue(fetch.can_fetch(6144, 192))
+        self.assertFalse(fetch.can_fetch(6144, 98, sequential=False))
+        self.assertEqual(fetch.p0_pending, (3, 146, 1))
+        fetch.complete(146)
+        self.assertTrue(fetch.can_fetch(6144, 146))
         self.assertEqual(fetch.active_block, 3)
 
     def test_code_slots_and_execution_buffer_have_expected_capacity(self):
@@ -997,10 +997,12 @@ class CodeFlowMetadataTests(unittest.TestCase):
         self.assertFalse(fetch.can_fetch(0, 0))
         fetch.complete(48)
         self.assertTrue(fetch.can_fetch(0, 48))
-        self.assertEqual(fetch.p0_pending, (1, 96, 1))
-        self.assertFalse(fetch.can_fetch(2048, 49))
-        fetch.complete(96)
-        self.assertTrue(fetch.can_fetch(2048, 96))
+        self.assertIsNone(fetch.p0_pending)
+        self.assertTrue(fetch.can_fetch(768, 49))
+        self.assertEqual(fetch.p0_pending, (1, 97, 1))
+        self.assertFalse(fetch.can_fetch(2048, 50))
+        fetch.complete(97)
+        self.assertTrue(fetch.can_fetch(2048, 97))
         self.assertIsNone(fetch.p0_pending)  # CF_END suppresses next-page prefetch.
         with self.assertRaises(ValueError):
             fetch.can_fetch(2048 + 512, 97)  # No padding fetch past valid_bytes.
