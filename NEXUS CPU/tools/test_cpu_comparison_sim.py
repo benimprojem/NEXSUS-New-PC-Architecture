@@ -1679,6 +1679,63 @@ class EightCoreArchitectureScalingTests(unittest.TestCase):
             sim.timed_l4_to_l1(caches, addresses, target_cores=[8])
 
 
+    def test_l4_to_l1_multicast_reads_each_chunk_once_and_accounts_for_fanout(self):
+        profile = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        addresses = [0x500000 + offset for offset in range(0, 4096, 64)]
+        caches = sim.build_cache_hierarchies(profile, 8)
+        for address in addresses:
+            caches[0].l4.insert(address // 64)
+        result = sim.timed_l4_to_l1_multicast(
+            caches, addresses, target_cores=[0, 1, 2, 3],
+            chunk_bytes=256, l4_read_bytes_per_cycle=64,
+            fanout_bytes_per_cycle=256, l1_ingress_bytes_per_cycle=64,
+        )
+        self.assertEqual(result["l4_source_bytes_read"], 4096)
+        self.assertEqual(result["bytes_copied"], 4096 * 4)
+        self.assertEqual(result["fanout_bytes"], 4096 * 4)
+        self.assertEqual(result["l4_source_read_count"], 16)
+        self.assertEqual(result["fanout_chunk_count"], 16)
+        self.assertEqual(result["distribution_policy"],
+                         "one serialized L4 read per chunk; explicit shared multicast fanout")
+        self.assertEqual(result["l1_resident_lines"], {0: 64, 1: 64, 2: 64, 3: 64})
+        self.assertEqual(result["transfer_path"],
+                         "L4 -> shared multicast fanout -> selected private L1s (L2/L3 bypassed)")
+        self.assertEqual(result["fanout_bandwidth_semantics"],
+                         "aggregate replicated-payload bytes per cycle")
+        self.assertTrue(all(not caches[core].l2.lookup(address // 64)
+                            and not caches[core].l3.lookup(address // 64)
+                            for core in range(4) for address in addresses))
+
+    def test_l4_to_l1_multicast_fanout_is_an_explicit_bottleneck(self):
+        profile = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        addresses = [0x600000 + offset for offset in range(0, 1024, 64)]
+        results = []
+        for fanout_bw in (64, 256, 1024):
+            caches = sim.build_cache_hierarchies(profile, 8)
+            for address in addresses:
+                caches[0].l4.insert(address // 64)
+            results.append(sim.timed_l4_to_l1_multicast(
+                caches, addresses, target_cores=[0, 1, 2, 3],
+                chunk_bytes=256, l4_read_bytes_per_cycle=256,
+                fanout_bytes_per_cycle=fanout_bw, l1_ingress_bytes_per_cycle=256,
+            ))
+        self.assertGreater(results[0]["cycles"], results[1]["cycles"])
+        self.assertGreater(results[1]["cycles"], results[2]["cycles"])
+        self.assertEqual(results[0]["l4_source_bytes_read"], results[2]["l4_source_bytes_read"])
+
+    def test_l4_to_l1_multicast_validates_source_targets_and_bandwidth(self):
+        profile = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        addresses = [0x700000 + offset for offset in range(0, 256, 64)]
+        caches = sim.build_cache_hierarchies(profile, 8)
+        with self.assertRaisesRegex(ValueError, "resident L4 lines"):
+            sim.timed_l4_to_l1_multicast(caches, addresses)
+        for address in addresses:
+            caches[0].l4.insert(address // 64)
+        with self.assertRaisesRegex(ValueError, "0..7"):
+            sim.timed_l4_to_l1_multicast(caches, addresses, target_cores=[8])
+        with self.assertRaisesRegex(ValueError, "bandwidth values must be positive"):
+            sim.timed_l4_to_l1_multicast(caches, addresses, fanout_bytes_per_cycle=0)
+
     def test_l4_to_l1_sweep_covers_transfer_dimensions_without_freezing_them(self):
         result = sim.run_l4_l1_transfer_sweep(
             working_set_kib_values=(64,),
