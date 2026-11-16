@@ -1,4 +1,6 @@
-# NEXSUS CPU Comparison Report 001
+# NEXSUS CPU Comparison Report
+
+> **Comparison direction legend:** ↓ lower is better (cycles, latency, elapsed time, stalls/waits, misses, blocked cycles); ↑ higher is better (IPC, throughput, bandwidth, hit rate, completed work per cycle). Metrics without a direction are descriptive/configuration values, not “better/worse” rankings. 001
 
 **Date:** 2026-11-14  
 **Simulator revision:** `e947f2f5fceeb4e221aae3187b0c64ea11d73e98`  
@@ -15,7 +17,7 @@ The strongest NEXSUS results are the Task Workspace hot-set and capacity workloa
 
 All four profiles run the same **20,846 logical operations** with exactly **8 configured active cores**.
 
-| CPU profile | Modeled clock | Total cycles | Aggregate IPC | Modeled elapsed time |
+| CPU profile | Modeled clock | Total cycles ↓ | Aggregate IPC ↑ | Modeled elapsed time ↓ |
 |---|---:|---:|---:|---:|
 | AMD Ryzen 9 9950X3D2 / Zen 5 | 4.3 GHz | 55,311 | 0.377 | 12.863 µs |
 | Intel Xeon 698X / Redwood Cove+ | 2.0 GHz | 64,995 | 0.321 | 32.497 µs |
@@ -75,7 +77,7 @@ The next performance work should therefore focus on general execution throughput
 
 Single-core, 8,192-operation sequential code-stream test. Only CS capacity changes.
 
-| CS capacity | Total cycles |
+| CS capacity | Total cycles ↓ |
 |---:|---:|
 | 4 KiB | 5,282 |
 | 8 KiB | 5,202 |
@@ -144,7 +146,7 @@ The isolation sweep completed successfully on all four profiles with eight confi
 
 **NEXSUS VEC results (128 operations per opcode):**
 
-| Kernel | Normal delivery | Fetch-bypassed backend | Normal fetch wait | Backend issue span |
+| Kernel | Normal delivery | Fetch-bypassed backend | Normal fetch wait ↓ | Backend issue span |
 |---|---:|---:|---:|---:|
 | VEC_ADD | 826 cycles | 10 cycles | 4,744 | 8 cycles |
 | VEC_SUB | 826 cycles | 10 cycles | 4,744 | 8 cycles |
@@ -160,7 +162,7 @@ For context, fetch-bypassed per-opcode completion was 11 cycles on AMD, 11 on In
 
 **ME512 matrix workload:**
 
-| Profile | Normal delivery | Fetch-bypassed backend | Backend issue span | Backend dependency-blocked op-cycles | Backend memory-latency exposure |
+| Profile | Normal delivery | Fetch-bypassed backend | Backend issue span | Backend dependency-blocked op-cycles ↓ | Backend memory-latency exposure ↓ |
 |---|---:|---:|---:|---:|---:|
 | AMD 9950X3D2 model | 1,059 | 1,027 | 904 | 76,639 | 133,525 |
 | Intel Xeon 698X model | 590 | 558 | 408 | 40,288 | 72,279 |
@@ -176,7 +178,7 @@ ME512's tiled workload contains operand loads, a dependent accumulator chain for
 
 CI run [43793155027](https://github.com/benimprojem/NEXSUS-New-PC-Architecture/actions/runs/43793155027) passed all steps. Its artifact adds independent and dependent VEC/ME512 kernels. The following backend-isolation cycle counts are simulator results for eight configured cores:
 
-| Profile | VEC dependent chain (64 ops) | Configured VEC latency | ME512 independent (128 ops) | ME512 dependent chain (128 ops) | Configured matrix-resource latency |
+| Profile | VEC dependent chain (64 ops) | Configured VEC latency ↓ | ME512 independent (128 ops) | ME512 dependent chain (128 ops) | Configured matrix-resource latency ↓ |
 |---|---:|---:|---:|---:|---:|
 | AMD 9950X3D2 model | 193 cycles | 3 | 11 cycles | 385 cycles | 3 (ME512 maps to VEC) |
 | Intel Xeon 698X model | 193 cycles | 3 | 18 cycles | 257 cycles | 2 (ME512 maps to AMX) |
