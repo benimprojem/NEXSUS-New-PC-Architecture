@@ -1230,6 +1230,11 @@ class CommandFetchModel:
         raise ValueError(f"partial code page {block} has no valid CF_NEXT/CF_END marker")
 
     def _validate_fetch_address(self, block: int, offset: int):
+        # PX valid-byte boundaries are executable metadata for the integrated
+        # CodeFlow path. Legacy P0-only mode models a padded execution buffer
+        # and must not reject fetches into the rest of that physical page.
+        if not self.codeflow_enabled:
+            return
         descriptor = self.page_descriptors.get(block)
         if descriptor is None:
             return
