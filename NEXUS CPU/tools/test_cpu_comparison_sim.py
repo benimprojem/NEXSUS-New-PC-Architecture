@@ -1570,7 +1570,7 @@ class EightCoreArchitectureScalingTests(unittest.TestCase):
 
         # Data RAM traffic must not consume App RAM queue slots or bus capacity.
         self.assertEqual(len(app.inflight), 1)
-        self.assertEqual(app.inflight["instruction-page-0"], app_ready)
+        self.assertEqual(app.inflight["instruction-page-0"]["ready"], app_ready)
         self.assertGreaterEqual(data_second["service_complete_cycle"], data_ready)
         self.assertEqual(app.rejected_queue_full, 1)
 
@@ -1888,7 +1888,7 @@ class PerCoreCodeFlowTopologyTests(unittest.TestCase):
         self.assertEqual(controller.transferred_bytes, 64)
         self.assertEqual(controller.accepted, 8)
         self.assertTrue(all(result[f"c{i}"]["accepted"] for i in range(8)))
-        self.assertEqual(controller.bus_next_byte, {})
+        self.assertEqual(controller.bus_next_byte, {i: 8 for i in range(8)})
 
 
 if __name__ == "__main__":
