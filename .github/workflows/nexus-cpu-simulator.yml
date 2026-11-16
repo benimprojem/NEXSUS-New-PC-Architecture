@@ -33,6 +33,8 @@ jobs:
         run: |
           python -m py_compile "NEXUS CPU/tools/cpu_comparison_sim.py"
           python -m py_compile "NEXUS CPU/tools/generate_full_architecture_benchmark.py"
+          python -m py_compile "NEXUS CPU/tools/core_scaling_comparison.py"
+          python -m py_compile "NEXUS CPU/tools/test_core_scaling_comparison.py"
           python -m py_compile "NEXUS CPU/tools/test_cpu_comparison_sim.py"
           python -m py_compile "NEXUS CPU/tools/l0i_px_pipeline_sim.py"
           python -m py_compile "NEXUS CPU/tools/test_l0i_px_pipeline_sim.py"
@@ -624,6 +626,23 @@ jobs:
                     f'worst={worst["multicast_cycles"] / worst["unicast_cycles"]:.3f}; '
                     f'L4 bytes saved={best["l4_source_bytes_saved"]}')
           PY
+      - name: Run 1/2/4/8-core scaling comparison
+        run: |
+          python "NEXUS CPU/tools/core_scaling_comparison.py" --scale 1 --output-dir /tmp/nexus-core-scaling
+          python "NEXUS CPU/tools/test_core_scaling_comparison.py" /tmp/nexus-core-scaling/core-scaling-results.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data=json.loads(Path("/tmp/nexus-core-scaling/core-scaling-results.json").read_text(encoding="utf-8"))
+          for policy in ("fixed_system_32","scaled_4_per_core"):
+              print(policy)
+              for arch in data["architectures"]:
+                  values=[]
+                  for count in (1,2,4,8):
+                      row=data["runs"][policy][str(count)][arch]
+                      values.append(row["total_cycles"])
+                  print(f"{arch}: cycles 1/2/4/8 = {values}")
+          PY
       - name: Generate full architecture benchmark tables
         run: |
           python "NEXUS CPU/tools/generate_full_architecture_benchmark.py" --scale 1 --output-dir /tmp/nexus-full-architecture-benchmark
@@ -661,6 +680,7 @@ jobs:
             /tmp/nexus-l4-l1-transfer-sweep.json
             /tmp/nexus-l4-l1-distribution-comparison.json
             /tmp/nexus-full-architecture-benchmark/
+            /tmp/nexus-core-scaling/
             /tmp/nexus-cpu-results.json
             /tmp/nexus-vec-me512-isolation.json
             /tmp/nexus-data-mshr-sweep.json
