@@ -1152,7 +1152,7 @@ class CommandFetchModel:
                  conventional_capacity_bytes: int = 32768,
                  p0_refill_latency: int = 48, conventional_refill_latency: int = 8,
                  p0_buffer_bytes: int = 2048, page_descriptors: dict | None = None,
-                 pool_miss_latency: int = 120, code_cache_bytes: int = 65536, app_first_beat_latency: int = 40, app_beat_interval: int = 1, c0_to_cs_bytes_per_cycle: int = 16, cs_to_eb_bytes_per_cycle: int = 16, codeflow_enabled: bool = False,
+                 pool_miss_latency: int = 120, code_cache_bytes: int = 65536, app_first_beat_latency: int = 40, app_beat_interval: int = 1, c0_to_cs_bytes_per_cycle: int = 8, cs_to_eb_bytes_per_cycle: int = 8, codeflow_enabled: bool = False,
                  app_ram_controller=None, core_id: int = 0,
                  known_page_ids=None):
         self.enabled = enabled
@@ -1830,7 +1830,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
     app_controller = AppRamController(
         bank_count=int(features.get("app_bank_count", 8)),
         beat_bytes=int(features.get("app_beat_bytes", 8)),
-        bytes_per_cycle=int(features.get("app_bytes_per_cycle", 32)),
+        bytes_per_cycle=int(features.get("app_bytes_per_cycle", 64)),
         first_beat_latency=int(features.get("app_first_beat_latency", 40)),
         beat_interval=int(features.get("app_beat_interval", 1)),
         max_outstanding=int(features.get("app_max_outstanding", 16)),
@@ -1894,8 +1894,8 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 code_cache_bytes=int(features.get("code_cache_kb", 64)) * 1024,
                 app_first_beat_latency=int(features.get("app_first_beat_latency", 40)),
                 app_beat_interval=int(features.get("app_beat_interval", 1)),
-                c0_to_cs_bytes_per_cycle=int(features.get("c0_to_cs_bytes_per_cycle", 16)),
-                cs_to_eb_bytes_per_cycle=int(features.get("cs_to_eb_bytes_per_cycle", 16)),
+                c0_to_cs_bytes_per_cycle=int(features.get("c0_to_cs_bytes_per_cycle", 8)),
+                cs_to_eb_bytes_per_cycle=int(features.get("cs_to_eb_bytes_per_cycle", 8)),
                 app_ram_controller=app_controller if bool(features.get("codeflow", False)) else None,
                 core_id=core_id,
                 known_page_ids={
