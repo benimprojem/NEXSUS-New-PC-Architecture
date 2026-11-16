@@ -124,7 +124,20 @@ This remains an execution/issue timing model, not a numerical datapath simulator
 
 Regression tests for opcode-to-resource mapping, 512-bit operation width, tiled accumulation dependencies, and cross-profile retirement pass in the latest test step. Full comparison CI is still running; new cycle results will be recorded only after its comparison output is available.
 
-## 8. Next engineering steps
+## 8. Separating backend arithmetic from instruction delivery — 2026-11-16
+
+The first expanded VEC/ME512 run exposed a measurement confound. In the NEXSUS eight-core composite run, each isolated VEC opcode reported 826 cycles, while CodeFlow reported 4,744 aggregate wait cycles and 4,744 boundary-wait cycles. These values show that instruction delivery materially affects the observed kernel completion time; they do not establish the intrinsic VEC issue rate.
+
+A new `--vec-me512-isolation` experiment has been added. It runs the same logical VEC and ME512 kernels on all four profiles at eight cores, first with normal instruction delivery and then with only instruction-fetch readiness bypassed. Per-core dispatch/issue limits, execution-unit counts, dependencies, Data RAM/cache timing, and retirement remain enabled. The second result is explicitly a backend-isolation upper bound, not a complete CPU performance result.
+
+CI checks that operation counts remain identical and that isolated runs have zero instruction-fetch wait. The resulting artifact will be used to separate:
+1. instruction delivery and frontend starvation;
+2. vector/matrix execution-unit issue and dependency behavior;
+3. data operand and result movement.
+
+No VEC or ME512 unit-count change is authorized by the earlier 826-cycle result. The new isolation sweep must complete before drawing throughput conclusions.
+
+## 9. Next engineering steps
 
 1. Integrate the concurrent C0 → CS → EB scheduler into the main CPU fetch model without changing the 64-bit App RAM read lane.
 2. Add stage-level queue, occupancy, overlap, and backpressure metrics to the normalized cross-architecture report.
