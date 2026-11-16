@@ -109,7 +109,22 @@ It has separate bounded queues, queue high-water marks, stage busy-cycle counter
 - Cache coherence and several OS/workspace details remain abstracted.
 - NEXSUS clock and transfer parameters are model inputs, not measured physical limits.
 
-## 7. Next engineering steps
+## 7. Vector and ME512 arithmetic model update — 2026-11-16
+
+The earlier `vector_throughput` stream represented generic 512-bit logical vector issue, while `me512_matrix` used one opaque accelerator operation per tile. Those kernels were insufficient to identify arithmetic-class and matrix-accumulation behavior.
+
+The diagnostic workload has now been expanded:
+
+- Vector issue classes: `VEC_ADD`, `VEC_MUL`, `VEC_FMA`, and `VEC_PERMUTE`, each modeled as a 512-bit operation and routed through the same VEC issue resource.
+- The aggregate vector stream interleaves all four classes; individual per-class streams are also emitted.
+- ME512 matrix work uses 16 output tiles, each with eight K-steps. Every K-step loads one A and one B tile and issues one dependent ME512 tile multiply-accumulate; the accumulated result is stored once per output tile.
+- The same logical operation graph is used across NEXSUS, AMD, Intel, and Apple profiles. Reference profiles map the ME512-equivalent operation to their configured matrix/vector resource.
+
+This remains an execution/issue timing model, not a numerical datapath simulator: vector opcodes currently share the profile's generic VEC latency, and ME512 MAC is one modeled tile operation. Arithmetic precision, lane-level element count, saturation/rounding, shuffle semantics, tile dimensions, accumulator format, operand banking, and numerical output validation remain open modeling work. The prior 66-cycle vector and 420-cycle ME512 results belong to the older generic/opaque workload and must not be treated as directly comparable with the expanded kernels.
+
+Regression tests for opcode-to-resource mapping, 512-bit operation width, tiled accumulation dependencies, and cross-profile retirement pass in the latest test step. Full comparison CI is still running; new cycle results will be recorded only after its comparison output is available.
+
+## 8. Next engineering steps
 
 1. Integrate the concurrent C0 → CS → EB scheduler into the main CPU fetch model without changing the 64-bit App RAM read lane.
 2. Add stage-level queue, occupancy, overlap, and backpressure metrics to the normalized cross-architecture report.
