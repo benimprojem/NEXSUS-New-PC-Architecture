@@ -253,6 +253,32 @@ class SelectedNexusProfileTests(unittest.TestCase):
         self.assertLessEqual(p["execution_topology"]["FMA_LANES"], p["units"]["FP"])
 
 
+class CachePortContentionTests(unittest.TestCase):
+    def test_shared_l2_port_serializes_pair_but_other_group_is_independent(self):
+        p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        caches = sim.build_cache_hierarchies(p, 8)
+        # L2 is shared by cores 0/1; core 2 belongs to another L2 object.
+        self.assertEqual(caches[0].reserve("L2", 0, 64), 0)
+        self.assertEqual(caches[1].reserve("L2", 0, 64), 1)
+        self.assertEqual(caches[2].reserve("L2", 0, 64), 0)
+
+    def test_l1_ports_are_private_and_multiple_ports_are_parameterized(self):
+        p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        caches = sim.build_cache_hierarchies(p, 8)
+        self.assertEqual(caches[0].reserve("L1", 0, 64), 0)
+        self.assertEqual(caches[1].reserve("L1", 0, 64), 0)
+        port = sim.CachePort(ports=2, lines_per_port_cycle=1)
+        self.assertEqual([port.reserve(0, 64) for _ in range(3)], [0, 0, 1])
+        self.assertEqual(port.requests, 3)
+        self.assertEqual(port.wait_cycles, 1)
+
+    def test_wide_request_occupies_port_for_multiple_cycles(self):
+        port = sim.CachePort(ports=1, lines_per_port_cycle=1)
+        self.assertEqual(port.reserve(0, 128, 64), 0)
+        self.assertEqual(port.reserve(0, 64, 64), 2)
+        self.assertEqual(port.reserve(2, 64, 64), 0)
+
+
 class SharedCacheGroupTests(unittest.TestCase):
     def test_working_set_prefill_uses_the_collaboration_scope_home_level(self):
         p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
