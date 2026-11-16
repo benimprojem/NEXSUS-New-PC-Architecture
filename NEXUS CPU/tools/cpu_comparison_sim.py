@@ -1193,6 +1193,11 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
     cache_hierarchies = build_cache_hierarchies(p, len(states))
     for core_id, st in enumerate(states):
         st["cache"] = cache_hierarchies[core_id]
+        # Optional untimed preloaded working set. This models operands already
+        # resident before the measured kernel begins; it is not a DRAM transfer
+        # and must not be included in the kernel's request/cycle counters.
+        for address in features.get("cache_prefill_addresses", ()):
+            st["cache"].fill(int(address), "DRAM")
         if is_nexus:
             st["fetch"] = CommandFetchModel(
                 bool(features["p0"]),
@@ -2049,12 +2054,25 @@ def run_vector_matrix_isolation_sweep(workloads: Dict[str, List[Op]]) -> dict:
         normal = simulate_cpu(target, profile, core_count, normal_features)
         isolated = simulate_cpu(target, profile, core_count,
                                 {"execution_only": True})
-        rows[key] = {"normal": normal, "execution_only": isolated}
+        mixed = target.get("vec_me512_memory_overlap", [])
+        warm_addresses = sorted({op.address for op in mixed
+                                 if op.kind in ("LOAD", "STORE", "ATOM")})
+        cache_resident = simulate_cpu(
+            {"vec_me512_memory_overlap": mixed}, profile, core_count,
+            {"execution_only": True,
+             "cache_prefill_addresses": warm_addresses},
+        ) if mixed else None
+        rows[key] = {
+            "normal": normal,
+            "execution_only": isolated,
+            "cache_resident": cache_resident,
+        }
     return {
-        "experiment": "VEC and ME512 instruction-fetch isolation",
+        "experiment": "VEC and ME512 instruction-fetch isolation with cold and preloaded-cache paths",
         "cores_per_profile": 8,
         "same_logical_workloads": list(target),
         "execution_only_definition": "Bypass instruction-fetch readiness only; retain per-core dispatch/issue, execution units, dependencies, Data RAM/cache timing and retirement.",
+        "cache_resident_definition": "Before timed simulation, preload every mixed-kernel data line into the modeled inclusive cache hierarchy on each participating core. Prefill is untimed setup; measured LOAD/STORE operations must hit L1 when the working set fits. This is a warm-cache execution case, not a claim that real hardware can preload all cache levels at zero cost.",
         "results": rows,
     }
 
