@@ -41,7 +41,7 @@ These tests are designed from the architecture contract upward. Implement them i
 | NEX-T003 | Instruction path stage rates | App RAM→C0 16 B/cycle/core; C0→CS 20 B/cycle/core; CS→EB 20 B/cycle/core; EB consume 16 B/cycle/core; queueing and overlap are explicit | VALID |
 | NEX-T004 | Data RAM bank and wide-access behavior | Per-core bandwidth contract, bank-group behavior, distinct-bank concurrency, same-bank conflicts, 128/256/512-bit accesses, stripe crossings and all-or-none admission | VALID |
 | NEX-T005 | Cache topology and sharing | 8×L1, 4×L2, 2×L3, 1×L4 per eight-core block; cross-L3-group L4 access; no false private-L1 replication for shared sets | VALID |
-| NEX-T006 | Execution resource issue and latency | INT=8, FP64=6, FMA=4, VEC=2, ME512=1 per core; independent issue throughput and dependency latency measured separately | PLANNED |
+| NEX-T006 | Execution resource issue and latency | INT=8, FP64=6, FMA=4, VEC=2, ME512=1 per core; independent issue throughput and dependency latency measured separately | IMPLEMENTED |
 | NEX-T007 | Register-bank connectivity | RA/FA/DA/MA bank widths/counts, simultaneous reads, writeback conflicts, forwarding, pair accesses and ME512 result paths | PLANNED |
 | NEX-T008 | Single-core controlled workloads | Scalar, integer, FP64, FMA, vector, ME512, branch, pointer and instruction-stream tests with operation-count invariants | PLANNED |
 | NEX-T009 | 1/2/4/8-core scaling | Same logical work per experiment, independent per-core paths, active-core accounting, scaling and fairness | PLANNED |
@@ -190,3 +190,15 @@ No new cross-architecture performance ranking is accepted until:
 - Validated workflow commit: `28508c5b6a753ec5f902880025b6a941a70389ef`
 - Result: all workflow steps passed.
 - T005 is **VALID** within the scope stated in section 3.7.
+
+
+### 3.9 NEX-T006 implementation record
+
+- Test file: `NEXUS CPU/tools/test_execution_resources_t006.py`.
+- CI integration: added to the numbered architecture-contract test step in `.github/workflows/nexus-cpu-simulator.yml`.
+- Covered: per-core INT8 / FP64-6 / FMA4 / VEC2 / ME512-1 resource counts; FMA as a subset of FP64 lanes; vector opcode routing to VEC; separate independent-issue and dependency-chain workloads for VEC and ME512; 128-bit INT pair reservation.
+- Workload invariants: VEC independent stream 256 ops and dependency chain 64 ops; ME512 independent stream and dependency chain 128 ops each. Tests assert all operations retire and dependency chains take longer than independent issue streams.
+- Test commit: `744fe1264248eb219746c3a4b3545c84680415c5`.
+- CI integration commit: `cc7d6fbc6f19644590ea87aaf8e0de9cc13eeb55`.
+- Execution status: **IMPLEMENTED**, pending CI validation. Do not mark VALID until the numbered test and full regression workflow pass on a recorded commit.
+- Scope limitation: issue/latency behavior is validated under the execution-only backend isolation. Register-file port contention, register-bank connectivity and forwarding remain NEX-T007; System Fabric internals remain deferred to NEX-T012.
