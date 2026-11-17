@@ -23,6 +23,7 @@ class CrossArchitectureComparisonT011(unittest.TestCase):
         for arch, result in self.common.items():
             self.assertEqual(result["cores_configured"], 8, arch)
             self.assertEqual(result["clock_ghz"], 3.0, arch)
+            self.assertEqual(result["aggregate_dram_bytes_per_cycle"], 512, arch)
             stream = result["kernels"]["streaming"]
             self.assertEqual(stream["ops"], len(self.workloads["streaming"]), arch)
             controller = stream["memory_controller"]
@@ -44,6 +45,8 @@ class CrossArchitectureComparisonT011(unittest.TestCase):
     def test_native_nexus_data_ram_contract_is_preserved(self):
         result = self.native["nexus_balanced_128"]
         self.assertEqual(result["cores_configured"], 8)
+        self.assertEqual(result["aggregate_dram_bytes_per_cycle"], 512)
+        self.assertEqual(result["per_core_dram_bytes_per_cycle"], 64)
         controller = result["kernels"]["streaming"]["memory_controller"]
         self.assertEqual(controller["per_core_bytes_per_cycle"], 64)
         self.assertEqual(
