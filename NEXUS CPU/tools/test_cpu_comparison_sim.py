@@ -211,7 +211,7 @@ class SharedMemoryControllerTests(unittest.TestCase):
         self.assertEqual(first["c0"]["bus_wait"], 0)
         self.assertEqual(second["c1"]["bus_wait"], 0)
 
-    def test_lockstep_cores_contend_for_one_global_bank(self):
+    def test_nexus_cores_use_independent_core_facing_data_ram_ports(self):
         profile_data = dict(sim.PROFILES["nexus_balanced_128"])
         profile_data["bank_hash"] = "low"
         profile = sim.profile_from_dict(profile_data)
@@ -220,8 +220,10 @@ class SharedMemoryControllerTests(unittest.TestCase):
             [sim.Op(0, "LOAD", address=64, width=8)],
         ]
         result = sim.simulate_multicore_streams(shards, profile, 32)
+        # NEXSUS no longer serializes these requests on one global 64-B/cycle
+        # bus. Each core has its own 64-B/cycle Fabric-facing Data RAM link.
         self.assertEqual(result["cores"][0]["ready_at"][0], 168)
-        self.assertEqual(result["cores"][1]["ready_at"][0], 169)
+        self.assertEqual(result["cores"][1]["ready_at"][0], 168)
 
     def test_lockstep_cores_use_independent_banks_in_parallel(self):
         profile_data = dict(sim.PROFILES["nexus_balanced_128"])
