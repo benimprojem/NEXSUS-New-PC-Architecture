@@ -482,7 +482,7 @@ class CacheHierarchy:
 
     def fill(self, address: int, level: str, active_core_count: int = 1,
              peer_caches: Optional[List["CacheHierarchy"]] = None,
-             core_id: int = 0):
+             core_id: int = 0, active_core_ids: Optional[List[int]] = None):
         """Complete a demand fill using NEXSUS' direct L4-to-active-group distribution.
 
         NEXSUS does not cascade L4->L3->L2->L1. A DRAM miss first installs
@@ -500,24 +500,30 @@ class CacheHierarchy:
                 if self.l4 is None:
                     raise ValueError("NEXSUS DataRAM miss requires a shared L4 home")
                 self.l4.insert(line)
-            active = max(1, int(active_core_count))
-            if active >= 8:
+            participants = sorted(set(active_core_ids or [core_id]))
+            active = len(participants)
+            # Sharing is inferred only when those cores requested this same
+            # line together; merely having 8 cores configured is not enough.
+            if active >= 8 and participants == list(range(8)):
                 if peer_caches is None or len(peer_caches) < 8:
                     raise ValueError("8-core L4 distribution requires all eight destination caches")
-                # Fan-out is parallel: all eight private L1s receive the line
-                # at the same completion event, not as eight serialized reads.
+                # One completion event fans out to all eight private L1s.
                 for destination in peer_caches[:8]:
                     destination.l1.insert(line)
-            elif active >= 4:
-                if self.l3 is None:
-                    raise ValueError("4-core group requires a shared L3")
+            elif active >= 4 and participants == list(range((participants[0] // 4) * 4,
+                                                             (participants[0] // 4) * 4 + 4)):
                 self.l3.insert(line)
-            elif active >= 2:
-                if self.l2 is None:
-                    raise ValueError("2-core group requires a shared L2")
+            elif active >= 2 and participants == list(range((participants[0] // 2) * 2,
+                                                             (participants[0] // 2) * 2 + 2)):
                 self.l2.insert(line)
             else:
-                self.l1.insert(line)
+                # No complete aligned sharing group: keep the line private
+                # to the participating cores rather than broadcasting system-wide.
+                if peer_caches is not None:
+                    for participant in participants:
+                        peer_caches[participant].l1.insert(line)
+                else:
+                    self.l1.insert(line)
             return
 
         # Conventional reference-CPU inclusive allocation model.
@@ -2045,10 +2051,19 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 st["fetch"].complete(cycle)
         completed_fills = [x for x in pending_fills if x[0] <= cycle]
         pending_fills = [x for x in pending_fills if x[0] > cycle]
-        for _, core_id, address, level in completed_fills:
-            states[core_id]["cache"].fill(
-                address, level, active_core_count=len(states),
-                peer_caches=cache_hierarchies, core_id=core_id
+        # Coalesce distribution participants by identical line and completion
+        # cycle. A configured core that did not request this line is not a
+        # destination in the active sharing group.
+        fill_groups = {}
+        for ready_cycle, core_id, address, level in completed_fills:
+            key = (ready_cycle, address, level)
+            fill_groups.setdefault(key, []).append(core_id)
+        for (_, address, level), core_ids in fill_groups.items():
+            owner = min(core_ids)
+            states[owner]["cache"].fill(
+                address, level, active_core_count=len(core_ids),
+                peer_caches=cache_hierarchies, core_id=owner,
+                active_core_ids=core_ids
             )
         pending_memory = []
         mshr_capacity = features.get("data_mshr_entries")
