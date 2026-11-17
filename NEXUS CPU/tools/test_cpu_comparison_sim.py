@@ -1874,12 +1874,12 @@ class EightCoreArchitectureScalingTests(unittest.TestCase):
 
 
 class PerCoreCodeFlowTopologyTests(unittest.TestCase):
-    def test_each_core_has_independent_64bit_c0_cs_eb_rates(self):
+    def test_each_core_has_independent_registered_c0_cs_eb_rates(self):
         fetchers = [sim.CommandFetchModel(True, codeflow_enabled=True, core_id=i)
                     for i in range(8)]
         for fetch in fetchers:
-            self.assertEqual(fetch.c0_to_cs_bytes_per_cycle, 16)
-            self.assertEqual(fetch.cs_to_eb_bytes_per_cycle, 16)
+            self.assertEqual(fetch.c0_to_cs_bytes_per_cycle, 20)
+            self.assertEqual(fetch.cs_to_eb_bytes_per_cycle, 20)
         self.assertEqual(len({id(fetch.p0_buffers) for fetch in fetchers}), 8)
         self.assertEqual(len({id(fetch) for fetch in fetchers}), 8)
 
