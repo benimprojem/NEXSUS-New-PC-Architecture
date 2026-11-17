@@ -2368,6 +2368,7 @@ def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=N
             "register_architecture": ({"RA": {"count": 32, "width_bits": 64}, "FA": {"count": 32, "width_bits": 64}, "DA": {"count": 32, "width_bits": 64}, "MA": {"count": 32, "width_bits": 256}, "selector_bits": 5, "total_physical_bytes": 1792} if p.name.startswith("NEXSUS CPU") else None),
             "cpu_ram_reference_clock_ghz": p.frequency_ghz,
             "aggregate_dram_bytes_per_cycle": aggregate_dram_bandwidth,
+            "dram_latency_cycles": p.dram_lat,
             "per_core_dram_bytes_per_cycle": (p.data_ram_bytes_per_cycle_per_core or None),
             "dram_bandwidth_policy": ("per-core Fabric-facing DataRAM ports; aggregate capacity scales with active cores" if p.data_ram_bytes_per_cycle_per_core > 0 else "shared lockstep controller; work-conserving aggregate bus; no static per-core quota"),
             "kernels": results, "total_cycles": total_cycles, "total_ops": total_ops,
