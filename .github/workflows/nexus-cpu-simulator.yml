@@ -67,6 +67,7 @@ jobs:
           python -m py_compile "NEXUS CPU/tools/test_instruction_path_rates_t003.py"
           python -m py_compile "NEXUS CPU/tools/data_ram_bank_model.py"
           python -m py_compile "NEXUS CPU/tools/test_data_ram_bank_t004.py"
+          python -m py_compile "NEXUS CPU/tools/test_cache_topology_t005.py"
       - name: Run numbered architecture contract tests
         working-directory: "NEXUS CPU/tools"
         run: |
@@ -74,6 +75,7 @@ jobs:
           python test_fabric_memory_paths_t002.py
           python test_instruction_path_rates_t003.py
           python test_data_ram_bank_t004.py
+          python test_cache_topology_t005.py
       - name: Run regression tests
         working-directory: "NEXUS CPU/tools"
         run: |
