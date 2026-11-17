@@ -128,7 +128,10 @@ These are simulator operating points, not fixed silicon timing or final RTL para
 - App RAM is the instruction source. Data RAM stores mutable data, task state, and protected OS/context backing.
 - Data RAM is not an instruction-fetch source.
 - App RAM and Data RAM must not be collapsed into one global controller or queue.
-- Physical Data RAM bank topology/address mapping, implementation port structure, and Fabric arbitration/fairness policy require a separate focused design decision.
+- App RAM and Data RAM are attached to the shared System Fabric memory architecture; memory is a fabric resource, not a private memory island owned by one CPU. The Fabric may serve multiple CPU/system clients, with arbitration and QoS across requesters.
+- The minimum bank-group organization for both App RAM and Data RAM is **8 banks × 64 bit per bank = 512 bit (64 B) aggregate group width**. This is eight 64-bit banks, not 64 banks. A 512-bit aligned stripe spans all eight banks.
+- The eight-core CPU block retains eight independent 64 B/cycle core-facing connections per memory system (512 B/cycle aggregate connection capacity). The physical number of bank groups and how the Fabric provisions enough aggregate service across multiple CPU/system clients remain OPEN; do not infer one group per core or a total of only eight banks.
+- Bank mapping/hash, physical port implementation, group replication/placement, and Fabric arbitration/fairness/QoS remain OPEN for measurement and design.
 
 ### 5.2 Data RAM bandwidth and bank group
 
@@ -136,13 +139,13 @@ These are simulator operating points, not fixed silicon timing or final RTL para
 |---|---:|---|
 | Per-core Data RAM connection | 64 B/cycle/core | **FIXED** |
 | Eight-core aggregate connection capacity | 512 B/cycle | **FIXED** |
-| Banks per bank group | 8 | **BASELINE** |
+| Banks per bank group (App RAM and Data RAM) | 8 | **BASELINE** |
 | Local bank slice | 64 bit (8 B) | **BASELINE** |
 | Aggregate group width | 512 bit (64 B) = 64 B/cycle per group | **BASELINE** |
 | Interleave granule | 8 B | **BASELINE** |
 | 512-bit aligned transfer | One 64-byte stripe across 8 banks | **BASELINE** |
 
-Eight banks is a per-group baseline, not the total number of banks in the whole memory system. Additional groups may be used for capacity and concurrency. Folded bank selection is the current simulator candidate; final physical address mapping remains open to validation.
+Eight banks × 64 bit is the minimum bank-group baseline for both App RAM and Data RAM. It is not a claim that the whole fabric-connected memory system contains only eight banks. The motherboard concept diagram (`Anakart_temsili_tasarim.jpg`) shows Data MOSRAM resources distributed around the System Fabric, consistent with fabric-attached shared memory rather than a CPU-private bank island. The total number and placement of bank groups across the fabric remain OPEN; do not assume 8 groups per core. Folded bank selection is only a simulator candidate; final physical address mapping remains open to validation.
 
 ### 5.3 Already specified memory behavior
 
