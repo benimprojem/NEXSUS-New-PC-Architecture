@@ -39,9 +39,17 @@ def run_sweep(scale: int = 1) -> dict:
     for group in range(8):
         root = SIM.add_op(stress_ops, "LOAD", address=0x9000000 + group * 4096,
                           width=64, label="scheduler window stress root load")
+        terminals = []
+        for index in range(64):
+            terminals.append(SIM.add_op(
+                stress_ops, "INT", (root,),
+                label="scheduler window stress dependent integer op"))
         for index in range(256):
-            SIM.add_op(stress_ops, "INT", (root,),
-                       label="scheduler window stress dependent integer op")
+            terminals.append(SIM.add_op(
+                stress_ops, "INT", label="scheduler window stress independent integer op"))
+        # Join keeps each per-core stress group together during component partitioning.
+        SIM.add_op(stress_ops, "INT", tuple(terminals),
+                   label="scheduler window stress completion join")
     all_workloads["scheduler_window_stress"] = stress_ops
 
     missing = sorted(set(KERNELS) - set(all_workloads))
