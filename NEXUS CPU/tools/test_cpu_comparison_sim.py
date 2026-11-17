@@ -374,7 +374,7 @@ class SharedCacheGroupTests(unittest.TestCase):
         self.assertIsNot(caches[0].l1, caches[1].l1)
         self.assertIs(caches[0].l2, caches[1].l2)
         self.assertIsNot(caches[0].l2, caches[2].l2)
-        caches[0].fill(0x1000, "DRAM")
+        caches[0].fill(0x1000, "DRAM", active_core_count=2, peer_caches=caches, core_id=0)
         self.assertEqual(caches[1].probe(0x1000)[1], "L2")
         self.assertEqual(caches[2].probe(0x1000)[1], "L3")
 
@@ -383,7 +383,7 @@ class SharedCacheGroupTests(unittest.TestCase):
         caches = sim.build_cache_hierarchies(p, 8)
         self.assertIs(caches[0].l3, caches[3].l3)
         self.assertIsNot(caches[0].l3, caches[4].l3)
-        caches[0].fill(0x2000, "DRAM")
+        caches[0].fill(0x2000, "DRAM", active_core_count=4, peer_caches=caches, core_id=0)
         self.assertEqual(caches[3].probe(0x2000)[1], "L3")
         self.assertEqual(caches[4].probe(0x2000)[1], "L4")
 
@@ -453,7 +453,7 @@ class SharedCacheGroupTests(unittest.TestCase):
         latency, level = caches[0].probe(0x4000)
         self.assertEqual(level, "DRAM")
         self.assertEqual(caches[1].probe(0x4000)[1], "DRAM")
-        caches[0].fill(0x4000, level)
+        caches[0].fill(0x4000, level, active_core_count=2, peer_caches=caches, core_id=0)
         self.assertEqual(caches[1].probe(0x4000)[1], "L2")
 
 
