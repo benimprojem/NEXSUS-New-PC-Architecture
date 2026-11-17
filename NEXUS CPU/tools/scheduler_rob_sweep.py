@@ -24,7 +24,7 @@ KERNELS = (
     "scalar_control", "pointer_graph", "numeric_tile", "streaming",
     "parallel_tasks", "integer_throughput", "integer128_throughput",
     "fp_throughput", "branch_stress", "tw_hot_workset", "cs_sequential",
-    "vector_throughput", "fma_throughput",
+    "vector_throughput", "fma_throughput", "scheduler_window_stress",
 )
 
 
@@ -32,6 +32,18 @@ def run_sweep(scale: int = 1) -> dict:
     if scale < 1:
         raise ValueError("scale must be >= 1")
     all_workloads = SIM.build_composite_workload(scale)
+    # One long-latency root load per independent component, followed by a wide
+    # fan-out of dependent integer ops. This fills the scheduler while keeping
+    # the ROB resident, exposing the 64-vs-128 window difference.
+    stress_ops = []
+    for group in range(8):
+        root = SIM.add_op(stress_ops, "LOAD", address=0x9000000 + group * 4096,
+                          width=64, label="scheduler window stress root load")
+        for index in range(256):
+            SIM.add_op(stress_ops, "INT", (root,),
+                       label="scheduler window stress dependent integer op")
+    all_workloads["scheduler_window_stress"] = stress_ops
+
     missing = sorted(set(KERNELS) - set(all_workloads))
     if missing:
         raise AssertionError(f"missing sweep kernels: {missing}")
