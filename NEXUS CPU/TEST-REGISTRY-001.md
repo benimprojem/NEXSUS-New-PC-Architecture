@@ -38,7 +38,7 @@ These tests are designed from the architecture contract upward. Implement them i
 |---|---|---|---|
 | NEX-T001 | Architecture configuration contract | Simulator profile explicitly declares fixed per-core resources, cache sizes/groups, App RAM and Data RAM path capacities, and 8×64-bit bank-group baseline | IMPLEMENTED |
 | NEX-T002 | Independent App RAM and Data RAM paths | Both paths operate concurrently; each core has 64 B/cycle on each path; 8-core aggregate capacity is 512 B/cycle per memory system; no shared 64 B/cycle bottleneck | IMPLEMENTED |
-| NEX-T003 | Instruction path stage rates | App RAM→C0 16 B/cycle/core; C0→CS 20 B/cycle/core; CS→EB 20 B/cycle/core; EB consume 16 B/cycle/core; queueing and overlap are explicit | IMPLEMENTED |
+| NEX-T003 | Instruction path stage rates | App RAM→C0 16 B/cycle/core; C0→CS 20 B/cycle/core; CS→EB 20 B/cycle/core; EB consume 16 B/cycle/core; queueing and overlap are explicit | VALID |
 | NEX-T004 | Data RAM bank and wide-access behavior | Per-core bandwidth contract, bank-group behavior, distinct-bank concurrency, same-bank conflicts, 128/256/512-bit accesses, stripe crossings and all-or-none admission | PLANNED |
 | NEX-T005 | Cache topology and sharing | 8×L1, 4×L2, 2×L3, 1×L4 per eight-core block; cross-L3-group L4 access; no false private-L1 replication for shared sets | PLANNED |
 | NEX-T006 | Execution resource issue and latency | INT=8, FP64=6, FMA=4, VEC=2, ME512=1 per core; independent issue throughput and dependency latency measured separately | PLANNED |
@@ -46,7 +46,7 @@ These tests are designed from the architecture contract upward. Implement them i
 | NEX-T008 | Single-core controlled workloads | Scalar, integer, FP64, FMA, vector, ME512, branch, pointer and instruction-stream tests with operation-count invariants | PLANNED |
 | NEX-T009 | 1/2/4/8-core scaling | Same logical work per experiment, independent per-core paths, active-core accounting, scaling and fairness | PLANNED |
 | NEX-T010 | Mixed full-architecture workloads | Execution + registers + caches + App RAM + Data RAM under concurrent load; isolated and mixed runs | PLANNED |
-| NEX-T011 | Cross-architecture comparison | Only after T001–T010 foundations are valid; identical logical work and documented, defensible peer assumptions | PLANNED |\n| NEX-T012 | System Fabric 2× clock and time-interleaved scheduling | Two Fabric ticks per CPU cycle; destination queues progress without false shared-bus serialization; link bandwidth is not multiplied merely by clock ratio; fairness and backpressure are explicit | PLANNED |
+| NEX-T011 | Cross-architecture comparison | Only after T001–T010 foundations are valid; identical logical work and documented, defensible peer assumptions | PLANNED |\n| NEX-T012 | System Fabric 2× clock and time-interleaved scheduling | Two Fabric ticks per CPU cycle; destination queues progress without false shared-bus serialization; link bandwidth is not multiplied merely by clock ratio; fairness and backpressure are explicit | DEFERRED — final integrated-system phase |
 
 ### 3.1 NEX-T001 implementation record
 
@@ -141,4 +141,14 @@ No new cross-architecture performance ranking is accepted until:
 - Simulator change: `CommandFetchModel` defaults and NEXSUS profile construction now use C0→CS = 20 B/cycle/core and CS→EB = 20 B/cycle/core, matching the Architecture Decision Register.
 - Test verifies the separate 64-B/cycle AppRAM link, the 16-B/cycle AppRAM→C0 and EB stage rates, and both 20-B/cycle middle stages using a 2-KiB page service-time calculation.
 - Implementation commits: simulator `70a1cfd02a75519348b4528cef05b7b3712af9b2`; test `19c9b9fb78783d3c67fddc7edc254ad2bee99f78`.
-- Validation status: **IMPLEMENTED**, pending CI. Multi-page queue overlap and detailed EB drain timing are explicitly not claimed as validated by this rate-contract test.
+- Validation status: **VALID** on CI run `44094128217` (commit `843e92d30ed6bdab7f7ec3c6659941a04a1c2ddc`); all 37 workflow steps completed successfully.
+- Scope limitation: this validates the registered stage-rate contract and the stated 2-KiB service-time calculation. Multi-page queue overlap and detailed EB drain timing are explicitly not claimed as validated by this rate-contract test.
+
+
+### 3.4 NEX-T003 validation record
+
+- CI run: [44094128217](https://github.com/benimprojem/NEXSUS-New-PC-Architecture/actions/runs/44094128217)
+- Validated commit: `843e92d30ed6bdab7f7ec3c6659941a04a1c2ddc`
+- Result: all workflow steps passed, including numbered architecture contract tests, regressions, comparison smoke test, and existing design-space sweeps.
+- T003 is marked **VALID** only for its explicit stage-rate contract and calculation scope; it does not certify detailed multi-page frontend overlap.
+- NEX-T012 is intentionally deferred until the final integrated-system phase, per the current testing sequence. CPU tests proceed with System Fabric assumed operational.
