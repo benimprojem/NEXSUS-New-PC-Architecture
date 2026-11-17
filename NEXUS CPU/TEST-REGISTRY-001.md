@@ -44,7 +44,7 @@ These tests are designed from the architecture contract upward. Implement them i
 | NEX-T006 | Execution resource issue and latency | INT=8, FP64=6, FMA=4, VEC=2, ME512=1 per core; independent issue throughput and dependency latency measured separately | VALID |
 | NEX-T007 | Register-bank connectivity | RA/FA/DA/MA bank widths/counts, simultaneous reads, writeback conflicts, forwarding, pair accesses and ME512 result paths | VALID |
 | NEX-T008 | Single-core controlled workloads | Scalar, integer, FP64, FMA, vector, ME512, branch, pointer and instruction-stream tests with operation-count invariants | VALID |
-| NEX-T009 | 1/2/4/8-core scaling | Same logical work per experiment, independent per-core paths, active-core accounting, scaling and fairness | PLANNED |
+| NEX-T009 | 1/2/4/8-core scaling | Same logical work per experiment, independent per-core paths, active-core accounting, scaling and fairness | IMPLEMENTED |
 | NEX-T010 | Mixed full-architecture workloads | Execution + registers + caches + App RAM + Data RAM under concurrent load; isolated and mixed runs | PLANNED |
 | NEX-T011 | Cross-architecture comparison | Only after T001–T010 foundations are valid; identical logical work and documented, defensible peer assumptions | PLANNED |\n| NEX-T012 | System Fabric 2× clock and time-interleaved scheduling | Two Fabric ticks per CPU cycle; destination queues progress without false shared-bus serialization; link bandwidth is not multiplied merely by clock ratio; fairness and backpressure are explicit | DEFERRED — final integrated-system phase |
 
@@ -242,3 +242,13 @@ No new cross-architecture performance ranking is accepted until:
 - CI integration: compile and numbered test steps added to `.github/workflows/nexus-cpu-simulator.yml`.
 - Validation: **VALID** on CI run [44124177964](https://github.com/benimprojem/NEXSUS-New-PC-Architecture/actions/runs/44124177964), head commit `d72ff68b428284d5020d106e1cb482abe587e019`; all 75 workflow steps passed, including compile, numbered contract tests, regressions, comparison smoke test and existing sweep/artifact stages.\n- Scope limitation: validates controlled single-core workload execution and operation-count/cycle invariants only. It does not establish multicore scaling, fairness or full mixed-resource contention; those remain T009/T010.
 \n\n### 3.14 NEX-T008 validation record\n\n- CI run: [44124177964](https://github.com/benimprojem/NEXSUS-New-PC-Architecture/actions/runs/44124177964)\n- Validated commit: `d72ff68b428284d5020d106e1cb482abe587e019`\n- Result: simulator job completed successfully; all 75 workflow steps passed.\n- T008 is **VALID** within the single-core controlled workload and operation-count scope in section 3.13.\n
+
+### 3.15 NEX-T009 implementation record
+
+- Test: `NEXUS CPU/tools/test_core_scaling_t009.py`.
+- Core counts: 1, 2, 4 and 8, using the same deterministic workload revision and exact operation count at every count.
+- Covered: independent integer work distribution across all configured cores; streaming DataRAM accounting by core; separate CodeFlow/AppRAM accounting; per-core 64 B/cycle capacity and aggregate 64×active-core capacity on both memory paths.
+- Fairness/accounting invariant: streaming DataRAM bytes must be attributed to every active core, and the sum of per-core bytes must equal controller transferred bytes. This test does not select physical bank-group count, placement, ports or Fabric arbitration policy.
+- AppRAM and DataRAM remain separate controllers and are checked independently. No shared aggregate 64 B/cycle bus is introduced.
+- CI integration: compile and numbered architecture-contract steps added to `.github/workflows/nexus-cpu-simulator.yml`.
+- Status: **IMPLEMENTED**, pending CI validation. No architecture resource counts or bandwidth values were changed.
