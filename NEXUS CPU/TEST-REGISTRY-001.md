@@ -46,7 +46,7 @@ These tests are designed from the architecture contract upward. Implement them i
 | NEX-T008 | Single-core controlled workloads | Scalar, integer, FP64, FMA, vector, ME512, branch, pointer and instruction-stream tests with operation-count invariants | VALID |
 | NEX-T009 | 1/2/4/8-core scaling | Same logical work per experiment, independent per-core paths, active-core accounting, scaling and fairness | VALID |
 | NEX-T010 | Mixed full-architecture workloads | Execution + registers + caches + App RAM + Data RAM under concurrent load; isolated and mixed runs | VALID |
-| NEX-T011 | Cross-architecture comparison | Identical logical work; native, 8-core normalized and common-data-memory modes; explicit fairness and bandwidth checks | IMPLEMENTED |\n| NEX-T012 | System Fabric 2× clock and time-interleaved scheduling | Two Fabric ticks per CPU cycle; destination queues progress without false shared-bus serialization; link bandwidth is not multiplied merely by clock ratio; fairness and backpressure are explicit | DEFERRED — final integrated-system phase |
+| NEX-T011 | Cross-architecture comparison | Identical logical work; native, 8-core normalized and common-data-memory modes; explicit fairness and bandwidth checks | VALID |\n| NEX-T012 | System Fabric 2× clock and time-interleaved scheduling | Two Fabric ticks per CPU cycle; destination queues progress without false shared-bus serialization; link bandwidth is not multiplied merely by clock ratio; fairness and backpressure are explicit | DEFERRED — final integrated-system phase |
 
 ### 3.1 NEX-T001 implementation record
 
@@ -123,7 +123,7 @@ The following are audit findings, not architecture changes:
 ## 7. Acceptance gate
 
 No new cross-architecture performance ranking is accepted until:
-- NEX-T001 through NEX-T010 are VALID;
+- NEX-T001 through NEX-T011 are VALID;
 - all compared workloads pass operation-count and dependency checks;
 - per-core and aggregate bandwidth accounting is explicit in every report;
 - no test uses a shared aggregate 64 B/cycle Data RAM bus for the eight-core NEXSUS block;
@@ -133,6 +133,7 @@ No new cross-architecture performance ranking is accepted until:
 ## 8. Change log
 
 - 2026-11-17: Initial registry created. Existing test files and reports are retained as historical records. New architecture-contract tests NEX-T001 through NEX-T011 are planned.
+- 2026-11-17: NEX-T011 marked VALID after full CI run 44133980360 and generated benchmark artifact audit. Common-memory bandwidth override and all 37-kernel operation-count invariants verified.
 
 
 ### 3.3 NEX-T003 implementation record
@@ -284,5 +285,7 @@ No new cross-architecture performance ranking is accepted until:
 - Correction: in common-memory mode only, NEXSUS DataRAM is overridden to 4 B/cycle/core × 8 cores = 32 B/cycle aggregate. Native NEXSUS DataRAM remains 64 B/cycle/core = 512 B/cycle aggregate. AppRAM/CodeFlow remains a separate instruction-delivery path and is not normalized by this data-memory control.
 - T011 test checks eight-core/3.0-GHz normalization, 32 B/cycle aggregate data-memory capacity for all four profiles, NEXSUS per-core byte accounting, equal operation counts, and preservation of the native NEXSUS 64 B/cycle/core contract.
 - CI integration: test is compiled and run in the numbered architecture test stage after T010.
-- Status: **IMPLEMENTED**, pending CI validation. No approved architecture values were changed.
+- Status: **VALID** on CI run [44133980360](https://github.com/benimprojem/NEXSUS-New-PC-Architecture/actions/runs/44133980360), validated commit `129299e4f57c37bca5314a39e3ee8f7f1f936d12`; the complete workflow finished successfully.
+- Artifact audit: `nexus-full-architecture-benchmark/full-architecture-results.json` and `.md` from artifact `nexus-cpu-comparison-results` (artifact ID `14350938577`). All 37 kernels have identical logical operation counts across all four profiles in all three comparison modes. In common-memory mode, all profiles are eight-core, 3.0-GHz and 32 B/cycle aggregate data-memory configurations; NEXSUS controller reports 4 B/cycle/core and 32 B/cycle aggregate. Native NEXSUS still reports 64 B/cycle/core and 512 B/cycle aggregate. The report records the common-memory streaming result as 1,043 cycles for NEXSUS versus 920 cycles for AMD, Intel and Apple; no architecture ranking is inferred from summed kernel cycles.
+- Status scope: **VALID** for simulator-level comparison fairness, workload operation-count equivalence, and bandwidth accounting. This is not physical-silicon validation and does not certify System Fabric internals.
 - Scope boundary: simulator-level comparison fairness only. This does not validate physical silicon or System Fabric internals. System Fabric is assumed operational; T012 Fabric integration remains deferred and is not part of this CPU comparison phase.
