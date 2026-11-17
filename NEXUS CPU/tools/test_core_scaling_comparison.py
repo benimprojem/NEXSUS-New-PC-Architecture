@@ -29,6 +29,7 @@ for policy in policies:
         assert set(run) == archs
         assert {row["cores_configured"] for row in run.values()} == {count}
         assert {row["aggregate_dram_bytes_per_cycle"] for row in run.values()} == {512}
+        assert run["nexus_balanced_128"]["per_core_dram_bytes_per_cycle"] == 64
         expected_latency = {
             "amd_9950x3d2": 120,
             "intel_xeon_698x": 150,
