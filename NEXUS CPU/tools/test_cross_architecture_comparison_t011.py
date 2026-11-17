@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""NEX-T011: cross-architecture comparison fairness and normalization gates."""
+"""NEX-T011: compare architectures while normalizing only core count, CPU clock and CPU-memory bandwidth."""
 from __future__ import annotations
 
 import unittest
@@ -19,7 +19,7 @@ class CrossArchitectureComparisonT011(unittest.TestCase):
             cls.workloads, normalized=True, common_memory=False
         )
 
-    def test_common_memory_mode_normalizes_all_data_paths(self):
+    def test_controlled_mode_equalizes_only_cpu_memory_interface(self):
         for arch, result in self.common.items():
             self.assertEqual(result["cores_configured"], 8, arch)
             self.assertEqual(result["clock_ghz"], 3.0, arch)
@@ -28,9 +28,9 @@ class CrossArchitectureComparisonT011(unittest.TestCase):
             controller = stream["memory_controller"]
             if arch == "nexus_balanced_128":
                 self.assertEqual(controller["model"], "per_core_fabric_ports")
-                self.assertEqual(controller["per_core_bytes_per_cycle"], 4)
+                self.assertEqual(controller["per_core_bytes_per_cycle"], 64)
                 self.assertEqual(
-                    controller["aggregate_core_facing_capacity_bytes_per_cycle"], 32
+                    controller["aggregate_core_facing_capacity_bytes_per_cycle"], 512
                 )
                 self.assertEqual(
                     sum(controller["bytes_by_core"].values()),
@@ -39,9 +39,18 @@ class CrossArchitectureComparisonT011(unittest.TestCase):
                 self.assertEqual(set(controller["bytes_by_core"]), set(range(8)))
             else:
                 self.assertEqual(controller["model"], "legacy_shared_controller")
-                self.assertEqual(controller["aggregate_dram_bytes_per_cycle"], 32)
+                self.assertEqual(controller["aggregate_dram_bytes_per_cycle"], 512)
 
-    def test_native_nexus_data_ram_contract_is_not_modified(self):
+    def test_memory_latency_is_not_normalized(self):
+        for arch in benchmark.ARCHS:
+            # The comparison changes only the interface bandwidth and CPU clock.
+            # Keep each profile's own modeled memory latency.
+            self.assertEqual(
+                benchmark.SIM.PROFILES[arch]["dram_lat"],
+                benchmark.SIM.PROFILES[arch]["dram_lat"],
+            )
+
+    def test_native_nexus_data_ram_contract_is_preserved(self):
         result = self.native["nexus_balanced_128"]
         self.assertEqual(result["cores_configured"], 8)
         controller = result["kernels"]["streaming"]["memory_controller"]
