@@ -36,12 +36,12 @@ These tests are designed from the architecture contract upward. Implement them i
 
 | ID | Test scope | Required proof | Initial status |
 |---|---|---|---|
-| NEX-T001 | Architecture configuration contract | Simulator profile explicitly declares fixed per-core resources, cache sizes/groups, App RAM and Data RAM path capacities, and 8×64-bit bank-group baseline | IMPLEMENTED |
-| NEX-T002 | Independent App RAM and Data RAM paths | Both paths operate concurrently; each core has 64 B/cycle on each path; 8-core aggregate capacity is 512 B/cycle per memory system; no shared 64 B/cycle bottleneck | IMPLEMENTED |
+| NEX-T001 | Architecture configuration contract | Simulator profile explicitly declares fixed per-core resources, cache sizes/groups, App RAM and Data RAM path capacities, and 8×64-bit bank-group baseline | VALID |
+| NEX-T002 | Independent App RAM and Data RAM paths | Both paths operate concurrently; each core has 64 B/cycle on each path; 8-core aggregate capacity is 512 B/cycle per memory system; no shared 64 B/cycle bottleneck | VALID |
 | NEX-T003 | Instruction path stage rates | App RAM→C0 16 B/cycle/core; C0→CS 20 B/cycle/core; CS→EB 20 B/cycle/core; EB consume 16 B/cycle/core; queueing and overlap are explicit | VALID |
 | NEX-T004 | Data RAM bank and wide-access behavior | Per-core bandwidth contract, bank-group behavior, distinct-bank concurrency, same-bank conflicts, 128/256/512-bit accesses, stripe crossings and all-or-none admission | VALID |
 | NEX-T005 | Cache topology and sharing | 8×L1, 4×L2, 2×L3, 1×L4 per eight-core block; cross-L3-group L4 access; no false private-L1 replication for shared sets | VALID |
-| NEX-T006 | Execution resource issue and latency | INT=8, FP64=6, FMA=4, VEC=2, ME512=1 per core; independent issue throughput and dependency latency measured separately | IMPLEMENTED |
+| NEX-T006 | Execution resource issue and latency | INT=8, FP64=6, FMA=4, VEC=2, ME512=1 per core; independent issue throughput and dependency latency measured separately | VALID |
 | NEX-T007 | Register-bank connectivity | RA/FA/DA/MA bank widths/counts, simultaneous reads, writeback conflicts, forwarding, pair accesses and ME512 result paths | PLANNED |
 | NEX-T008 | Single-core controlled workloads | Scalar, integer, FP64, FMA, vector, ME512, branch, pointer and instruction-stream tests with operation-count invariants | PLANNED |
 | NEX-T009 | 1/2/4/8-core scaling | Same logical work per experiment, independent per-core paths, active-core accounting, scaling and fairness | PLANNED |
@@ -55,7 +55,7 @@ These tests are designed from the architecture contract upward. Implement them i
 - Profile fields added: per-core App/Data RAM bandwidth, 8-bank group counts, 64-bit bank slice, 512-bit group width, shared-Fabric declaration, and explicit cache sharing group sizes.
 - Implementation commit: `3cf7a7262adcece9f1bb4f7d3d9ffcf3ce6616b6`
 - Simulator profile commit: `217971918c7c06f18c49de6e05891b181b39fca0`
-- Execution status: not yet run in CI; therefore **IMPLEMENTED**, not VALID.
+- Validation: **VALID** on CI run `44118299885` (commit `cc7d6fbc6f19644590ea87aaf8e0de9cc13eeb55`); the numbered architecture-contract test step and full workflow passed.
 - Scope limitation: configuration declarations only. Runtime Data RAM service and Fabric arbitration remain for NEX-T002/NEX-T004.
 
 ### 3.2 NEX-T002 implementation record
@@ -67,7 +67,7 @@ These tests are designed from the architecture contract upward. Implement them i
 - Profile dataclass compatibility commit: `d2faac5049b99b56c464011a55c97f6954f837ba`
 - Test commit: `1a957cb7cc2a4b5e24b55453d38f48d111317df3`
 - CI workflow commit: `ffcff089969594180a03c60da709d636a936945c`
-- Execution status: queued for CI; therefore **IMPLEMENTED**, not VALID.
+- Validation: **VALID** on CI run `44118299885` (commit `cc7d6fbc6f19644590ea87aaf8e0de9cc13eeb55`); both independent-path tests and the full workflow passed.
 - Scope: validates core-facing link capacity and App/Data path independence. It deliberately does not claim that one 8×64-bit physical bank group can satisfy all eight cores simultaneously. Total bank-group count/placement, physical port replication, and multi-client Fabric arbitration/QoS remain open for NEX-T004 and follow-up tests.
 
 ### 3.3 NEX-T012 architecture definition\n\n- Architectural decision: System Fabric clock = 2× CPU core clock.\n- Scheduling model: two Fabric scheduling ticks are available per CPU cycle; requests may be time-interleaved across destination queues.\n- The model must distinguish scheduler opportunity from physical link bandwidth and destination service capacity.\n- Required tests: two-tick cadence; alternating destinations; same-destination queue contention; independent destination progress; backpressure; fairness under sustained mixed traffic; no implicit 2× link-bandwidth multiplier.\n- Execution status: **PLANNED**. Exact lane width, queue depth, multi-client arbitration, and destination service curves remain open.\n\n## 4. Historical test files — retained, not yet re-certified
@@ -200,5 +200,14 @@ No new cross-architecture performance ranking is accepted until:
 - Workload invariants: VEC independent stream 256 ops and dependency chain 64 ops; ME512 independent stream and dependency chain 128 ops each. Tests assert all operations retire and dependency chains take longer than independent issue streams.
 - Test commit: `744fe1264248eb219746c3a4b3545c84680415c5`.
 - CI integration commit: `cc7d6fbc6f19644590ea87aaf8e0de9cc13eeb55`.
-- Execution status: **IMPLEMENTED**, pending CI validation. Do not mark VALID until the numbered test and full regression workflow pass on a recorded commit.
+- Validation: **VALID** on CI run `44118299885` (commit `cc7d6fbc6f19644590ea87aaf8e0de9cc13eeb55`); all 75 workflow steps completed successfully, including the numbered T001–T006 contract tests, full regression, VEC/ME512 isolation, comparison suites, scaling tests and benchmark artifact generation.
 - Scope limitation: issue/latency behavior is validated under the execution-only backend isolation. Register-file port contention, register-bank connectivity and forwarding remain NEX-T007; System Fabric internals remain deferred to NEX-T012.
+
+
+### 3.10 NEX-T001 / T002 / T006 validation consolidation
+
+- CI run: [44118299885](https://github.com/benimprojem/NEXSUS-New-PC-Architecture/actions/runs/44118299885)
+- Validated commit: `cc7d6fbc6f19644590ea87aaf8e0de9cc13eeb55`
+- Result: all 75 workflow steps passed. The numbered contract step explicitly executed T001, T002, T003, T004, T005 and T006; the full regression and downstream comparison/sweep steps also passed.
+- T001 and T002 are now **VALID** within their recorded configuration-contract and independent core-facing memory-path scopes. This does not close physical bank-group placement, port replication, or Fabric arbitration/QoS questions.
+- T006 is now **VALID** within its execution-resource routing, independent issue, dependency-latency and 128-bit INT pair-reservation scope. Register-file connectivity and forwarding remain NEX-T007.
