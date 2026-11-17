@@ -46,7 +46,7 @@ These tests are designed from the architecture contract upward. Implement them i
 | NEX-T008 | Single-core controlled workloads | Scalar, integer, FP64, FMA, vector, ME512, branch, pointer and instruction-stream tests with operation-count invariants | VALID |
 | NEX-T009 | 1/2/4/8-core scaling | Same logical work per experiment, independent per-core paths, active-core accounting, scaling and fairness | VALID |
 | NEX-T010 | Mixed full-architecture workloads | Execution + registers + caches + App RAM + Data RAM under concurrent load; isolated and mixed runs | VALID |
-| NEX-T011 | Cross-architecture comparison | Only after T001–T010 foundations are valid; identical logical work and documented, defensible peer assumptions | PLANNED |\n| NEX-T012 | System Fabric 2× clock and time-interleaved scheduling | Two Fabric ticks per CPU cycle; destination queues progress without false shared-bus serialization; link bandwidth is not multiplied merely by clock ratio; fairness and backpressure are explicit | DEFERRED — final integrated-system phase |
+| NEX-T011 | Cross-architecture comparison | Identical logical work; native, 8-core normalized and common-data-memory modes; explicit fairness and bandwidth checks | IMPLEMENTED |\n| NEX-T012 | System Fabric 2× clock and time-interleaved scheduling | Two Fabric ticks per CPU cycle; destination queues progress without false shared-bus serialization; link bandwidth is not multiplied merely by clock ratio; fairness and backpressure are explicit | DEFERRED — final integrated-system phase |
 
 ### 3.1 NEX-T001 implementation record
 
@@ -123,7 +123,7 @@ The following are audit findings, not architecture changes:
 ## 7. Acceptance gate
 
 No new cross-architecture performance ranking is accepted until:
-- NEX-T001 through NEX-T007 are VALID;
+- NEX-T001 through NEX-T010 are VALID;
 - all compared workloads pass operation-count and dependency checks;
 - per-core and aggregate bandwidth accounting is explicit in every report;
 - no test uses a shared aggregate 64 B/cycle Data RAM bus for the eight-core NEXSUS block;
@@ -273,3 +273,16 @@ No new cross-architecture performance ranking is accepted until:
 - Status: **VALID** on CI run [44130763148](https://github.com/benimprojem/NEXSUS-New-PC-Architecture/actions/runs/44130763148), validated commit `3bf482f81f09e105eadabbbeabd543b8e0a47d58`; the complete simulator workflow finished with `success`, including numbered tests, regressions, comparison smoke test, design-space sweeps, scaling comparisons and full benchmark-table generation/artifact upload.
 - Scope limitation: confirms the mixed workload's simulator assertions and the workflow's generated benchmark artifacts. It does not validate physical silicon, System Fabric internals, physical bank-group placement/ports or Fabric arbitration/QoS. System Fabric is assumed operational for the CPU test phase; no Fabric integration test is being run now.
 - No architecture resource counts, clock values or bandwidth values were changed.
+
+
+### 3.18 NEX-T011 implementation record
+
+- Test: `NEXUS CPU/tools/test_cross_architecture_comparison_t011.py`.
+- Comparison generator: `NEXUS CPU/tools/generate_full_architecture_benchmark.py`.
+- Modes retained as separate experiments: native core counts and native memory assumptions; normalized eight-core counts with native clock/memory assumptions; normalized eight-core with common 3.0 GHz, 120-cycle data-memory latency and 32 B/cycle aggregate data-memory budget; backend-isolation modes remain separately labeled.
+- Fairness defect found in the first T010 benchmark artifact: the common-memory override set the legacy DRAM budget to 32 B/cycle but did not override NEXSUS's dedicated DataRamController, which remained at 64 B/cycle/core (512 B/cycle aggregate). Those original common-memory NEXSUS rows are not valid for like-for-like common-memory comparison.
+- Correction: in common-memory mode only, NEXSUS DataRAM is overridden to 4 B/cycle/core × 8 cores = 32 B/cycle aggregate. Native NEXSUS DataRAM remains 64 B/cycle/core = 512 B/cycle aggregate. AppRAM/CodeFlow remains a separate instruction-delivery path and is not normalized by this data-memory control.
+- T011 test checks eight-core/3.0-GHz normalization, 32 B/cycle aggregate data-memory capacity for all four profiles, NEXSUS per-core byte accounting, equal operation counts, and preservation of the native NEXSUS 64 B/cycle/core contract.
+- CI integration: test is compiled and run in the numbered architecture test stage after T010.
+- Status: **IMPLEMENTED**, pending CI validation. No approved architecture values were changed.
+- Scope boundary: simulator-level comparison fairness only. This does not validate physical silicon or System Fabric internals. System Fabric is assumed operational; T012 Fabric integration remains deferred and is not part of this CPU comparison phase.
