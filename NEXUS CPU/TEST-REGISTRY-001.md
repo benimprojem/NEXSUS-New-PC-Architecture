@@ -38,7 +38,7 @@ These tests are designed from the architecture contract upward. Implement them i
 |---|---|---|---|
 | NEX-T001 | Architecture configuration contract | Simulator profile explicitly declares fixed per-core resources, cache sizes/groups, App RAM and Data RAM path capacities, and 8×64-bit bank-group baseline | IMPLEMENTED |
 | NEX-T002 | Independent App RAM and Data RAM paths | Both paths operate concurrently; each core has 64 B/cycle on each path; 8-core aggregate capacity is 512 B/cycle per memory system; no shared 64 B/cycle bottleneck | IMPLEMENTED |
-| NEX-T003 | Instruction path stage rates | App RAM→C0 16 B/cycle/core; C0→CS 20 B/cycle/core; CS→EB 20 B/cycle/core; EB consume 16 B/cycle/core; queueing and overlap are explicit | PLANNED |
+| NEX-T003 | Instruction path stage rates | App RAM→C0 16 B/cycle/core; C0→CS 20 B/cycle/core; CS→EB 20 B/cycle/core; EB consume 16 B/cycle/core; queueing and overlap are explicit | IMPLEMENTED |
 | NEX-T004 | Data RAM bank and wide-access behavior | Per-core bandwidth contract, bank-group behavior, distinct-bank concurrency, same-bank conflicts, 128/256/512-bit accesses, stripe crossings and all-or-none admission | PLANNED |
 | NEX-T005 | Cache topology and sharing | 8×L1, 4×L2, 2×L3, 1×L4 per eight-core block; cross-L3-group L4 access; no false private-L1 replication for shared sets | PLANNED |
 | NEX-T006 | Execution resource issue and latency | INT=8, FP64=6, FMA=4, VEC=2, ME512=1 per core; independent issue throughput and dependency latency measured separately | PLANNED |
@@ -133,3 +133,12 @@ No new cross-architecture performance ranking is accepted until:
 ## 8. Change log
 
 - 2026-11-17: Initial registry created. Existing test files and reports are retained as historical records. New architecture-contract tests NEX-T001 through NEX-T011 are planned.
+
+
+### 3.3 NEX-T003 implementation record
+
+- Test file: `NEXUS CPU/tools/test_instruction_path_rates_t003.py`
+- Simulator change: `CommandFetchModel` defaults and NEXSUS profile construction now use C0→CS = 20 B/cycle/core and CS→EB = 20 B/cycle/core, matching the Architecture Decision Register.
+- Test verifies the separate 64-B/cycle AppRAM link, the 16-B/cycle AppRAM→C0 and EB stage rates, and both 20-B/cycle middle stages using a 2-KiB page service-time calculation.
+- Implementation commits: simulator `70a1cfd02a75519348b4528cef05b7b3712af9b2`; test `19c9b9fb78783d3c67fddc7edc254ad2bee99f78`.
+- Validation status: **IMPLEMENTED**, pending CI. Multi-page queue overlap and detailed EB drain timing are explicitly not claimed as validated by this rate-contract test.
