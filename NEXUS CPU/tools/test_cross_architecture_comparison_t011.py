@@ -41,15 +41,6 @@ class CrossArchitectureComparisonT011(unittest.TestCase):
                 self.assertEqual(controller["model"], "legacy_shared_controller")
                 self.assertEqual(controller["aggregate_dram_bytes_per_cycle"], 512)
 
-    def test_memory_latency_is_not_normalized(self):
-        for arch in benchmark.ARCHS:
-            # The comparison changes only the interface bandwidth and CPU clock.
-            # Keep each profile's own modeled memory latency.
-            self.assertEqual(
-                benchmark.SIM.PROFILES[arch]["dram_lat"],
-                benchmark.SIM.PROFILES[arch]["dram_lat"],
-            )
-
     def test_native_nexus_data_ram_contract_is_preserved(self):
         result = self.native["nexus_balanced_128"]
         self.assertEqual(result["cores_configured"], 8)
