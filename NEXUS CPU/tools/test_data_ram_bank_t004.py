@@ -27,9 +27,9 @@ def test_distinct_banks_overlap_and_same_bank_serializes():
 
 def test_aligned_wide_access_crosses_stripe():
     group = DataRamBankGroup("low")
-    row = group.reserve(0, "cross-128", 48, 16)
+    row = group.reserve(0, "cross-256", 32, 32)
     assert row["stripe_crossing"] is True
-    assert row["bank_count_touched"] == 2
+    assert row["bank_count_touched"] == 4
     assert row["service_complete_cycle"] == 1
 
 
