@@ -2046,7 +2046,10 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
         completed_fills = [x for x in pending_fills if x[0] <= cycle]
         pending_fills = [x for x in pending_fills if x[0] > cycle]
         for _, core_id, address, level in completed_fills:
-            states[core_id]["cache"].fill(\n                address, level, active_core_count=len(states),\n                peer_caches=cache_hierarchies, core_id=core_id\n            )
+            states[core_id]["cache"].fill(
+                address, level, active_core_count=len(states),
+                peer_caches=cache_hierarchies, core_id=core_id
+            )
         pending_memory = []
         mshr_capacity = features.get("data_mshr_entries")
         mshr_reserved_this_cycle = [0] * len(states)
