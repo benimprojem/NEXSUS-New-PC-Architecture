@@ -143,7 +143,7 @@ def main() -> None:
     ]
     for cores in CORE_COUNTS:
         for kernel in KERNELS:
-            a = next(row for row in rows if row["cores"] == cores and row["kernel"] == kernel and row["scheduler_entries"] == 64)
+            a = next(row for row in data["rows"] if row["cores"] == cores and row["kernel"] == kernel and row["scheduler_entries"] == 64)
             b = next(row for row in rows if row["cores"] == cores and row["kernel"] == kernel and row["scheduler_entries"] == 128)
             winner = "Tie" if a["cycles"] == b["cycles"] else ("64" if a["cycles"] < b["cycles"] else "128")
             lines.append(f"| {cores} | {kernel} | {a['cycles']} | {b['cycles']} | {winner} | {a['scheduler_full_cycles']} | {b['scheduler_full_cycles']} |")
