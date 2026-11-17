@@ -42,7 +42,7 @@ These tests are designed from the architecture contract upward. Implement them i
 | NEX-T004 | Data RAM bank and wide-access behavior | Per-core bandwidth contract, bank-group behavior, distinct-bank concurrency, same-bank conflicts, 128/256/512-bit accesses, stripe crossings and all-or-none admission | VALID |
 | NEX-T005 | Cache topology and sharing | 8×L1, 4×L2, 2×L3, 1×L4 per eight-core block; cross-L3-group L4 access; no false private-L1 replication for shared sets | VALID |
 | NEX-T006 | Execution resource issue and latency | INT=8, FP64=6, FMA=4, VEC=2, ME512=1 per core; independent issue throughput and dependency latency measured separately | VALID |
-| NEX-T007 | Register-bank connectivity | RA/FA/DA/MA bank widths/counts, simultaneous reads, writeback conflicts, forwarding, pair accesses and ME512 result paths | PLANNED |
+| NEX-T007 | Register-bank connectivity | RA/FA/DA/MA bank widths/counts, simultaneous reads, writeback conflicts, forwarding, pair accesses and ME512 result paths | IMPLEMENTED |
 | NEX-T008 | Single-core controlled workloads | Scalar, integer, FP64, FMA, vector, ME512, branch, pointer and instruction-stream tests with operation-count invariants | PLANNED |
 | NEX-T009 | 1/2/4/8-core scaling | Same logical work per experiment, independent per-core paths, active-core accounting, scaling and fairness | PLANNED |
 | NEX-T010 | Mixed full-architecture workloads | Execution + registers + caches + App RAM + Data RAM under concurrent load; isolated and mixed runs | PLANNED |
@@ -211,3 +211,15 @@ No new cross-architecture performance ranking is accepted until:
 - Result: all 75 workflow steps passed. The numbered contract step explicitly executed T001, T002, T003, T004, T005 and T006; the full regression and downstream comparison/sweep steps also passed.
 - T001 and T002 are now **VALID** within their recorded configuration-contract and independent core-facing memory-path scopes. This does not close physical bank-group placement, port replication, or Fabric arbitration/QoS questions.
 - T006 is now **VALID** within its execution-resource routing, independent issue, dependency-latency and 128-bit INT pair-reservation scope. Register-file connectivity and forwarding remain NEX-T007.
+
+
+### 3.11 NEX-T007 implementation record
+
+- Model: `NEXUS CPU/tools/register_bank_model.py` — logical RA/FA/DA/MA bank organization, RA low-width aliases, even-indexed paired access, explicit cycle access checks and optional forwarding.
+- Test: `NEXUS CPU/tools/test_register_bank_t007.py`.
+- Covered: 32×64-bit RA/FA/DA banks; 32×256-bit MA bank; 1,792-byte architectural payload; RB/RC/RD aliases; FP128 even FA pair; ME512 even MA pair; simultaneous cross-bank reads/writes; configurable read/write-port conflict checks; explicit read-first versus forwarding behavior; no partial write commit on port-budget rejection.
+- Important boundary: physical port counts, bank replication, cross-unit physical wiring, forwarding timing and writeback arbitration policy remain OPEN. The test uses explicit port budgets as test parameters and does not select a hardware port count.
+- Model commit: `8955257c77dfb0e96ea57fc039f5e0b01a36895d`.
+- Test commit: `4f0a6bcc664049116a4b6d973a186c5456b305c1`.
+- CI integration commit: recorded in the workflow history; validation pending.
+- Status: **IMPLEMENTED**, not VALID until CI passes.
