@@ -43,7 +43,7 @@ These tests are designed from the architecture contract upward. Implement them i
 | NEX-T005 | Cache topology and sharing | 8×L1, 4×L2, 2×L3, 1×L4 per eight-core block; cross-L3-group L4 access; no false private-L1 replication for shared sets | VALID |
 | NEX-T006 | Execution resource issue and latency | INT=8, FP64=6, FMA=4, VEC=2, ME512=1 per core; independent issue throughput and dependency latency measured separately | VALID |
 | NEX-T007 | Register-bank connectivity | RA/FA/DA/MA bank widths/counts, simultaneous reads, writeback conflicts, forwarding, pair accesses and ME512 result paths | VALID |
-| NEX-T008 | Single-core controlled workloads | Scalar, integer, FP64, FMA, vector, ME512, branch, pointer and instruction-stream tests with operation-count invariants | PLANNED |
+| NEX-T008 | Single-core controlled workloads | Scalar, integer, FP64, FMA, vector, ME512, branch, pointer and instruction-stream tests with operation-count invariants | IMPLEMENTED |
 | NEX-T009 | 1/2/4/8-core scaling | Same logical work per experiment, independent per-core paths, active-core accounting, scaling and fairness | PLANNED |
 | NEX-T010 | Mixed full-architecture workloads | Execution + registers + caches + App RAM + Data RAM under concurrent load; isolated and mixed runs | PLANNED |
 | NEX-T011 | Cross-architecture comparison | Only after T001–T010 foundations are valid; identical logical work and documented, defensible peer assumptions | PLANNED |\n| NEX-T012 | System Fabric 2× clock and time-interleaved scheduling | Two Fabric ticks per CPU cycle; destination queues progress without false shared-bus serialization; link bandwidth is not multiplied merely by clock ratio; fairness and backpressure are explicit | DEFERRED — final integrated-system phase |
@@ -230,3 +230,14 @@ No new cross-architecture performance ranking is accepted until:
 - CI run: [44120384150](https://github.com/benimprojem/NEXSUS-New-PC-Architecture/actions/runs/44120384150)
 - Result: all 75 workflow steps completed successfully.
 - T007 is **VALID** within the logical register-bank organization, pair access, explicitly parameterized port-conflict and optional forwarding semantics recorded in section 3.11. Physical port count and implementation timing remain OPEN.
+
+
+### 3.13 NEX-T008 implementation record
+
+- Test: `NEXUS CPU/tools/test_single_core_workloads_t008.py`.
+- Workload suite: existing deterministic `build_composite_workload(scale=1)` traces, run one workload at a time with `core_count=1`.
+- Covered categories: scalar/control flow, integer ALU, FP64, FMA, 512-bit vector, ME512, branch stress, dependent pointer graph and sequential instruction-stream/CS starvation.
+- Invariants: each workload exists and is non-empty; exactly one core is configured and active; retired operation count equals source trace length; cycle and issue-span counts are positive. Instruction-stream case additionally requires CodeFlow refills, useful bytes and wait cycles to be observed.
+- Features: Task Workspace disabled; Code Slots/CodeFlow enabled for the instruction-delivery test path. This is a controlled single-core CPU test, not a Fabric integration test.
+- CI integration: compile and numbered test steps added to `.github/workflows/nexus-cpu-simulator.yml`.
+- Status: **IMPLEMENTED**, pending CI validation. No architecture resource counts or memory bandwidth values were changed.
