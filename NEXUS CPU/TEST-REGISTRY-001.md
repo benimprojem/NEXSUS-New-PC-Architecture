@@ -44,7 +44,7 @@ These tests are designed from the architecture contract upward. Implement them i
 | NEX-T006 | Execution resource issue and latency | INT=8, FP64=6, FMA=4, VEC=2, ME512=1 per core; independent issue throughput and dependency latency measured separately | VALID |
 | NEX-T007 | Register-bank connectivity | RA/FA/DA/MA bank widths/counts, simultaneous reads, writeback conflicts, forwarding, pair accesses and ME512 result paths | VALID |
 | NEX-T008 | Single-core controlled workloads | Scalar, integer, FP64, FMA, vector, ME512, branch, pointer and instruction-stream tests with operation-count invariants | VALID |
-| NEX-T009 | 1/2/4/8-core scaling | Same logical work per experiment, independent per-core paths, active-core accounting, scaling and fairness | IMPLEMENTED |
+| NEX-T009 | 1/2/4/8-core scaling | Same logical work per experiment, independent per-core paths, active-core accounting, scaling and fairness | VALID |
 | NEX-T010 | Mixed full-architecture workloads | Execution + registers + caches + App RAM + Data RAM under concurrent load; isolated and mixed runs | PLANNED |
 | NEX-T011 | Cross-architecture comparison | Only after T001–T010 foundations are valid; identical logical work and documented, defensible peer assumptions | PLANNED |\n| NEX-T012 | System Fabric 2× clock and time-interleaved scheduling | Two Fabric ticks per CPU cycle; destination queues progress without false shared-bus serialization; link bandwidth is not multiplied merely by clock ratio; fairness and backpressure are explicit | DEFERRED — final integrated-system phase |
 
@@ -251,4 +251,12 @@ No new cross-architecture performance ranking is accepted until:
 - Fairness/accounting invariant: streaming DataRAM bytes must be attributed to every active core, and the sum of per-core bytes must equal controller transferred bytes. This test does not select physical bank-group count, placement, ports or Fabric arbitration policy.
 - AppRAM and DataRAM remain separate controllers and are checked independently. No shared aggregate 64 B/cycle bus is introduced.
 - CI integration: compile and numbered architecture-contract steps added to `.github/workflows/nexus-cpu-simulator.yml`.
-- Status: **IMPLEMENTED**, pending CI validation. No architecture resource counts or bandwidth values were changed.
+- Validation: **VALID** on CI run [44127684525](https://github.com/benimprojem/NEXSUS-New-PC-Architecture/actions/runs/44127684525), head commit `a2e917ce894e57efbf497a7b4f91c8678db8f0fb`; all 75 workflow steps passed, including numbered tests, regressions, comparisons and benchmark artifact generation.\n- Scope limitation: validates simulator accounting and workload scaling across 1/2/4/8 cores. It does not validate physical silicon behavior, final System Fabric 2× clock/time-interleaving, or unspecified physical bank placement/arbitration details.
+
+
+### 3.16 NEX-T009 validation record
+
+- CI run: [44127684525](https://github.com/benimprojem/NEXSUS-New-PC-Architecture/actions/runs/44127684525)
+- Validated commit: `a2e917ce894e57efbf497a7b4f91c8678db8f0fb`
+- Result: simulator job completed successfully; all 75 workflow steps passed.
+- T009 is **VALID** within the 1/2/4/8-core workload scaling and per-core AppRAM/DataRAM accounting scope in section 3.15.
