@@ -92,8 +92,9 @@ The following are audit findings, not architecture changes:
 
 - The active architecture decision register now specifies 64 B/cycle/core App RAM and 64 B/cycle/core Data RAM, therefore 512 B/cycle aggregate for each memory system in an eight-core block.
 - The existing cross-architecture scaling script uses aggregate shared DRAM budgets of 32 B/cycle or 4 B/cycle/core equivalent. It does not represent the NEXSUS Data RAM contract of 64 B/cycle/core. Its NEXSUS Data RAM performance rows must therefore not be used as valid architecture-comparison evidence.
-- The simulator's current `SharedMemoryController` is a shared aggregate controller. The Data RAM path must be reworked or parameterized to represent independent core-facing 64 B/cycle paths, while preserving a distinct physical bank-group model where required.
+- The simulator's current `SharedMemoryController` is a shared aggregate controller. It must be replaced or parameterized so each core-facing path can sustain 64 B/cycle while the System Fabric arbitrates access to fabric-attached bank groups; do not mistake the shared physical memory pool for one shared 64 B/cycle CPU bus.
 - The current NEXSUS instruction frontend model defaults C0→CS and CS→EB to 8 B/cycle in `CommandFetchModel` construction, despite the architecture register's current simulator operating point of 20 B/cycle. This mismatch must be tested and corrected before frontend performance results are accepted.
+- The minimum App RAM and Data RAM bank-group baseline is clarified as 8 banks × 64 bit (512 bit / 64 B per group). This is eight 64-bit banks, not 64 banks. Total group count/placement across the shared System Fabric, bank mapping, physical ports, and multi-client arbitration/QoS remain OPEN.
 - App RAM's per-core connection capacity (64 B/cycle) and the App RAM→C0 refill-stage rate (16 B/cycle) are separate serial stages; they must not be collapsed into one number.
 - The cache hierarchy instance grouping in the simulator currently matches the registered 8×L1 / 4×L2 / 2×L3 / 1×L4 eight-core topology. Port count, bandwidth, and latency are still open/provisional and must not be inferred from instance count.
 
