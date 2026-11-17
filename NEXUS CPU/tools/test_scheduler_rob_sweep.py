@@ -48,6 +48,20 @@ class SchedulerRobSweepTests(unittest.TestCase):
                 self.assertEqual(len(rows), 2)
                 self.assertEqual(rows[0]["ops"], rows[1]["ops"])
 
+    def test_stress_workload_exposes_scheduler_window_pressure(self):
+        rows = {
+            row["scheduler_entries"]: row
+            for row in self.result["rows"]
+            if row["cores"] == 8 and row["kernel"] == "scheduler_window_stress"
+        }
+        self.assertEqual(set(rows), {64, 128})
+        self.assertEqual(rows[64]["rob_entries"], 512)
+        self.assertGreater(rows[64]["scheduler_full_cycles"], 0)
+        self.assertLess(rows[128]["scheduler_full_cycles"],
+                        rows[64]["scheduler_full_cycles"])
+        self.assertGreater(rows[128]["max_scheduler_occupancy"],
+                           rows[64]["max_scheduler_occupancy"])
+
     def test_experiment_does_not_auto_select_hardware_value(self):
         self.assertIn("No scheduler capacity selected automatically",
                       self.result["decision"])
