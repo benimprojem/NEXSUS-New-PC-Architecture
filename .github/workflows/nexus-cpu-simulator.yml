@@ -690,10 +690,13 @@ jobs:
                   assert {mode[arch]["cores_configured"] for arch in expected} == {8}
           common = data["modes"]["normalized_8core_common_memory"]
           assert {common[arch]["clock_ghz"] for arch in expected} == {3.0}
-          assert {common[arch]["aggregate_dram_bytes_per_cycle"] for arch in expected} == {32}
+          assert {common[arch]["aggregate_dram_bytes_per_cycle"] for arch in expected} == {512}
           assert len({common[arch]["cpu_ram_reference_clock_ghz"] for arch in expected}) == 1
-          print("PASS: native, 8-core native-profile, and 8-core common-memory comparisons; identical per-kernel operation counts.")
-          print("COMMON-MEMORY CONTROL: 8 cores, 3.0 GHz, 120-cycle DRAM latency, 32 B/cycle aggregate DRAM bandwidth.")
+          nexus = common["nexus_balanced_128"]["kernels"]["streaming"]["memory_controller"]
+          assert nexus["per_core_bytes_per_cycle"] == 64
+          assert nexus["aggregate_core_facing_capacity_bytes_per_cycle"] == 512
+          print("PASS: native, 8-core native-profile, and controlled 8-core comparisons; identical per-kernel operation counts.")
+          print("CONTROLLED MODE: 8 cores, 3.0 GHz, 64 B/cycle/core CPU-memory interface (512 B/cycle aggregate); architecture-specific latency/cache/execution retained.")
           assert (root / "full-architecture-results.md").stat().st_size > 1000
           assert (root / "full-architecture-results.csv").stat().st_size > 1000
           print(f"PASS: {len(data['kernel_names'])} kernels, four architecture profiles, native and normalized-8-core tables.")
