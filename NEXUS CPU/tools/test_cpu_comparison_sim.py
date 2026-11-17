@@ -246,7 +246,7 @@ class SelectedNexusProfileTests(unittest.TestCase):
         p = sim.PROFILES["nexus_balanced_128"]
         self.assertEqual((p["frontend"], p["dispatch"], p["issue"], p["retire"], p["rob"]),
                          (8, 8, 10, 8, 512))
-        self.assertEqual(p["scheduler_entries"], 64)
+        self.assertEqual(p["scheduler_entries"], 256)
         self.assertEqual(p["units"], {
             "INT": 8, "FP": 6, "VEC": 2, "LOAD": 8,
             "STORE": 4, "BR": 2, "CTX": 1, "ATOM": 1, "ME512": 1, "IRQ": 1,
