@@ -31,7 +31,7 @@ NEXSUS_FEATURES = {
 }
 
 
-def simulate(workloads, core_count, bandwidth_policy):
+def simulate(workloads, core_count, bandwidth_policy="common_512_aggregate"):
     results = {}
     for arch in ARCHS:
         profile = dict(SIM.PROFILES[arch])
@@ -132,13 +132,14 @@ def main():
     lines = [
         "# 1/2/4/8-core scaling comparison",
         "",
-        "All four models use 3.0 GHz and 120-cycle DRAM latency. Results are simulated, not silicon measurements.",
+        "All four models use 3.0 GHz and a 512 B/cycle aggregate DRAM ceiling. Native architecture-specific DRAM latency is retained. Results are simulated, not silicon measurements.",
         "",
-        "Two distinct memory controls are reported:",
-        "- fixed_system_32: fixed 32 B/cycle aggregate DRAM bandwidth at every core count.",
-        "- scaled_4_per_core: 4 B/cycle/core equivalent aggregate budget, scaling 4/8/16/32 B/cycle.",
-        "- Both use one shared, work-conserving DRAM bus without static per-core quotas.",
-        "- NEXSUS AppRAM remains a separate 64 B/cycle/core path; it is not counted as DRAM bandwidth.",
+        "Memory and cache settings checked by this run:",
+        "- Aggregate DRAM ceiling: 512 B/cycle for every architecture and core count.",
+        "- NEXSUS DataRAM core-facing links: 64 B/cycle/core (64/128/256/512 B/cycle at 1/2/4/8 cores).",
+        "- NEXSUS AppRAM: separate 64 B/cycle/core instruction path.",
+        "- Native DRAM latency, cache sizes/topology/latencies and execution resources are retained.",
+        "- The NEXSUS shared physical DRAM bank/arbitration stage remains a separately tracked integration item; this comparison verifies its configured 512 B/cycle ceiling, not its final physical timing.",
         "",
         "Lower modeled time/cycles is better. Higher IPC, speedup and parallel efficiency are better.",
         "Efficiency is speedup divided by core count. Inspect each kernel separately; do not rank CPUs by summing unrelated kernel times.",
@@ -164,7 +165,7 @@ def main():
     (args.output_dir / "core-scaling-results.md").write_text(
         "\n".join(lines), encoding="utf-8"
     )
-    print(f"PASS: {len(KERNELS)} kernels x 4 architectures x 4 core counts x 2 memory policies.")
+    print(f"PASS: {len(KERNELS)} kernels x 4 architectures x 4 core counts under one common 512 B/cycle DRAM ceiling.")
     print(f"PASS: {len(rows)} per-kernel scaling rows; logical operation counts match.")
     print(f"Report: {args.output_dir / 'core-scaling-results.md'}")
     print(f"CSV: {args.output_dir / 'core-scaling-results.csv'}")
