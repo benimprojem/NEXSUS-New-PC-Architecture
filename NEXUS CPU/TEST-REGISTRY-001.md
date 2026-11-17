@@ -40,7 +40,7 @@ These tests are designed from the architecture contract upward. Implement them i
 | NEX-T002 | Independent App RAM and Data RAM paths | Both paths operate concurrently; each core has 64 B/cycle on each path; 8-core aggregate capacity is 512 B/cycle per memory system; no shared 64 B/cycle bottleneck | IMPLEMENTED |
 | NEX-T003 | Instruction path stage rates | App RAM→C0 16 B/cycle/core; C0→CS 20 B/cycle/core; CS→EB 20 B/cycle/core; EB consume 16 B/cycle/core; queueing and overlap are explicit | VALID |
 | NEX-T004 | Data RAM bank and wide-access behavior | Per-core bandwidth contract, bank-group behavior, distinct-bank concurrency, same-bank conflicts, 128/256/512-bit accesses, stripe crossings and all-or-none admission | VALID |
-| NEX-T005 | Cache topology and sharing | 8×L1, 4×L2, 2×L3, 1×L4 per eight-core block; cross-L3-group L4 access; no false private-L1 replication for shared sets | PLANNED |
+| NEX-T005 | Cache topology and sharing | 8×L1, 4×L2, 2×L3, 1×L4 per eight-core block; cross-L3-group L4 access; no false private-L1 replication for shared sets | IMPLEMENTED |
 | NEX-T006 | Execution resource issue and latency | INT=8, FP64=6, FMA=4, VEC=2, ME512=1 per core; independent issue throughput and dependency latency measured separately | PLANNED |
 | NEX-T007 | Register-bank connectivity | RA/FA/DA/MA bank widths/counts, simultaneous reads, writeback conflicts, forwarding, pair accesses and ME512 result paths | PLANNED |
 | NEX-T008 | Single-core controlled workloads | Scalar, integer, FP64, FMA, vector, ME512, branch, pointer and instruction-stream tests with operation-count invariants | PLANNED |
@@ -171,3 +171,13 @@ No new cross-architecture performance ranking is accepted until:
 - Validated commit: `d2f097319a2f43411aa3003de84af3f6b2475079`
 - Result: all workflow steps passed. The numbered architecture contract step, full regression suite, comparison smoke test, and all existing benchmark/sweep steps completed successfully.
 - T004 is **VALID** for the isolated 8-bank group behavior covered by its test. This does not establish total physical group count/placement or Fabric arbitration behavior.
+
+
+### 3.7 NEX-T005 implementation record
+
+- Test file: `NEXUS CPU/tools/test_cache_topology_t005.py`.
+- Existing model under test: `build_cache_hierarchies()` and `CacheHierarchy` in `NEXUS CPU/tools/cpu_comparison_sim.py`; no cache topology or architecture capacity values were changed.
+- Covered: eight distinct private L1s; four pair-shared L2s; two four-core-shared L3s; one eight-core-shared L4; registered per-instance capacities (1/2/4/8/64 MiB); cross-L3-group lookup through shared L4; private L1 isolation.
+- Scope limitation: this validates object topology, capacity and lookup visibility. It does not claim a cache-coherence protocol, replacement policy beyond the existing LRU model, port count, bandwidth, transfer latency, or System Fabric behavior.
+- Test commit: `47f36e88b6038133e58ab500811df568a0ad7738`.
+- CI status: pending; NEX-T005 remains **IMPLEMENTED**, not VALID, until the full workflow passes.
