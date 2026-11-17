@@ -100,7 +100,13 @@ PROFILES = {
         "l1_kb": 1024, "l2_kb": 2048, "l3_kb": 8192, "l4_kb": 65536,
         "l1_lat": 2, "l2_lat": 8, "l3_lat": 24, "l4_lat": 64, "dram_lat": 120,
         "branch_penalty": 8, "frequency_ghz": 3.0, "bank_hash": "folded", "dram_bytes_per_cycle": 64,
-        "branch_predictor": "small_2bit", "vector_bits": 512, "matrix_unit": "ME512"
+        "branch_predictor": "small_2bit", "vector_bits": 512, "matrix_unit": "ME512",
+        "app_ram_bytes_per_cycle_per_core": 64, "data_ram_bytes_per_cycle_per_core": 64,
+        "app_ram_bank_count_per_group": 8, "data_ram_bank_count_per_group": 8,
+        "memory_bank_slice_bits": 64, "memory_bank_group_width_bits": 512,
+        "memory_fabric_shared": True,
+        "cache_grouping": {"l1_cores_per_group": 1, "l2_cores_per_group": 2,
+                           "l3_cores_per_group": 4, "l4_cores_per_group": 8}
     }
 }
 
