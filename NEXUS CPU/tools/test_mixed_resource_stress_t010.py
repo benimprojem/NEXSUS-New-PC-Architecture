@@ -47,7 +47,7 @@ class MixedResourceStressT010(unittest.TestCase):
             "p0_capacity_kb": 16,
             "p0_refill_latency": 48,
         }
-        cls.run = sim.simulate_cpu(
+        cls.simulation_result = sim.simulate_cpu(
             {"mixed_resource_stress": cls.ops},
             cls.profile,
             8,
@@ -56,7 +56,7 @@ class MixedResourceStressT010(unittest.TestCase):
 
     def test_all_resource_classes_execute_in_one_eight_core_run(self):
         self.assertGreater(len(self.ops), 0)
-        run = self.run
+        run = self.simulation_result
         row = run["kernels"]["mixed_resource_stress"]
         self.assertEqual(run["cores_configured"], 8)
         self.assertEqual(row["active_cores"], 8)
