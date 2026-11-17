@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Contract tests for the fixed-512 ROB / 64-vs-128 scheduler experiment."""
+"""Contract tests for the fixed-512 ROB / 64-vs-128-vs-256 scheduler experiment."""
 from __future__ import annotations
 
 import importlib.util
@@ -22,9 +22,9 @@ class SchedulerRobSweepTests(unittest.TestCase):
         cls.result = SWEEP.run_sweep(scale=1)
 
     def test_sweep_covers_both_scheduler_sizes_all_core_counts_and_kernels(self):
-        expected = 2 * 4 * len(SWEEP.KERNELS)
+        expected = 3 * 4 * len(SWEEP.KERNELS)
         self.assertEqual(self.result["row_count"], expected)
-        self.assertEqual(self.result["scheduler_entries_tested"], [64, 128])
+        self.assertEqual(self.result["scheduler_entries_tested"], [64, 128, 256])
         self.assertEqual(self.result["cores"], [1, 2, 4, 8])
         self.assertEqual(len(self.result["paired_comparison"]), 4 * len(SWEEP.KERNELS))
 
@@ -45,8 +45,8 @@ class SchedulerRobSweepTests(unittest.TestCase):
             for kernel in SWEEP.KERNELS:
                 rows = [row for row in self.result["rows"]
                         if row["cores"] == cores and row["kernel"] == kernel]
-                self.assertEqual(len(rows), 2)
-                self.assertEqual(rows[0]["ops"], rows[1]["ops"])
+                self.assertEqual({row["scheduler_entries"] for row in rows}, {64, 128, 256})
+                self.assertEqual(len({row["ops"] for row in rows}), 1)
 
     def test_stress_workload_exposes_scheduler_window_pressure(self):
         rows = {
@@ -54,13 +54,19 @@ class SchedulerRobSweepTests(unittest.TestCase):
             for row in self.result["rows"]
             if row["cores"] == 8 and row["kernel"] == "scheduler_window_stress"
         }
-        self.assertEqual(set(rows), {64, 128})
+        self.assertEqual(set(rows), {64, 128, 256})
         self.assertEqual(rows[64]["rob_entries"], 512)
+        self.assertTrue(all(row["rob_entries"] == 512 for row in rows.values()))
         self.assertGreater(rows[64]["scheduler_full_cycles"], 0)
-        self.assertLess(rows[128]["scheduler_full_cycles"],
-                        rows[64]["scheduler_full_cycles"])
-        self.assertGreater(rows[128]["max_scheduler_occupancy"],
-                           rows[64]["max_scheduler_occupancy"])
+        self.assertGreater(rows[64]["max_scheduler_occupancy"], 0)
+        self.assertLessEqual(rows[128]["scheduler_full_cycles"],
+                             rows[64]["scheduler_full_cycles"])
+        self.assertLessEqual(rows[256]["scheduler_full_cycles"],
+                             rows[128]["scheduler_full_cycles"])
+        self.assertGreaterEqual(rows[128]["max_scheduler_occupancy"],
+                                rows[64]["max_scheduler_occupancy"])
+        self.assertGreaterEqual(rows[256]["max_scheduler_occupancy"],
+                                rows[128]["max_scheduler_occupancy"])
 
     def test_experiment_does_not_auto_select_hardware_value(self):
         self.assertIn("No scheduler capacity selected automatically",

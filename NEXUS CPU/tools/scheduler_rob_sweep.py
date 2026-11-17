@@ -18,7 +18,7 @@ sys.modules[SPEC.name] = SIM
 SPEC.loader.exec_module(SIM)
 
 ROB_ENTRIES = 512
-SCHEDULER_ENTRIES = (64, 128)
+SCHEDULER_ENTRIES = (64, 128, 256)
 CORE_COUNTS = (1, 2, 4, 8)
 KERNELS = (
     "scalar_control", "pointer_graph", "numeric_tile", "streaming",
@@ -97,13 +97,20 @@ def run_sweep(scale: int = 1) -> dict:
                           if row["cores"] == cores and row["kernel"] == kernel}
             if set(candidates) != set(SCHEDULER_ENTRIES):
                 raise AssertionError(f"unpaired result: {cores} cores / {kernel}")
-            a, b = candidates[64], candidates[128]
-            if a["ops"] != b["ops"] or a["rob_entries"] != ROB_ENTRIES or b["rob_entries"] != ROB_ENTRIES:
+            a, b, c = (candidates[size] for size in SCHEDULER_ENTRIES)
+            if len({row["ops"] for row in (a, b, c)}) != 1 or any(
+                row["rob_entries"] != ROB_ENTRIES for row in (a, b, c)
+            ):
                 raise AssertionError(f"configuration/work mismatch: {cores} cores / {kernel}")
             paired[f"{cores}:{kernel}"] = {
                 "cycles_64": a["cycles"], "cycles_128": b["cycles"],
-                "winner": 64 if a["cycles"] < b["cycles"] else (128 if b["cycles"] < a["cycles"] else "tie"),
+                "cycles_256": c["cycles"],
+                "best_for_workload": min(
+                    ((row["cycles"], row["scheduler_entries"]) for row in (a, b, c)),
+                    key=lambda item: item[0],
+                )[1],
                 "cycle_delta_128_vs_64": b["cycles"] - a["cycles"],
+                "cycle_delta_256_vs_64": c["cycles"] - a["cycles"],
             }
     return {
         "experiment": "NEXSUS scheduler capacity comparison",
@@ -151,22 +158,21 @@ def main() -> None:
         "# NEXSUS scheduler capacity comparison",
         "",
         f"- ROB fixed: **{ROB_ENTRIES} entries per core**",
-        "- Scheduler candidates: **64 vs 128 entries per core**",
+        "- Scheduler candidates: **64 vs 128 vs 256 entries per core**",
         "- Dispatch / issue / retire: **8 / 10 / 8 per cycle**",
         "- Clock: **3.0 GHz**",
         "- Execution-only mode: instruction-fetch supply excluded from this experiment",
         "",
         "## Paired results",
         "",
-        "| Cores | Kernel | 64-entry cycles | 128-entry cycles | Better result | 64 scheduler-full cycles | 128 scheduler-full cycles |",
+        "| Cores | Kernel | 64-entry cycles | 128-entry cycles | 256-entry cycles | Best for workload | 64 full cycles | 128 full cycles | 256 full cycles |",
         "|---:|---|---:|---:|---|---:|---:|",
     ]
     for cores in CORE_COUNTS:
         for kernel in KERNELS:
-            a = next(row for row in data["rows"] if row["cores"] == cores and row["kernel"] == kernel and row["scheduler_entries"] == 64)
-            b = next(row for row in data["rows"] if row["cores"] == cores and row["kernel"] == kernel and row["scheduler_entries"] == 128)
-            winner = "Tie" if a["cycles"] == b["cycles"] else ("64" if a["cycles"] < b["cycles"] else "128")
-            lines.append(f"| {cores} | {kernel} | {a['cycles']} | {b['cycles']} | {winner} | {a['scheduler_full_cycles']} | {b['scheduler_full_cycles']} |")
+            a, b, c = [next(row for row in data["rows"] if row["cores"] == cores and row["kernel"] == kernel and row["scheduler_entries"] == size) for size in SCHEDULER_ENTRIES]
+            best = min((a, b, c), key=lambda row: row["cycles"])
+            lines.append(f"| {cores} | {kernel} | {a['cycles']} | {b['cycles']} | {c['cycles']} | {best['scheduler_entries']} | {a['scheduler_full_cycles']} | {b['scheduler_full_cycles']} | {c['scheduler_full_cycles']} |")
     lines += [
         "",
         "## Interpretation limits",
@@ -178,7 +184,7 @@ def main() -> None:
         "",
     ]
     (args.output_dir / "scheduler-rob-results.md").write_text("\n".join(lines), encoding="utf-8")
-    print(f"PASS: {data['row_count']} paired rows; ROB={ROB_ENTRIES}; scheduler=64/128; 1/2/4/8 cores.")
+    print(f"PASS: {data['row_count']} paired rows; ROB={ROB_ENTRIES}; scheduler=64/128/256; 1/2/4/8 cores.")
     print(f"Results: {args.output_dir / 'scheduler-rob-results.md'}")
 
 
