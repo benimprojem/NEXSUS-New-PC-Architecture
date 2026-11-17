@@ -23,15 +23,15 @@ def test_app_ram_and_data_ram_progress_independently():
         "id": "data-line", "core": 0, "address": 0x1000, "width": 64
     }])["data-line"]
     assert app_result["accepted"]
-    assert data_result["ready_cycle"] == 101
-    assert app_result["ready_cycle"] > data_result["ready_cycle"]
+    assert data_result["service_complete_cycle"] == 101
+    assert app_result["ready_cycle"] > data_result["service_complete_cycle"]
     # DataRAM service is unchanged when AppRAM is busy: distinct controllers,
     # independent per-core byte timelines, no shared queue or bus cursor.
     data_again = DataRamController(bytes_per_cycle_per_core=64)
     isolated = data_again.reserve_batch(100, [{
         "id": "data-line", "core": 0, "address": 0x1000, "width": 64
     }])["data-line"]
-    assert isolated["ready_cycle"] == data_result["ready_cycle"]
+    assert isolated["service_complete_cycle"] == data_result["service_complete_cycle"]
 
 
 def test_eight_cores_have_eight_independent_data_ram_links():
