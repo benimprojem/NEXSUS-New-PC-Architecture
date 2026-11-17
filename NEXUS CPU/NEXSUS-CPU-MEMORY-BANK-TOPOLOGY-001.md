@@ -245,7 +245,7 @@ Actual sustained bandwidth will be lower where sense time, write time, bank conf
 6. Wide accesses may reserve/use multiple banks as one architectural operation; internal beat scheduling must preserve the existing precise fault and commit semantics.
 7. MEMXFER source/target range reservations remain in force across chunk yields. Bank-level parallelism does not permit conflicting STORE/ATOM/LOAD operations to bypass those reservations.
 8. ATOM serialization and NDC ordering are defined by the ISA and memory-access-control specifications, not by bank-number order.
-9. Queue depth, exact number of concurrent bank commands, turnaround cycles, and controller clock ratios remain implementation parameters until the physical design is characterized.
+9. System Fabric runs at 2× the CPU core clock in the current baseline and uses two scheduling ticks per CPU cycle. Destination queues can be time-interleaved so multiple receivers progress within one CPU-cycle window. This does not guarantee simultaneous physical writes and does not automatically multiply link bandwidth.\n10. Queue depth, exact number of concurrent bank commands, turnaround cycles, memory-controller clock ratios, and physical destination service rates remain implementation parameters until the physical design is characterized.
 
 ## 10. Required simulator scenarios
 
