@@ -480,9 +480,47 @@ class CacheHierarchy:
             raise ValueError(f"Cannot prefill {level}: cache level is unavailable")
         target.insert(address // self.line)
 
-    def fill(self, address: int, level: str):
-        """Install a completed demand line along the modeled inclusive fill path."""
+    def fill(self, address: int, level: str, active_core_count: int = 1,
+             peer_caches: Optional[List["CacheHierarchy"]] = None,
+             core_id: int = 0):
+        """Complete a demand fill using NEXSUS' direct L4-to-active-group distribution.
+
+        NEXSUS does not cascade L4->L3->L2->L1. A DRAM miss first installs
+        the line in the shared L4 home, then distributes directly to the
+        cache level shared by the active cooperating group:
+          8 cores -> each private L1 (parallel destinations)
+          4 cores -> their shared L3
+          2 cores -> their shared L2
+          1 core  -> its private L1
+        Other architectures retain the conventional inclusive fill behavior.
+        """
         line = address // self.line
+        if self.p.name.startswith("NEXSUS CPU"):
+            if level == "DRAM":
+                if self.l4 is None:
+                    raise ValueError("NEXSUS DataRAM miss requires a shared L4 home")
+                self.l4.insert(line)
+            active = max(1, int(active_core_count))
+            if active >= 8:
+                if peer_caches is None or len(peer_caches) < 8:
+                    raise ValueError("8-core L4 distribution requires all eight destination caches")
+                # Fan-out is parallel: all eight private L1s receive the line
+                # at the same completion event, not as eight serialized reads.
+                for destination in peer_caches[:8]:
+                    destination.l1.insert(line)
+            elif active >= 4:
+                if self.l3 is None:
+                    raise ValueError("4-core group requires a shared L3")
+                self.l3.insert(line)
+            elif active >= 2:
+                if self.l2 is None:
+                    raise ValueError("2-core group requires a shared L2")
+                self.l2.insert(line)
+            else:
+                self.l1.insert(line)
+            return
+
+        # Conventional reference-CPU inclusive allocation model.
         if level == "DRAM" and self.l4:
             self.l4.insert(line)
         if level in ("DRAM", "L4"):
@@ -2008,7 +2046,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
         completed_fills = [x for x in pending_fills if x[0] <= cycle]
         pending_fills = [x for x in pending_fills if x[0] > cycle]
         for _, core_id, address, level in completed_fills:
-            states[core_id]["cache"].fill(address, level)
+            states[core_id]["cache"].fill(\n                address, level, active_core_count=len(states),\n                peer_caches=cache_hierarchies, core_id=core_id\n            )
         pending_memory = []
         mshr_capacity = features.get("data_mshr_entries")
         mshr_reserved_this_cycle = [0] * len(states)
