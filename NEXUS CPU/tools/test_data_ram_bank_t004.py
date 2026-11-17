@@ -25,12 +25,17 @@ def test_distinct_banks_overlap_and_same_bank_serializes():
     assert group.bank_next_cycle[1] == 1
 
 
-def test_aligned_wide_access_crosses_stripe():
+def test_misaligned_wide_access_crossing_is_rejected_atomically():
     group = DataRamBankGroup("low")
-    row = group.reserve(0, "cross-256", 32, 32)
-    assert row["stripe_crossing"] is True
-    assert row["bank_count_touched"] == 4
-    assert row["service_complete_cycle"] == 1
+    before = list(group.bank_next_cycle)
+    try:
+        group.reserve(0, "crossing-128", 56, 16)
+    except ValueError as error:
+        assert "naturally aligned" in str(error)
+    else:
+        raise AssertionError("misaligned stripe-crossing access was accepted")
+    assert group.bank_next_cycle == before
+    assert group.events == []
 
 
 def test_folded_mapping_spreads_64_byte_stride_stream():
@@ -55,7 +60,7 @@ def test_all_or_none_validation_has_no_partial_reservation():
 if __name__ == "__main__":
     test_width_to_bank_slices()
     test_distinct_banks_overlap_and_same_bank_serializes()
-    test_aligned_wide_access_crosses_stripe()
+    test_misaligned_wide_access_crossing_is_rejected_atomically()
     test_folded_mapping_spreads_64_byte_stride_stream()
     test_all_or_none_validation_has_no_partial_reservation()
     print("PASS NEX-T004: width mapping, independent banks, local conflicts, stripe crossing and atomic admission.")
