@@ -74,6 +74,7 @@ jobs:
           python -m py_compile "NEXUS CPU/tools/test_single_core_workloads_t008.py"
           python -m py_compile "NEXUS CPU/tools/test_core_scaling_t009.py"
           python -m py_compile "NEXUS CPU/tools/test_mixed_resource_stress_t010.py"
+          python -m py_compile "NEXUS CPU/tools/test_cross_architecture_comparison_t011.py"
       - name: Run numbered architecture contract tests
         working-directory: "NEXUS CPU/tools"
         run: |
@@ -87,6 +88,7 @@ jobs:
           python test_single_core_workloads_t008.py
           python test_core_scaling_t009.py
           python test_mixed_resource_stress_t010.py
+          python test_cross_architecture_comparison_t011.py
       - name: Run regression tests
         working-directory: "NEXUS CPU/tools"
         run: |
