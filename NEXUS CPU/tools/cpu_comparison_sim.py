@@ -1603,6 +1603,59 @@ class SharedMemoryController:
         return result
 
 
+
+class DataRamController:
+    """System-Fabric-facing Data RAM ports: 64 B/cycle per active core.
+
+    This models the independently provisioned core-facing links only. The
+    shared physical bank-group count, placement and multi-client arbitration
+    are intentionally not inferred here; those belong to NEX-T004 and later.
+    App RAM uses a separate AppRamController instance and timeline.
+    """
+    def __init__(self, bytes_per_cycle_per_core: int = 64):
+        self.bytes_per_cycle_per_core = max(1, int(bytes_per_cycle_per_core))
+        self.bus_next_byte = {}
+        self.request_cycles = []
+        self.request_events = []
+        self.transferred_bytes = 0
+        self.bytes_by_core = {}
+        self.accepted = 0
+
+    def reserve_batch(self, cycle: int, requests: List[dict],
+                      bank_hash: str = "low") -> dict:
+        if not requests:
+            return {}
+        result = {}
+        # Each core owns an independent Fabric-facing bandwidth timeline.
+        # Requests from other cores cannot consume this core's link capacity.
+        for req in sorted(requests, key=lambda x: (int(x["core"]), str(x["id"]))):
+            core = int(req["core"])
+            req_id = req["id"]
+            size = max(1, int(req["width"]))
+            rate = self.bytes_per_cycle_per_core
+            start_byte = max(cycle * rate, self.bus_next_byte.get(core, 0))
+            wait = max(0, math.ceil(start_byte / rate) - cycle)
+            service_cycles = max(1, math.ceil((start_byte % rate + size) / rate))
+            complete = math.ceil((start_byte + size) / rate)
+            self.bus_next_byte[core] = start_byte + size
+            self.accepted += 1
+            self.transferred_bytes += size
+            self.bytes_by_core[core] = self.bytes_by_core.get(core, 0) + size
+            self.request_cycles.append(cycle)
+            result[req_id] = {
+                "bank_wait": 0, "bus_wait": wait,
+                "bus_service_cycles": service_cycles,
+                "service_complete_cycle": complete,
+                "core": core, "core_bytes_per_cycle": rate,
+            }
+            self.request_events.append({
+                "request_id": str(req_id), "core": core, "width": size,
+                "request_cycle": cycle, "bus_wait": wait,
+                "service_complete_cycle": complete,
+            })
+        return result
+
+
 def branch_mispredict(op: Op, branch_number: int, predictor: str) -> bool:
     """Deterministic branch-prediction sensitivity model; rates are assumptions."""
     label = op.label.lower()
@@ -1922,9 +1975,12 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 conventional_refill_latency=int(features.get("conventional_refill_latency", 32)),
             )
     pending_fills = []
-    controller = SharedMemoryController(
-        bank_count=p.bank_count, beat_bytes=p.bank_beat_bytes,
-        aggregate_bytes_per_cycle=aggregate_dram_bandwidth)
+    data_ram_per_core = int(getattr(p, "data_ram_bytes_per_cycle_per_core", 0) or
+                             (64 if is_nexus else 0))
+    controller = (DataRamController(data_ram_per_core) if data_ram_per_core else
+                  SharedMemoryController(
+                      bank_count=p.bank_count, beat_bytes=p.bank_beat_bytes,
+                      aggregate_bytes_per_cycle=aggregate_dram_bandwidth))
     cycle = 0
     limit = max(10000, sum(len(x) for x in shards) * 1000)
     while any(st["retired"] < len(st["ops"]) for st in states) and cycle < limit:
@@ -2150,12 +2206,24 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                                 "request_cycles": sorted(set(app_controller.request_cycles)),
                                 "request_events": app_controller.request_events}
                                if app_controller is not None else None),
-            "controller": {"bank_count": p.bank_count,
+            "controller": ({
+                           "model": "per_core_fabric_ports",
+                           "per_core_bytes_per_cycle": controller.bytes_per_cycle_per_core,
+                           "active_core_count": len(states),
+                           "aggregate_core_facing_capacity_bytes_per_cycle": controller.bytes_per_cycle_per_core * len(states),
+                           "accepted": controller.accepted,
+                           "transferred_bytes": controller.transferred_bytes,
+                           "bytes_by_core": controller.bytes_by_core,
+                           "request_cycles": sorted(set(controller.request_cycles)),
+                           "request_events": controller.request_events
+                         } if isinstance(controller, DataRamController) else {
+                           "model": "legacy_shared_controller",
+                           "bank_count": p.bank_count,
                            "aggregate_dram_bytes_per_cycle": aggregate_dram_bandwidth,
                            "bank_busy_until": controller.bank_busy,
                            "bus_next_cycle": controller.bus_next_cycle,
                            "request_cycles": sorted(set(controller.request_cycles)),
-                            "request_events": controller.request_events}}
+                           "request_events": controller.request_events})}
 
 
 def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=None,
