@@ -35,16 +35,13 @@ def run_mode(workloads, normalized, execution_only=False, common_memory=False):
         profile = dict(SIM.PROFILES[arch])
         cores = 8 if normalized else profile["core_count"]
         if common_memory:
-            # A second controlled comparison: same core count, reference clock,
-            # DRAM latency and aggregate DRAM bandwidth. Keep each architecture's
-            # execution resources, caches and instruction-delivery design intact.
+            # Controlled comparison: same core count, CPU clock and CPU-to-data-memory
+            # bandwidth. Do NOT normalize memory latency, cache topology/capacity,
+            # execution resources, instruction delivery or any other architecture feature.
             profile["frequency_ghz"] = 3.0
-            profile["dram_lat"] = 120
-            profile["dram_bytes_per_cycle"] = 32
-            # NEXSUS has a dedicated per-core DataRAM controller. Normalize it too:
-            # 4 B/cycle/core across eight cores = the same 32 B/cycle aggregate.
-            if arch == "nexus_balanced_128":
-                profile["data_ram_bytes_per_cycle_per_core"] = 4
+            profile["dram_bytes_per_cycle"] = 512
+            # NEXSUS already provides 64 B/cycle/core = 512 B/cycle across eight cores;
+            # leave its native DataRamController setting untouched.
         if arch == "nexus_balanced_128":
             features = dict(NEXSUS_FEATURES)
             if execution_only:
@@ -91,7 +88,7 @@ def render_report(data):
         "| Intel Xeon 698X / Granite Rapids | 86 | 2.0 GHz base | x86-64, AMX, 86 P-cores |",
         "| Apple M6 | 12 | 3.0 GHz assumption | ARM vector; homogeneous approximation of 2 super + 4 performance + 6 efficiency cores |",
         "| NEXSUS Balanced 128 | 8 | 3.0 GHz assumption | L1/L2/L3/L4, 512-bit VEC, ME512, Task Workspace, CodeFlow |", "",
-        "The simulator allows each profile to use its configured execution resources. Native and core-count-normalized modes retain each profile's modeled clock and memory bandwidth; they are not bandwidth-equal comparisons. The common-memory 8-core mode fixes all profiles at 3.0 GHz, 120-cycle data-memory latency and 32 B/cycle aggregate DataRAM/DRAM bandwidth. NEXSUS is comparison-overridden to 4 B/cycle/core only in this mode; its native 64 B/cycle/core DataRAM contract remains unchanged. AppRAM/CodeFlow instruction delivery is a separate, unnormalized path. Clock, cache latency, issue width, and several vendor-private details are model assumptions. Apple core classes are not yet scheduled separately. NEXSUS values are proposals, not measured silicon limits.", "",
+        "The simulator allows each profile to use its configured execution resources. Native and core-count-normalized modes retain each profile's modeled clock and memory bandwidth. The controlled 8-core mode fixes only core count (8), CPU clock (3.0 GHz) and CPU-to-data-memory bandwidth (64 B/cycle/core = 512 B/cycle aggregate). Memory latency, cache topology/capacity, execution resources and instruction-delivery design remain architecture-specific. NEXSUS keeps its native 64 B/cycle/core DataRAM setting; reference profiles use a 512 B/cycle aggregate data-memory interface for this controlled mode. AppRAM/CodeFlow remains a separate NEXSUS instruction-delivery path and is not collapsed into the data-memory interface. Clock, cache latency, issue width, and several vendor-private details are model assumptions. Apple core classes are not yet scheduled separately. NEXSUS values are proposals, not measured silicon limits.", "",
         "## Native core-count summary", "",
         "| Architecture | Cores | Clock | Sum cycles* | Sum modeled time (µs)* | Aggregate IPC* |",
         "|---|---:|---:|---:|---:|---:|",
@@ -105,7 +102,7 @@ def render_report(data):
     for mode_data, mode_key, heading in (
         (data["modes"], "native", "Per-kernel comparison — native core counts, modeled frontend"),
         (data["modes"], "normalized_8core", "Per-kernel comparison — 8-core, native clock and memory profile"),
-        (data["modes"], "normalized_8core_common_memory", "Per-kernel comparison — 8-core, common 3.0 GHz / 32 B/cycle data memory"),
+        (data["modes"], "normalized_8core_common_memory", "Per-kernel comparison — 8-core, common 3.0 GHz / 64 B/cycle/core data-memory interface"),
         (data["backend_isolation"], "native", "Backend isolation — native core counts, instruction frontend bypassed"),
         (data["backend_isolation"], "normalized_8core", "Backend isolation — normalized 8-core, instruction frontend bypassed"),
     ):
@@ -127,7 +124,7 @@ def render_report(data):
         "1. Same deterministic operation graph, inputs and per-kernel logical operation count across all profiles.",
         "2. Each profile maps operations to its configured native resources, including Intel AMX and NEXSUS ME512; no scalar-only handicap is imposed.",
         "3. Native mode compares package-scale modeled core counts. Core-count-normalized mode uses exactly eight active cores but retains each profile's own clock and DRAM bandwidth; it must not be described as fully normalized.",
-        "4. Common-memory 8-core mode uses eight cores, 3.0 GHz, 120-cycle data-memory latency and 32 B/cycle aggregate DataRAM/DRAM bandwidth for every profile. NEXSUS is comparison-overridden to 4 B/cycle/core only in this mode; its native architecture contract remains 64 B/cycle/core. AppRAM/CodeFlow instruction delivery is separate and unnormalized. Execution units, cache organization and instruction-fetch design remain profile-specific.",
+        "4. Controlled 8-core mode equalizes only eight cores, 3.0 GHz CPU clock and CPU-to-data-memory bandwidth at 64 B/cycle/core (512 B/cycle aggregate). Memory latency, cache hierarchy/capacity, execution resources, and instruction delivery remain profile-specific. NEXSUS retains its native 64 B/cycle/core DataRAM contract; the reference profiles use a 512 B/cycle aggregate data-memory interface in this mode.",
         "5. Backend-isolation modes bypass instruction delivery for every profile equally; they isolate execution, data-cache and memory behavior from frontend refill assumptions. NEXSUS Task Workspace remains enabled as a native backend feature.",
         "6. The modeled-frontend modes retain each profile's instruction delivery model. NEXSUS CodeFlow transfers only valid command bytes and prefetches only a known next page into the alternate EB bank; conventional profiles use the modeled I-cache.",
         "7. Modeled time is cycles divided by configured clock; it is not measured runtime.",
