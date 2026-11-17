@@ -376,7 +376,8 @@ class SharedCacheGroupTests(unittest.TestCase):
         self.assertIsNot(caches[0].l2, caches[2].l2)
         caches[0].fill(0x1000, "DRAM", active_core_count=2, peer_caches=caches, core_id=0)
         self.assertEqual(caches[1].probe(0x1000)[1], "L2")
-        self.assertEqual(caches[2].probe(0x1000)[1], "L3")
+        # Core 2 is outside the active pair, so its L2/L1 stay cold.
+        self.assertEqual(caches[2].probe(0x1000)[1], "L4")
 
     def test_l3_is_shared_by_four_cores(self):
         p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
