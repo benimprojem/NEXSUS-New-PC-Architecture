@@ -39,7 +39,7 @@ These tests are designed from the architecture contract upward. Implement them i
 | NEX-T001 | Architecture configuration contract | Simulator profile explicitly declares fixed per-core resources, cache sizes/groups, App RAM and Data RAM path capacities, and 8×64-bit bank-group baseline | IMPLEMENTED |
 | NEX-T002 | Independent App RAM and Data RAM paths | Both paths operate concurrently; each core has 64 B/cycle on each path; 8-core aggregate capacity is 512 B/cycle per memory system; no shared 64 B/cycle bottleneck | IMPLEMENTED |
 | NEX-T003 | Instruction path stage rates | App RAM→C0 16 B/cycle/core; C0→CS 20 B/cycle/core; CS→EB 20 B/cycle/core; EB consume 16 B/cycle/core; queueing and overlap are explicit | VALID |
-| NEX-T004 | Data RAM bank and wide-access behavior | Per-core bandwidth contract, bank-group behavior, distinct-bank concurrency, same-bank conflicts, 128/256/512-bit accesses, stripe crossings and all-or-none admission | IMPLEMENTED |
+| NEX-T004 | Data RAM bank and wide-access behavior | Per-core bandwidth contract, bank-group behavior, distinct-bank concurrency, same-bank conflicts, 128/256/512-bit accesses, stripe crossings and all-or-none admission | VALID |
 | NEX-T005 | Cache topology and sharing | 8×L1, 4×L2, 2×L3, 1×L4 per eight-core block; cross-L3-group L4 access; no false private-L1 replication for shared sets | PLANNED |
 | NEX-T006 | Execution resource issue and latency | INT=8, FP64=6, FMA=4, VEC=2, ME512=1 per core; independent issue throughput and dependency latency measured separately | PLANNED |
 | NEX-T007 | Register-bank connectivity | RA/FA/DA/MA bank widths/counts, simultaneous reads, writeback conflicts, forwarding, pair accesses and ME512 result paths | PLANNED |
@@ -162,4 +162,12 @@ No new cross-architecture performance ranking is accepted until:
 - Model service assumption: one 64-bit bank beat per cycle, configurable as a model parameter; this is not a silicon measurement or a new architecture decision.
 - Scope boundary: one bank group only. Total physical group count/placement, physical ports, queue depth, cross-client arbitration/QoS and System Fabric internals are not inferred or tested here. System Fabric is assumed operational during this CPU test phase.
 - Implementation commits: model `3b1aa2e1bd080dc1a57d8d1a8171eb02006d3ec2`; tests `b3e5f57d04a82c567086f044e1bcac3c0d77a503`.
-- CI status: pending; NEX-T004 remains **IMPLEMENTED**, not VALID, until the full workflow passes.
+- Validation: **VALID** on CI run `44096831765` (commit `d2f097319a2f43411aa3003de84af3f6b2475079`); all 37 workflow steps passed, including T001–T004, regression tests and the existing comparison/benchmark smoke stages.
+
+
+### 3.6 NEX-T004 validation record
+
+- CI run: [44096831765](https://github.com/benimprojem/NEXSUS-New-PC-Architecture/actions/runs/44096831765)
+- Validated commit: `d2f097319a2f43411aa3003de84af3f6b2475079`
+- Result: all workflow steps passed. The numbered architecture contract step, full regression suite, comparison smoke test, and all existing benchmark/sweep steps completed successfully.
+- T004 is **VALID** for the isolated 8-bank group behavior covered by its test. This does not establish total physical group count/placement or Fabric arbitration behavior.
