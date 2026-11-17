@@ -8,7 +8,7 @@ from cpu_comparison_sim import (
 def test_per_core_data_ram_rate_is_not_aggregate_dram_width():
     profile = PROFILES["nexus_balanced_128"]
     assert profile["data_ram_bytes_per_cycle_per_core"] == 64
-    assert profile["dram_bytes_per_cycle"] == 64
+    assert profile["dram_bytes_per_cycle"] == 512
     assert profile["data_ram_bytes_per_cycle_per_core"] * 8 == 512
     assert profile["memory_bank_group_width_bits"] == 512
 
