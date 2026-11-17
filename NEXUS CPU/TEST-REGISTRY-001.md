@@ -58,6 +58,18 @@ These tests are designed from the architecture contract upward. Implement them i
 - Execution status: not yet run in CI; therefore **IMPLEMENTED**, not VALID.
 - Scope limitation: configuration declarations only. Runtime Data RAM service and Fabric arbitration remain for NEX-T002/NEX-T004.
 
+### 3.2 NEX-T002 implementation record
+
+- Test file: `NEXUS CPU/tools/test_fabric_memory_paths_t002.py`
+- Runtime change: NEXSUS Data RAM misses now use `DataRamController`, with a separate 64 B/cycle/core Fabric-facing bandwidth timeline. Other CPU profiles retain the legacy shared-memory comparison model.
+- App RAM remains on its separate `AppRamController` timeline.
+- Data RAM controller commit: `b85e5113761f66eeaa94aa9a48efcdc752a65d20`
+- Profile dataclass compatibility commit: `d2faac5049b99b56c464011a55c97f6954f837ba`
+- Test commit: `1a957cb7cc2a4b5e24b55453d38f48d111317df3`
+- CI workflow commit: `ffcff089969594180a03c60da709d636a936945c`
+- Execution status: queued for CI; therefore **IMPLEMENTED**, not VALID.
+- Scope: validates core-facing link capacity and App/Data path independence. It deliberately does not claim that one 8×64-bit physical bank group can satisfy all eight cores simultaneously. Total bank-group count/placement, physical port replication, and multi-client Fabric arbitration/QoS remain open for NEX-T004 and follow-up tests.
+
 ## 4. Historical test files — retained, not yet re-certified
 
 The following files existed before this registry. They are not deleted, renamed, or silently treated as valid. Their historical outputs remain useful for regression analysis, but each must be mapped to a new test ID and re-run where relevant.
