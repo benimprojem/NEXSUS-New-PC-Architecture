@@ -123,19 +123,22 @@ These are simulator operating points, not fixed silicon timing or final RTL para
 - App RAM bank scheduling and outstanding-request capacity are modeled per core connection; same-core requests may contend locally.
 - **Model boundary:** the simulator's eight-bank/per-core scheduling is an abstraction for local contention tests, not a frozen physical App RAM bank count, bank layout, or port implementation. Physical App RAM organization and the detailed System Fabric arbitration/fairness policy remain **OPEN**.
 - App RAM and Data RAM are separate memory systems with independent controllers and paths; they may progress concurrently.
+- Each CPU core has its own independent 64 B/cycle Data RAM connection. Eight cores therefore provide 8 × 64 B/cycle = 512 B/cycle aggregate Data RAM connection capacity.
+- Data RAM core-facing paths must not be modeled as one shared 64 B/cycle bus or one global per-core queue. System Fabric coordinates the independent paths.
 - App RAM is the instruction source. Data RAM stores mutable data, task state, and protected OS/context backing.
 - Data RAM is not an instruction-fetch source.
 - App RAM and Data RAM must not be collapsed into one global controller or queue.
-- Physical App RAM bank topology/address mapping, implementation port structure, and Fabric arbitration/fairness policy require a separate focused design decision.
+- Physical Data RAM bank topology/address mapping, implementation port structure, and Fabric arbitration/fairness policy require a separate focused design decision.
 
 ### 5.2 Data RAM bandwidth and bank group
 
 | Parameter | Current architecture baseline | State |
 |---|---:|---|
-| Data RAM aggregate bandwidth | 64 B/cycle | **BASELINE** |
+| Per-core Data RAM connection | 64 B/cycle/core | **FIXED** |
+| Eight-core aggregate connection capacity | 512 B/cycle | **FIXED** |
 | Banks per bank group | 8 | **BASELINE** |
 | Local bank slice | 64 bit (8 B) | **BASELINE** |
-| Aggregate group width | 512 bit (64 B) | **BASELINE** |
+| Aggregate group width | 512 bit (64 B) = 64 B/cycle per group | **BASELINE** |
 | Interleave granule | 8 B | **BASELINE** |
 | 512-bit aligned transfer | One 64-byte stripe across 8 banks | **BASELINE** |
 
@@ -305,7 +308,7 @@ Items already specified in architecture documents are not to be redesigned; they
 
 ## 11. Conflict resolution and change log
 
-- The 2026-11-13 architecture revision restores Data RAM aggregate bandwidth to 64 B/cycle and confirms 32-entry RA/FA/DA/MA banks.
+- The 2026-11-17 explicit clarification establishes independent Data RAM connections of 64 B/cycle per core (512 B/cycle aggregate for eight cores); the older 64 B/cycle aggregate wording is superseded. The 2026-11-13 revision also confirms 32-entry RA/FA/DA/MA banks.
 - The 2026-11-16 App RAM connection correction establishes 64 B/cycle per core and 512 B/cycle aggregate for the eight-core block; System Fabric coordinates independent core-facing paths. Older 64-entry register tables are superseded.
 - The 2026-11-16 memory-path naming decision establishes C0, CS, CST, EB, OW, TW, CP, and XW as current terms. PX, P0–P7, Ping-Pong, SPM0, and L0I are legacy terms.
 - The latest explicit execution-resource decision fixes INT=8, FP64=6, FMA=4, VEC=2, ME512=1.
