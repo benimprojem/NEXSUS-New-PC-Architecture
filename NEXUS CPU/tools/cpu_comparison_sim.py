@@ -55,6 +55,14 @@ class CoreProfile:
     vector_bits: int = 128
     matrix_unit: str = "VEC"
     execution_topology: dict = field(default_factory=dict)
+    app_ram_bytes_per_cycle_per_core: int = 64
+    data_ram_bytes_per_cycle_per_core: int = 0
+    app_ram_bank_count_per_group: int = 8
+    data_ram_bank_count_per_group: int = 8
+    memory_bank_slice_bits: int = 64
+    memory_bank_group_width_bits: int = 512
+    memory_fabric_shared: bool = False
+    cache_grouping: dict = field(default_factory=dict)
 
 # Publicly documented or independently measured values are marked in docs.
 # Unpublished/uncertain values are conservative model assumptions, not claims.
