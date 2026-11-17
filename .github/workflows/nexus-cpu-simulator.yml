@@ -66,6 +66,7 @@ jobs:
           python -m py_compile "NEXUS CPU/tools/test_fabric_memory_paths_t002.py"
           python -m py_compile "NEXUS CPU/tools/test_instruction_path_rates_t003.py"
           python -m py_compile "NEXUS CPU/tools/test_instruction_pipeline_overlap_t013.py"
+          python -m py_compile "NEXUS CPU/tools/test_memory_path_contract_t014.py"
           python -m py_compile "NEXUS CPU/tools/data_ram_bank_model.py"
           python -m py_compile "NEXUS CPU/tools/test_data_ram_bank_t004.py"
           python -m py_compile "NEXUS CPU/tools/test_cache_topology_t005.py"
@@ -83,6 +84,7 @@ jobs:
           python test_fabric_memory_paths_t002.py
           python test_instruction_path_rates_t003.py
           python test_instruction_pipeline_overlap_t013.py
+          python test_memory_path_contract_t014.py
           python test_data_ram_bank_t004.py
           python test_cache_topology_t005.py
           python test_execution_resources_t006.py
