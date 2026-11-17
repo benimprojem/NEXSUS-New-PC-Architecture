@@ -70,12 +70,7 @@ class MixedResourceStressT010(unittest.TestCase):
         }.issubset(self.expected_kinds))
 
     def test_data_ram_and_app_ram_progress_independently_in_same_run(self):
-        run = sim.simulate_cpu(
-            {"mixed_resource_stress": self.ops},
-            self.profile,
-            8,
-            dict(self.features),
-        )
+        run = self.run
         row = run["kernels"]["mixed_resource_stress"]
         data = row["memory_controller"]
         app = row["app_ram_controller"]
@@ -96,12 +91,7 @@ class MixedResourceStressT010(unittest.TestCase):
         self.assertEqual(set(app["bytes_by_core"]), set(range(8)))
 
     def test_codeflow_and_resource_contention_are_observed(self):
-        run = sim.simulate_cpu(
-            {"mixed_resource_stress": self.ops},
-            self.profile,
-            8,
-            dict(self.features),
-        )
+        run = self.run
         row = run["kernels"]["mixed_resource_stress"]
         self.assertGreater(row["codeflow_counters"]["refills"], 0)
         self.assertGreater(row["codeflow_counters"]["app_ram_bytes"], 0)
