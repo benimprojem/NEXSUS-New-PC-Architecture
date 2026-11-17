@@ -67,9 +67,17 @@ def test_nexus_l4_distributes_directly_to_active_group_level():
     address = 0x123400
     line = address // 64
 
-    # Eight active cores: L4 fans out to all eight private L1s at once.
+    # Merely configuring eight cores must not broadcast a single-core miss.
     caches = make_nexus_cache_group(8)
-    caches[0].fill(address, "DRAM", active_core_count=8, peer_caches=caches, core_id=0)
+    caches[0].fill(address, "DRAM", active_core_count=8, peer_caches=caches, core_id=0,
+                   active_core_ids=[0])
+    assert caches[0].l1.lookup(line)
+    assert not any(cache.l1.lookup(line) for cache in caches[1:])
+
+    # Eight cores requesting the same line together fan out to all private L1s.
+    caches = make_nexus_cache_group(8)
+    caches[0].fill(address, "DRAM", active_core_count=8, peer_caches=caches, core_id=0,
+                   active_core_ids=list(range(8)))
     assert all(cache.l1.lookup(line) for cache in caches)
     assert caches[0].l4.lookup(line)
     assert not any(cache.l2.lookup(line) for cache in caches)
@@ -77,7 +85,7 @@ def test_nexus_l4_distributes_directly_to_active_group_level():
 
     # Four active cores: one shared L3 receives the line directly.
     caches = make_nexus_cache_group(4)
-    caches[0].fill(address, "DRAM", active_core_count=4, peer_caches=caches, core_id=0)
+    caches[0].fill(address, "DRAM", active_core_count=4, peer_caches=caches, core_id=0, active_core_ids=[0, 1, 2, 3])
     assert all(caches[i].l3.lookup(line) for i in range(4))
     assert not any(cache.l1.lookup(line) for cache in caches)
     assert not any(cache.l2.lookup(line) for cache in caches)
@@ -85,14 +93,14 @@ def test_nexus_l4_distributes_directly_to_active_group_level():
 
     # Two active cores: their shared L2 is the direct destination.
     caches = make_nexus_cache_group(2)
-    caches[0].fill(address, "DRAM", active_core_count=2, peer_caches=caches, core_id=0)
+    caches[0].fill(address, "DRAM", active_core_count=2, peer_caches=caches, core_id=0, active_core_ids=[0, 1])
     assert caches[0].l2.lookup(line) and caches[1].l2.lookup(line)
     assert not any(cache.l1.lookup(line) for cache in caches)
     assert not caches[2].l2.lookup(line)
 
     # One active core: direct L4-to-L1 placement.
     caches = make_nexus_cache_group(1)
-    caches[0].fill(address, "DRAM", active_core_count=1, peer_caches=caches, core_id=0)
+    caches[0].fill(address, "DRAM", active_core_count=1, peer_caches=caches, core_id=0, active_core_ids=[0])
     assert caches[0].l1.lookup(line)
     assert not caches[1].l1.lookup(line)
     assert caches[0].l4.lookup(line)
