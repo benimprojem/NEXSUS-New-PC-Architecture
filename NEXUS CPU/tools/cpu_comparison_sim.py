@@ -1977,7 +1977,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
             "rob": deque(), "scheduler": deque(), "scheduler_capacity": (p.scheduler_entries if p.scheduler_entries > 0 else p.rob),
             "unit_busy": {k: [0] * v for k, v in p.units.items()},
             "next_frontend": 0, "frontend_blocked_until": 0, "retired": 0, "last_pc": None,
-            "max_rob": 0, "hits": {"L1":0,"L2":0,"L3":0,"L4":0,"DRAM":0},
+            "max_rob": 0, "max_scheduler": 0, "hits": {"L1":0,"L2":0,"L3":0,"L4":0,"DRAM":0},
             "branch_misses": 0, "branch_number": 0,
             "mshr_inflight": [],
             "mshr_max_outstanding": 0, "mshr_full_events": 0,
@@ -2380,6 +2380,7 @@ def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=N
     total_cycles = sum(v["cycles"] for v in results.values())
     total_ops = sum(v["ops"] for v in results.values())
     return {"cpu": p.name, "cores_configured": cores, "clock_ghz": p.frequency_ghz,
+            "rob_entries": p.rob, "scheduler_entries_per_core": (p.scheduler_entries if p.scheduler_entries > 0 else p.rob),
             "nexus_features": ({"task_workspace": True, "code_slots": True, "p0_capacity_kb": 16, "eb_kb": 4, "eb_bank_kb": 2, "p0_refill_latency": 48, "branch_predictor": p.branch_predictor} if nexus_features is None else nexus_features) if p.name.startswith("NEXSUS CPU") else None,
             "register_architecture": ({"RA": {"count": 32, "width_bits": 64}, "FA": {"count": 32, "width_bits": 64}, "DA": {"count": 32, "width_bits": 64}, "MA": {"count": 32, "width_bits": 256}, "selector_bits": 5, "total_physical_bytes": 1792} if p.name.startswith("NEXSUS CPU") else None),
             "cpu_ram_reference_clock_ghz": p.frequency_ghz,
