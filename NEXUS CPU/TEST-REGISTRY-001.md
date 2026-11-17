@@ -39,7 +39,7 @@ These tests are designed from the architecture contract upward. Implement them i
 | NEX-T001 | Architecture configuration contract | Simulator profile explicitly declares fixed per-core resources, cache sizes/groups, App RAM and Data RAM path capacities, and 8×64-bit bank-group baseline | IMPLEMENTED |
 | NEX-T002 | Independent App RAM and Data RAM paths | Both paths operate concurrently; each core has 64 B/cycle on each path; 8-core aggregate capacity is 512 B/cycle per memory system; no shared 64 B/cycle bottleneck | IMPLEMENTED |
 | NEX-T003 | Instruction path stage rates | App RAM→C0 16 B/cycle/core; C0→CS 20 B/cycle/core; CS→EB 20 B/cycle/core; EB consume 16 B/cycle/core; queueing and overlap are explicit | VALID |
-| NEX-T004 | Data RAM bank and wide-access behavior | Per-core bandwidth contract, bank-group behavior, distinct-bank concurrency, same-bank conflicts, 128/256/512-bit accesses, stripe crossings and all-or-none admission | PLANNED |
+| NEX-T004 | Data RAM bank and wide-access behavior | Per-core bandwidth contract, bank-group behavior, distinct-bank concurrency, same-bank conflicts, 128/256/512-bit accesses, stripe crossings and all-or-none admission | IMPLEMENTED |
 | NEX-T005 | Cache topology and sharing | 8×L1, 4×L2, 2×L3, 1×L4 per eight-core block; cross-L3-group L4 access; no false private-L1 replication for shared sets | PLANNED |
 | NEX-T006 | Execution resource issue and latency | INT=8, FP64=6, FMA=4, VEC=2, ME512=1 per core; independent issue throughput and dependency latency measured separately | PLANNED |
 | NEX-T007 | Register-bank connectivity | RA/FA/DA/MA bank widths/counts, simultaneous reads, writeback conflicts, forwarding, pair accesses and ME512 result paths | PLANNED |
@@ -152,3 +152,14 @@ No new cross-architecture performance ranking is accepted until:
 - Result: all workflow steps passed, including numbered architecture contract tests, regressions, comparison smoke test, and existing design-space sweeps.
 - T003 is marked **VALID** only for its explicit stage-rate contract and calculation scope; it does not certify detailed multi-page frontend overlap.
 - NEX-T012 is intentionally deferred until the final integrated-system phase, per the current testing sequence. CPU tests proceed with System Fabric assumed operational.
+
+
+### 3.5 NEX-T004 implementation record
+
+- Model: `NEXUS CPU/tools/data_ram_bank_model.py` — isolated one-group bank scheduler using the approved 8 × 64-bit bank baseline and 8-byte interleave.
+- Test: `NEXUS CPU/tools/test_data_ram_bank_t004.py`.
+- Covered: 64/128/256/512-bit width-to-slice mapping; distinct-bank concurrent service; same-bank local serialization; naturally aligned wide access crossing a 64-byte stripe; folded-selector 64-byte-stride distribution; validation-before-commit for all-or-none wide admission.
+- Model service assumption: one 64-bit bank beat per cycle, configurable as a model parameter; this is not a silicon measurement or a new architecture decision.
+- Scope boundary: one bank group only. Total physical group count/placement, physical ports, queue depth, cross-client arbitration/QoS and System Fabric internals are not inferred or tested here. System Fabric is assumed operational during this CPU test phase.
+- Implementation commits: model `3b1aa2e1bd080dc1a57d8d1a8171eb02006d3ec2`; tests `b3e5f57d04a82c567086f044e1bcac3c0d77a503`.
+- CI status: pending; NEX-T004 remains **IMPLEMENTED**, not VALID, until the full workflow passes.
