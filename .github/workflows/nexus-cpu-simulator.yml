@@ -71,6 +71,7 @@ jobs:
           python -m py_compile "NEXUS CPU/tools/test_execution_resources_t006.py"
           python -m py_compile "NEXUS CPU/tools/register_bank_model.py"
           python -m py_compile "NEXUS CPU/tools/test_register_bank_t007.py"
+          python -m py_compile "NEXUS CPU/tools/test_single_core_workloads_t008.py"
       - name: Run numbered architecture contract tests
         working-directory: "NEXUS CPU/tools"
         run: |
@@ -81,6 +82,7 @@ jobs:
           python test_cache_topology_t005.py
           python test_execution_resources_t006.py
           python test_register_bank_t007.py
+          python test_single_core_workloads_t008.py
       - name: Run regression tests
         working-directory: "NEXUS CPU/tools"
         run: |
