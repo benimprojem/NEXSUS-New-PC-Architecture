@@ -36,13 +36,11 @@ def simulate(workloads, core_count, bandwidth_policy):
     for arch in ARCHS:
         profile = dict(SIM.PROFILES[arch])
         profile["frequency_ghz"] = 3.0
-        profile["dram_lat"] = 120
-        if bandwidth_policy == "fixed_system_32":
-            profile["dram_bytes_per_cycle"] = 32
-        elif bandwidth_policy == "scaled_4_per_core":
-            profile["dram_bytes_per_cycle"] = 4 * core_count
-        else:
-            raise ValueError(f"unknown bandwidth policy: {bandwidth_policy}")
+        # Keep each architecture's native DRAM latency. Normalize only the
+        # aggregate CPU-facing data-memory budget to 512 B/cycle.
+        profile["dram_bytes_per_cycle"] = 512
+        if arch == "nexus_balanced_128":
+            profile["data_ram_bytes_per_cycle_per_core"] = 64
         features = NEXSUS_FEATURES if arch == "nexus_balanced_128" else None
         results[arch] = SIM.simulate_cpu(workloads, profile, core_count, features)
 
@@ -75,17 +73,18 @@ def main():
         "architectures": list(ARCHS),
         "controls": {
             "clock_ghz": 3.0,
-            "dram_latency_cycles": 120,
-            "fixed_system_32": "32 B/cycle aggregate DRAM bandwidth at every core count",
-            "scaled_4_per_core": "4 B/cycle/core equivalent aggregate budget; 4/8/16/32 B/cycle at 1/2/4/8 cores",
-            "bandwidth_controller": "shared work-conserving aggregate bus; no static per-core quota",
-            "nexus_app_ram": "independent 64 B/cycle/core AppRAM paths retained; AppRAM is not DRAM",
+            "aggregate_dram_bytes_per_cycle": 512,
+            "dram_latency": "architecture-specific native profile values retained",
+            "nexus_data_ram": "64 B/cycle/core independent links; 64/128/256/512 B/cycle aggregate core-facing capacity at 1/2/4/8 cores; 512 B/cycle aggregate DRAM ceiling retained",
+            "reference_memory": "512 B/cycle aggregate shared memory interface",
+            "nexus_app_ram": "independent 64 B/cycle/core AppRAM paths retained; AppRAM is not DataRAM",
+            "cache_and_execution": "architecture-specific cache topology, capacity, latency, and execution resources retained",
             "result_class": "simulated event/cycle model; not physical silicon measurements",
         },
         "runs": {},
     }
 
-    for policy in ("fixed_system_32", "scaled_4_per_core"):
+    for policy in ("common_512_aggregate",):
         data["runs"][policy] = {}
         for cores in CORE_COUNTS:
             data["runs"][policy][str(cores)] = simulate(workloads, cores, policy)
