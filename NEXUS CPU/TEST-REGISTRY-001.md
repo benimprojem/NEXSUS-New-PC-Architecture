@@ -45,7 +45,7 @@ These tests are designed from the architecture contract upward. Implement them i
 | NEX-T007 | Register-bank connectivity | RA/FA/DA/MA bank widths/counts, simultaneous reads, writeback conflicts, forwarding, pair accesses and ME512 result paths | VALID |
 | NEX-T008 | Single-core controlled workloads | Scalar, integer, FP64, FMA, vector, ME512, branch, pointer and instruction-stream tests with operation-count invariants | VALID |
 | NEX-T009 | 1/2/4/8-core scaling | Same logical work per experiment, independent per-core paths, active-core accounting, scaling and fairness | VALID |
-| NEX-T010 | Mixed full-architecture workloads | Execution + registers + caches + App RAM + Data RAM under concurrent load; isolated and mixed runs | PLANNED |
+| NEX-T010 | Mixed full-architecture workloads | Execution + registers + caches + App RAM + Data RAM under concurrent load; isolated and mixed runs | VALID |
 | NEX-T011 | Cross-architecture comparison | Only after T001–T010 foundations are valid; identical logical work and documented, defensible peer assumptions | PLANNED |\n| NEX-T012 | System Fabric 2× clock and time-interleaved scheduling | Two Fabric ticks per CPU cycle; destination queues progress without false shared-bus serialization; link bandwidth is not multiplied merely by clock ratio; fairness and backpressure are explicit | DEFERRED — final integrated-system phase |
 
 ### 3.1 NEX-T001 implementation record
@@ -270,4 +270,6 @@ No new cross-architecture performance ranking is accepted until:
 - Required checks: exact operation retirement; eight active cores; both independent memory controllers make progress in the same run; AppRAM and DataRAM each retain 64 B/cycle/core and 512 B/cycle aggregate at eight cores; per-core transferred-byte accounting sums exactly to each controller's total; CodeFlow refills and data DRAM accesses occur; execution-unit blocking is observable.
 - This validates simulator-level simultaneous mixed-resource pressure only. It does not establish physical silicon behavior, physical bank-group placement/port count, finalized Fabric arbitration/QoS, or the deferred 2× clock/time-interleaving integration.
 - CI integration: compile and numbered architecture-contract steps added to `.github/workflows/nexus-cpu-simulator.yml`.
-- Status: **IMPLEMENTED**, pending CI validation. No architecture resource counts or bandwidth values were changed.
+- Status: **VALID** on CI run [44130763148](https://github.com/benimprojem/NEXSUS-New-PC-Architecture/actions/runs/44130763148), validated commit `3bf482f81f09e105eadabbbeabd543b8e0a47d58`; the complete simulator workflow finished with `success`, including numbered tests, regressions, comparison smoke test, design-space sweeps, scaling comparisons and full benchmark-table generation/artifact upload.
+- Scope limitation: confirms the mixed workload's simulator assertions and the workflow's generated benchmark artifacts. It does not validate physical silicon, System Fabric internals, physical bank-group placement/ports or Fabric arbitration/QoS. System Fabric is assumed operational for the CPU test phase; no Fabric integration test is being run now.
+- No architecture resource counts, clock values or bandwidth values were changed.
