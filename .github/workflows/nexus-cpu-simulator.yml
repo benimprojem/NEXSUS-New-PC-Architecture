@@ -62,6 +62,13 @@ jobs:
           python -m py_compile "NEXUS CPU/tools/test_p0p1_l0i_px_middle_sweep.py"
           python -m py_compile "NEXUS CPU/tools/p0p1_l0i_px_workload_sweep.py"
           python -m py_compile "NEXUS CPU/tools/test_p0p1_l0i_px_workload_sweep.py"
+          python -m py_compile "NEXUS CPU/tools/test_architecture_contract_t001.py"
+          python -m py_compile "NEXUS CPU/tools/test_fabric_memory_paths_t002.py"
+      - name: Run numbered architecture contract tests
+        working-directory: "NEXUS CPU/tools"
+        run: |
+          python test_architecture_contract_t001.py
+          python test_fabric_memory_paths_t002.py
       - name: Run regression tests
         working-directory: "NEXUS CPU/tools"
         run: |
