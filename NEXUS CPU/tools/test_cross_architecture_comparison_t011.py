@@ -36,7 +36,7 @@ class CrossArchitectureComparisonT011(unittest.TestCase):
                     sum(controller["bytes_by_core"].values()),
                     controller["transferred_bytes"],
                 )
-                self.assertEqual(set(controller["bytes_by_core"]), {str(i) for i in range(8)})
+                self.assertEqual(set(controller["bytes_by_core"]), set(range(8)))
             else:
                 self.assertEqual(controller["model"], "legacy_shared_controller")
                 self.assertEqual(controller["aggregate_dram_bytes_per_cycle"], 32)
