@@ -73,11 +73,12 @@ def main():
         "architectures": list(ARCHS),
         "controls": {
             "clock_ghz": 3.0,
-            "aggregate_dram_bytes_per_cycle": 512,
+            "reference_aggregate_memory_bytes_per_cycle": 512,
             "dram_latency": "architecture-specific native profile values retained",
-            "nexus_data_ram": "64 B/cycle/core independent links; 64/128/256/512 B/cycle aggregate core-facing capacity at 1/2/4/8 cores; 512 B/cycle aggregate DRAM ceiling retained",
+            "nexus_data_ram": "independent 64 B/cycle/core DataRAM links; aggregate path capacity 64/128/256/512 B/cycle at 1/2/4/8 cores",
             "reference_memory": "512 B/cycle aggregate shared memory interface",
-            "nexus_app_ram": "independent 64 B/cycle/core AppRAM paths retained; AppRAM is not DataRAM",
+            "nexus_app_ram": "independent 64 B/cycle/core AppRAM links; aggregate path capacity 64/128/256/512 B/cycle at 1/2/4/8 cores; never shares the DataRAM path",
+            "nexus_memory_domains": "AppRAM and DataRAM are separate physical memory domains/controllers; each can independently reach 512 B/cycle at 8 cores (up to 1024 B/cycle combined)",
             "cache_and_execution": "architecture-specific cache topology, capacity, latency, and execution resources retained",
             "result_class": "simulated event/cycle model; not physical silicon measurements",
         },
@@ -171,12 +172,13 @@ def main():
         "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
         *[f"| {row['architecture_id']} | {row['cores']} | {row['clock_ghz']:.1f} | {row['aggregate_dram_ceiling_bytes_per_cycle']} | {row['dram_latency_cycles']} | {row['data_ram_bytes_per_cycle_per_core']} | {row['data_ram_core_facing_aggregate_bytes_per_cycle']} | {row['app_ram_bytes_per_cycle_per_core']} | {row['app_ram_aggregate_bytes_per_cycle']} | {row['l1_kib_per_core']} | {row['l2_kib_per_group']} | {row['l3_kib_per_group']} | {row['l4_kib_per_group']} |" for row in audit_rows],
         "",
-        "All four models use 3.0 GHz and a 512 B/cycle aggregate DRAM ceiling. Native architecture-specific DRAM latency is retained. Results are simulated, not silicon measurements.",
+        "All four models use 3.0 GHz. Reference CPUs use a 512 B/cycle aggregate shared memory interface. NEXSUS has two independent memory domains: DataRAM and AppRAM each scale from 64 to 512 B/cycle across 1 to 8 cores. Native architecture-specific DRAM latency is retained. Results are simulated, not silicon measurements.",
         "",
         "Memory and cache settings checked by this run:",
-        "- Aggregate DRAM ceiling: 512 B/cycle for every architecture and core count.",
-        "- NEXSUS DataRAM core-facing links: 64 B/cycle/core (64/128/256/512 B/cycle at 1/2/4/8 cores).",
-        "- NEXSUS AppRAM: separate 64 B/cycle/core instruction path.",
+        "- Reference CPU shared memory interface: 512 B/cycle aggregate.",
+        "- NEXSUS DataRAM: 64 B/cycle/core (64/128/256/512 B/cycle at 1/2/4/8 cores).",
+        "- NEXSUS AppRAM: physically separate 64 B/cycle/core path (64/128/256/512 B/cycle at 1/2/4/8 cores).",
+        "- NEXSUS AppRAM and DataRAM can each independently reach 512 B/cycle; they do not share one 512 B/cycle bottleneck.",
         "- Native DRAM latency, cache sizes/topology/latencies and execution resources are retained.",
         "- The NEXSUS shared physical DRAM bank/arbitration stage remains a separately tracked integration item; this comparison verifies its configured 512 B/cycle ceiling, not its final physical timing.",
         "",
@@ -204,7 +206,7 @@ def main():
     (args.output_dir / "core-scaling-results.md").write_text(
         "\n".join(lines), encoding="utf-8"
     )
-    print(f"PASS: {len(KERNELS)} kernels x 4 architectures x 4 core counts under one common 512 B/cycle DRAM ceiling.")
+    print(f"PASS: {len(KERNELS)} kernels x 4 architectures x 4 core counts; reference shared memory is 512 B/cycle and NEXSUS AppRAM/DataRAM are independent paths.")
     print(f"PASS: {len(rows)} per-kernel scaling rows; logical operation counts match.")
     print(f"Report: {args.output_dir / 'core-scaling-results.md'}")
     print(f"CSV: {args.output_dir / 'core-scaling-results.csv'}")
