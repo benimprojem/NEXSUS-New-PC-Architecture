@@ -43,4 +43,4 @@ for policy in policies:
                 assert active_cores == count, (count, kernel, active_cores)
 
 print("PASS: 1/2/4/8-core scaling, four architectures, ten identical logical workloads.")
-print("PASS: fixed and per-core-scaled DRAM controls; NEXSUS AppRAM remains 64 B/cycle/core.")
+print("PASS: 512 B/cycle DRAM ceiling; native latency retained; NEXSUS DataRAM/AppRAM links remain 64 B/cycle/core.")
