@@ -49,7 +49,7 @@ for policy in policies:
             active_cores = controller["active_core_count"]
             assert 1 <= active_cores <= count
             assert controller["aggregate_bytes_per_cycle"] == 64 * active_cores
-            data_controller = nexus["kernels"][data["kernel_names"][0]]["memory_controller"]
+            data_controller = nexus["kernels"]["numeric_tile"]["memory_controller"]
             assert data_controller["per_core_bytes_per_cycle"] == 64
             assert data_controller["aggregate_core_facing_capacity_bytes_per_cycle"] == 64 * count
             # These kernels distribute work across every configured core.
