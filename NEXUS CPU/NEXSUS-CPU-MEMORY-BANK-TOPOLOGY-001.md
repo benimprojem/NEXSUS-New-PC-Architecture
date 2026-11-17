@@ -176,21 +176,35 @@ The reported minimum rounds are an ideal bank-demand lower bound, not cycle-accu
 
 ## 6. App RAM code-fetch path
 
-App RAM serves application instructions and is physically/logically independent from Data RAM. The current baseline code path is:
+App RAM is the instruction-source memory system. It is attached to the shared System Fabric and uses the same minimum bank-group organization as Data RAM: **8 banks × 64 bit = 512 bit (64 B) per group**. This is eight 64-bit banks, not 64 banks. The memory resource is fabric-attached and may serve multiple CPU/system clients; it is not a private physical bank island for one CPU.
+
+The CPU-facing and internal refill rates are distinct:
+
+- Each CPU core has an independent **64 B/cycle** App RAM connection through System Fabric.
+- The eight-core block therefore has **512 B/cycle aggregate core-facing connection capacity**.
+- The App RAM → Code Cache (C0) refill stage is currently modeled at **16 B/cycle/core**. This is a downstream stage limit; it does not reduce or redefine the 64 B/cycle upstream connection.
+- C0 → Code Slots (CS) and CS → Execution Buffer (EB) are separate downstream stages and have their own rates.
+
+Canonical instruction path:
 
 ```text
-App RAM -> L0I (64 KiB) -> PX P0–P7 (8 x 2 KiB) -> SPM0 (4 KiB; 2 x 2 KiB)
+Fabric-attached App RAM bank groups
+  → per-core 64 B/cycle App RAM connection
+  → Code Cache (C0), refill stage 16 B/cycle/core
+  → Code Slots (CS0–CS7)
+  → Code Stream Transfer (CST)
+  → Execution Buffer (EB; two 2 KiB banks)
+  → instruction fetch/decode/execute
 ```
 
-- The App RAM -> L0I connection is one 64-bit (8-byte) read lane. One transfer beat carries one 64-bit instruction word.
-- The initial design uses one read lane only. Four independent 64-bit lanes (256-bit aggregate) are a future expansion and require additional ports/routing/arbitration.
-- L0I is filled progressively in task-aware chunks. It does not wait for a complete 64 KiB refill.
-- The OS selects task/logical-page requests and priorities. Consecutive logical pages may reside at non-contiguous App RAM addresses.
-- L0I -> PX transfers selected logical 2 KiB pages according to OS requests, not a sequential physical-address scan.
-- PX -> SPM0 uses the dual 2 KiB banks; PX fills the inactive bank while CPU consumes the active bank.
-- The 8-bank × 64-bit Data RAM throughput table in Section 8 does not describe or widen this single-lane App-code path.
+The 8-bank group describes physical memory-side organization and does not imply that the downstream C0 refill stage consumes 64 B/cycle. The CPU-facing connection, bank-group width and serial frontend stage rates must be modeled separately.
 
-App RAM and Data RAM access remain physically independent and may make progress concurrently. App RAM writes/maintenance for loader and controlled code updates use a separately specified maintenance path.
+- C0 is filled progressively in task-aware chunks; it does not wait for a complete cache refill.
+- The OS selects task/logical-page requests and priorities. Consecutive logical pages may reside at non-contiguous App RAM addresses.
+- CST transfers selected logical code pages according to OS requests, not a sequential physical-address scan.
+- The two EB banks support inactive-bank filling while the active bank supplies instructions.
+- App RAM and Data RAM have separate memory paths/controllers and may make progress concurrently, while both remain attached to the shared System Fabric.
+- App RAM writes/maintenance for loader and controlled code updates use a separately specified maintenance path.
 
 ## 7. Data RAM bank group
 
@@ -208,7 +222,7 @@ A bank is not assumed to accept a read and a write in the same cycle. If the phy
 
 ## 8. Throughput model
 
-The following values are theoretical Data RAM interface ceilings, not guaranteed sustained application bandwidth. They assume every 64-bit Data RAM bank slice can complete one 64-bit beat per memory cycle and the aggregate Data RAM path can carry all eight slices. These figures do not apply to the single 64-bit App RAM -> L0I code-fetch lane.
+The following values are theoretical bank-group interface ceilings, not guaranteed sustained application bandwidth. They assume every 64-bit bank slice can complete one 64-bit beat per memory cycle and the group path can carry all eight slices. The same 8×64-bit minimum group organization applies independently to App RAM and Data RAM. These bank-group ceilings do not replace the per-core connection contract (64 B/cycle/core) or downstream frontend refill-stage limits (App RAM→C0 currently 16 B/cycle/core).
 
 | Active bank slices | Aggregate width | Bytes/cycle | At 10 GHz | At 20 GHz |
 |---:|---:|---:|---:|---:|
@@ -217,7 +231,7 @@ The following values are theoretical Data RAM interface ceilings, not guaranteed
 | 4 | 256 bit | 32 B | 320 GB/s | 640 GB/s |
 | 8 | 512 bit | 64 B | 640 GB/s | 1.28 TB/s |
 
-App RAM and Data RAM have separate physical paths. Their activity can overlap; the table applies independently to each qualifying bank group and must not be interpreted as one shared combined bus.
+App RAM and Data RAM have separate memory paths and may progress concurrently. The table applies independently to each qualifying bank group and must not be interpreted as one shared combined bus. The total number and placement of bank groups across System Fabric remain open; do not assume one group per core.
 
 Actual sustained bandwidth will be lower where sense time, write time, bank conflicts, controller scheduling, Fabric transport, ECC, refresh/retention management, power or thermal limits reduce the usable service rate. The MOSRAM 10–20 GHz and 50–100 ps values remain physical research targets pending SPICE/TCAD and prototype validation.
 
