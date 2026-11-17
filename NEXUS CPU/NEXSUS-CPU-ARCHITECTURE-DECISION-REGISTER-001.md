@@ -255,7 +255,7 @@ The instruction encoding document remains a draft wherever it explicitly marks f
 - Node clocks, Fabric clock, and memory clocks are independent domains.
 - Dynamic routing, arbitration, traffic scheduling, flow control, QoS, and direct node-to-node transfer are part of the Fabric design direction.
 
-**OPEN:** final physical lane count, lane allocation granularity, clock rates, routing topology, protocol/packet details, and silicon-level latency/throughput.
+**FIXED clock relationship:** System Fabric runs at **2× the CPU core clock** for the current NEXSUS CPU baseline. One CPU cycle therefore contains two Fabric scheduling ticks. The Fabric uses these faster ticks to time-interleave requests, independently schedule destination queues, and keep eligible output paths continuously occupied. Different destinations may receive transfers in the same CPU-cycle window, creating an effectively simultaneous view without requiring every physical write to occur at the exact same instant.\n\n**OPEN:** final physical lane count, lane allocation granularity, routing topology, protocol/packet details, destination queue depths, arbitration/QoS policy, and silicon-level latency/throughput. The 2× clock ratio improves scheduling opportunity; it does not by itself double a link's byte bandwidth. Link width, port count, destination service rate, and contention still bound throughput.
 
 ---
 
