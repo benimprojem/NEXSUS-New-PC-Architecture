@@ -63,6 +63,7 @@ class CoreProfile:
     memory_bank_group_width_bits: int = 512
     memory_fabric_shared: bool = False
     cache_grouping: dict = field(default_factory=dict)
+    scheduler_entries: int = 0  # 0 keeps the legacy ROB-sized scheduling window
 
 # Publicly documented or independently measured values are marked in docs.
 # Unpublished/uncertain values are conservative model assumptions, not claims.
@@ -101,7 +102,7 @@ PROFILES = {
     "nexus_balanced_128": {
         "name": "NEXSUS CPU / 8-core proposed architecture",
         "core_count": 8, "core_type": "uniform", "frontend": 8,
-        "dispatch": 8, "issue": 10, "retire": 8, "rob": 128,
+        "dispatch": 8, "issue": 10, "retire": 8, "rob": 512, "scheduler_entries": 64,
         "units": {"INT": 8, "FP": 6, "VEC": 2, "LOAD": 8, "STORE": 4, "BR": 2, "CTX": 1, "ATOM": 1, "ME512": 1, "IRQ": 1},
         "execution_topology": {"INT128_PAIRS": [[0, 1], [2, 3]], "FMA_LANES": 4},
         "latency": {"INT": 1, "FP": 3, "VEC": 2, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 4, "ME512": 4, "IRQ": 6},
@@ -1743,6 +1744,8 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
     issued = [False] * len(ops)
     dispatched = [False] * len(ops)
     rob = deque()
+    scheduler = deque()
+    scheduler_capacity = p.scheduler_entries if p.scheduler_entries > 0 else p.rob
     unit_busy = {k: [0]*v for k,v in p.units.items()}
     bank_busy = [0] * p.bank_count
     dram_next_cycle = 0
@@ -1751,11 +1754,13 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
     frontend_blocked_until = 0
     retired = 0
     max_rob = 0
+    max_scheduler = 0
     hits = {"L1":0,"L2":0,"L3":0,"L4":0,"DRAM":0}
     branch_misses = 0
     stalls = {"dependency_blocked_op_cycles": 0, "issue_width_blocked_op_cycles": 0,
               "execution_unit_blocked_op_cycles": 0, "frontend_limited_cycles": 0,
-              "rob_full_cycles": 0, "branch_recovery_cycles": 0,
+              "rob_full_cycles": 0, "scheduler_full_cycles": 0,
+              "branch_recovery_cycles": 0,
               "memory_latency_exposure_cycles": 0}
     # Fixed, repeatable misprediction pattern: one in every four branch ops.
     branch_number = 0
@@ -1776,25 +1781,27 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
                 stalls["branch_recovery_cycles"] += 1
             elif len(rob) >= p.rob:
                 stalls["rob_full_cycles"] += 1
+            elif len(scheduler) >= scheduler_capacity:
+                stalls["scheduler_full_cycles"] += 1
         d = 0
         while (next_frontend < len(ops) and d < p.dispatch and
-               len(rob) < p.rob and cycle >= frontend_blocked_until):
+               len(rob) < p.rob and len(scheduler) < scheduler_capacity and cycle >= frontend_blocked_until):
             op = ops[next_frontend]
             # Front-end throughput is separately modelled from dispatch.
             if d >= p.frontend:
                 break
             dispatched[op.seq] = True
             rob.append(op.seq)
+            scheduler.append(op.seq)
             next_frontend += 1; d += 1
         max_rob = max(max_rob, len(rob))
+        max_scheduler = max(max_scheduler, len(scheduler))
         if next_frontend < len(ops) and cycle >= frontend_blocked_until and len(rob) < p.rob and d >= min(p.dispatch, p.frontend):
             stalls["frontend_limited_cycles"] += 1
 
         # Select ready operations oldest-first; dependencies may execute out of order.
         issued_this_cycle = 0
-        for seq in list(rob):
-            if issued[seq]:
-                continue
+        for seq in list(scheduler):
             op = ops[seq]
             if any(not done[x] for x in op.deps):
                 stalls["dependency_blocked_op_cycles"] += 1
@@ -1858,6 +1865,7 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
             for slot_index in selected_slots:
                 slots[slot_index] = cycle + 1
             issued[seq] = True
+            scheduler.remove(seq)
             ready_at[seq] = cycle + latency
             if kind in ("LOAD", "STORE", "ATOM"):
                 stalls["memory_latency_exposure_cycles"] += max(0, latency - 1)
@@ -1872,7 +1880,8 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
         raise RuntimeError(f"simulation did not drain: retired {retired}/{len(ops)}")
     return {
         "cycles": cycle, "ops": len(ops), "ipc": round(len(ops)/max(1,cycle), 3),
-        "max_rob_occupancy": max_rob, "branch_mispredicts": branch_misses,
+        "max_rob_occupancy": max_rob, "max_scheduler_occupancy": max_scheduler,
+        "branch_mispredicts": branch_misses,
         "cache_accesses": hits, "stall_counters": stalls
     }
 
@@ -1965,7 +1974,8 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
             "spm": {"accesses": 0, "bytes": 0, "port_conflicts": 0, "overflow": 0, "fallback_bytes": 0},
             "ready_at": [0] * len(shard), "done": [False] * len(shard), "issue_cycles": [],
             "issued": [False] * len(shard), "dispatched": [False] * len(shard),
-            "rob": deque(), "unit_busy": {k: [0] * v for k, v in p.units.items()},
+            "rob": deque(), "scheduler": deque(), "scheduler_capacity": (p.scheduler_entries if p.scheduler_entries > 0 else p.rob),
+            "unit_busy": {k: [0] * v for k, v in p.units.items()},
             "next_frontend": 0, "frontend_blocked_until": 0, "retired": 0, "last_pc": None,
             "max_rob": 0, "hits": {"L1":0,"L2":0,"L3":0,"L4":0,"DRAM":0},
             "branch_misses": 0, "branch_number": 0,
@@ -1976,6 +1986,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                        "issue_width_blocked_op_cycles": 0,
                        "execution_unit_blocked_op_cycles": 0,
                        "frontend_limited_cycles": 0, "rob_full_cycles": 0,
+                       "scheduler_full_cycles": 0,
                        "branch_recovery_cycles": 0,
                        "memory_latency_exposure_cycles": 0,
                        "data_mshr_full_events": 0}
@@ -2092,9 +2103,12 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                     st["stalls"]["branch_recovery_cycles"] += 1
                 elif len(st["rob"]) >= p.rob:
                     st["stalls"]["rob_full_cycles"] += 1
+                elif len(st["scheduler"]) >= st["scheduler_capacity"]:
+                    st["stalls"]["scheduler_full_cycles"] += 1
             dispatched_now = 0
             while (st["next_frontend"] < len(ops) and dispatched_now < p.dispatch and
                    dispatched_now < p.frontend and len(st["rob"]) < p.rob and
+                   len(st["scheduler"]) < st["scheduler_capacity"] and
                    cycle >= st["frontend_blocked_until"]):
                 op = ops[st["next_frontend"]]
                 if st["fetch"] is not None and not features.get("execution_only", False):
@@ -2105,9 +2119,11 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                     st["last_pc"] = pc
                 st["dispatched"][op.seq] = True
                 st["rob"].append(op.seq)
+                st["scheduler"].append(op.seq)
                 st["next_frontend"] += 1
                 dispatched_now += 1
             st["max_rob"] = max(st["max_rob"], len(st["rob"]))
+            st["max_scheduler"] = max(st.get("max_scheduler", 0), len(st["scheduler"]))
             if (st["next_frontend"] < len(ops) and
                 cycle >= st["frontend_blocked_until"] and len(st["rob"]) < p.rob and
                 dispatched_now >= min(p.dispatch, p.frontend)):
@@ -2119,9 +2135,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
             ops = st["ops"]
             st["mshr_blocked_this_cycle"] = False
             issued_now = 0
-            for seq in list(st["rob"]):
-                if st["issued"][seq]:
-                    continue
+            for seq in list(st["scheduler"]):
                 op = ops[seq]
                 if any(not st["done"][dep] for dep in op.deps):
                     st["stalls"]["dependency_blocked_op_cycles"] += 1
@@ -2205,6 +2219,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                     item["request_id"] = None
                 # Mark as selected now; completion timing is finalized below.
                 st["issued"][seq] = True
+                st["scheduler"].remove(seq)
                 st["issue_cycles"].append(cycle)
                 for slot_index in selected_slots:
                     slots[slot_index] = cycle + 1
@@ -2326,6 +2341,7 @@ def simulate_cpu(workloads: Dict[str,List[Op]], profile_dict: dict, core_count=N
             "active_cores": len(per_core),
             "per_core_cycles": [elapsed_cycles for _ in per_core],
             "max_rob_occupancy": max((x["max_rob"] for x in per_core), default=0),
+            "max_scheduler_occupancy": max((x.get("max_scheduler", 0) for x in per_core), default=0),
             "branch_mispredicts": sum(x["branch_misses"] for x in per_core),
             "cache_accesses": cache_totals,
             "stall_counters": {k: sum(x["stalls"][k] for x in per_core)
