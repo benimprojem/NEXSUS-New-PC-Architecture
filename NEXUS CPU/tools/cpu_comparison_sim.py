@@ -1629,6 +1629,15 @@ class DataRamController:
         self.bytes_by_core = {}
         self.accepted = 0
 
+    @property
+    def bus_next_cycle(self) -> int:
+        """Latest per-core link drain cycle; not a shared chip-wide bus."""
+        return max(
+            (math.ceil(byte_cursor / self.bytes_per_cycle_per_core)
+             for byte_cursor in self.bus_next_byte.values()),
+            default=0,
+        )
+
     def reserve_batch(self, cycle: int, requests: List[dict],
                       bank_hash: str = "low") -> dict:
         if not requests:
@@ -1657,8 +1666,9 @@ class DataRamController:
                 "core": core, "core_bytes_per_cycle": rate,
             }
             self.request_events.append({
-                "request_id": str(req_id), "core": core, "width": size,
-                "request_cycle": cycle, "bus_wait": wait,
+                "request_id": str(req_id), "core": core,
+                "address": int(req["address"]), "width": size,
+                "request_cycle": cycle, "bank_wait": 0, "bus_wait": wait,
                 "service_complete_cycle": complete,
             })
         return result
@@ -2220,6 +2230,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                            "active_core_count": len(states),
                            "aggregate_core_facing_capacity_bytes_per_cycle": controller.bytes_per_cycle_per_core * len(states),
                            "accepted": controller.accepted,
+                           "bus_next_cycle": controller.bus_next_cycle,
                            "transferred_bytes": controller.transferred_bytes,
                            "bytes_by_core": controller.bytes_by_core,
                            "request_cycles": sorted(set(controller.request_cycles)),
