@@ -1166,7 +1166,7 @@ class CommandFetchModel:
                  conventional_capacity_bytes: int = 32768,
                  p0_refill_latency: int = 48, conventional_refill_latency: int = 8,
                  p0_buffer_bytes: int = 2048, page_descriptors: dict | None = None,
-                 pool_miss_latency: int = 120, code_cache_bytes: int = 65536, app_first_beat_latency: int = 40, app_beat_interval: int = 1, c0_to_cs_bytes_per_cycle: int = 16, cs_to_eb_bytes_per_cycle: int = 16, codeflow_enabled: bool = False,
+                 pool_miss_latency: int = 120, code_cache_bytes: int = 65536, app_first_beat_latency: int = 40, app_beat_interval: int = 1, c0_to_cs_bytes_per_cycle: int = 20, cs_to_eb_bytes_per_cycle: int = 20, codeflow_enabled: bool = False,
                  app_ram_controller=None, core_id: int = 0,
                  known_page_ids=None):
         self.enabled = enabled
@@ -1972,8 +1972,8 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 code_cache_bytes=int(features.get("code_cache_kb", 64)) * 1024,
                 app_first_beat_latency=int(features.get("app_first_beat_latency", 40)),
                 app_beat_interval=int(features.get("app_beat_interval", 1)),
-                c0_to_cs_bytes_per_cycle=int(features.get("c0_to_cs_bytes_per_cycle", 8)),
-                cs_to_eb_bytes_per_cycle=int(features.get("cs_to_eb_bytes_per_cycle", 8)),
+                c0_to_cs_bytes_per_cycle=int(features.get("c0_to_cs_bytes_per_cycle", 20)),
+                cs_to_eb_bytes_per_cycle=int(features.get("cs_to_eb_bytes_per_cycle", 20)),
                 app_ram_controller=app_controller if bool(features.get("codeflow", False)) else None,
                 core_id=core_id,
                 known_page_ids={
