@@ -42,7 +42,7 @@ def test_eight_cores_have_eight_independent_data_ram_links():
     } for core in range(8)]
     results = controller.reserve_batch(25, requests)
     assert len(results) == 8
-    assert all(row["ready_cycle"] == 26 for row in results.values())
+    assert all(row["service_complete_cycle"] == 26 for row in results.values())
     assert controller.transferred_bytes == 8 * 64
     assert controller.bytes_by_core == {core: 64 for core in range(8)}
 
