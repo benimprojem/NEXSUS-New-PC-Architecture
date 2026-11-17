@@ -107,7 +107,7 @@ PROFILES = {
         "latency": {"INT": 1, "FP": 3, "VEC": 2, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 4, "ME512": 4, "IRQ": 6},
         "l1_kb": 1024, "l2_kb": 2048, "l3_kb": 8192, "l4_kb": 65536,
         "l1_lat": 2, "l2_lat": 8, "l3_lat": 24, "l4_lat": 64, "dram_lat": 120,
-        "branch_penalty": 8, "frequency_ghz": 3.0, "bank_hash": "folded", "dram_bytes_per_cycle": 512,
+        "branch_penalty": 8, "frequency_ghz": 3.0, "bank_hash": "folded", "dram_bytes_per_cycle": 64,
         "branch_predictor": "small_2bit", "vector_bits": 512, "matrix_unit": "ME512",
         "app_ram_bytes_per_cycle_per_core": 64, "data_ram_bytes_per_cycle_per_core": 64,
         "app_ram_bank_count_per_group": 8, "data_ram_bank_count_per_group": 8,
