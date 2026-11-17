@@ -36,7 +36,7 @@ These tests are designed from the architecture contract upward. Implement them i
 
 | ID | Test scope | Required proof | Initial status |
 |---|---|---|---|
-| NEX-T001 | Architecture configuration contract | Simulator profile exactly matches fixed per-core resources, cache sizes/groups, App RAM and Data RAM path capacities; no silent defaults | PLANNED |
+| NEX-T001 | Architecture configuration contract | Simulator profile explicitly declares fixed per-core resources, cache sizes/groups, App RAM and Data RAM path capacities, and 8×64-bit bank-group baseline | IMPLEMENTED |
 | NEX-T002 | Independent App RAM and Data RAM paths | Both paths operate concurrently; each core has 64 B/cycle on each path; 8-core aggregate capacity is 512 B/cycle per memory system; no shared 64 B/cycle bottleneck | PLANNED |
 | NEX-T003 | Instruction path stage rates | App RAM→C0 16 B/cycle/core; C0→CS 20 B/cycle/core; CS→EB 20 B/cycle/core; EB consume 16 B/cycle/core; queueing and overlap are explicit | PLANNED |
 | NEX-T004 | Data RAM bank and wide-access behavior | Per-core bandwidth contract, bank-group behavior, distinct-bank concurrency, same-bank conflicts, 128/256/512-bit accesses, stripe crossings and all-or-none admission | PLANNED |
@@ -47,6 +47,16 @@ These tests are designed from the architecture contract upward. Implement them i
 | NEX-T009 | 1/2/4/8-core scaling | Same logical work per experiment, independent per-core paths, active-core accounting, scaling and fairness | PLANNED |
 | NEX-T010 | Mixed full-architecture workloads | Execution + registers + caches + App RAM + Data RAM under concurrent load; isolated and mixed runs | PLANNED |
 | NEX-T011 | Cross-architecture comparison | Only after T001–T010 foundations are valid; identical logical work and documented, defensible peer assumptions | PLANNED |
+
+### 3.1 NEX-T001 implementation record
+
+- Test file: `NEXUS CPU/tools/test_architecture_contract_t001.py`
+- Profile source: `NEXUS CPU/tools/cpu_comparison_sim.py` → `PROFILES[\"nexus_balanced_128\"]`
+- Profile fields added: per-core App/Data RAM bandwidth, 8-bank group counts, 64-bit bank slice, 512-bit group width, shared-Fabric declaration, and explicit cache sharing group sizes.
+- Implementation commit: `3cf7a7262adcece9f1bb4f7d3d9ffcf3ce6616b6`
+- Simulator profile commit: `217971918c7c06f18c49de6e05891b181b39fca0`
+- Execution status: not yet run in CI; therefore **IMPLEMENTED**, not VALID.
+- Scope limitation: configuration declarations only. Runtime Data RAM service and Fabric arbitration remain for NEX-T002/NEX-T004.
 
 ## 4. Historical test files — retained, not yet re-certified
 
