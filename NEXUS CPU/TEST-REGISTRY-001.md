@@ -260,3 +260,14 @@ No new cross-architecture performance ranking is accepted until:
 - Validated commit: `a2e917ce894e57efbf497a7b4f91c8678db8f0fb`
 - Result: simulator job completed successfully; all 75 workflow steps passed.
 - T009 is **VALID** within the 1/2/4/8-core workload scaling and per-core AppRAM/DataRAM accounting scope in section 3.15.
+
+
+### 3.17 NEX-T010 implementation record
+
+- Test: `NEXUS CPU/tools/test_mixed_resource_stress_t010.py`.
+- One combined eight-core operation stream includes numeric tile loads/stores, streaming DataRAM traffic, FP64+FMA, 512-bit vector work, ME512 matrix operations, mixed VEC/ME512 memory overlap, atomic contention, IRQ/context work and CodeFlow instruction-stream stress.
+- The test preserves each component's dependency graph while remapping operation sequence IDs into one stream. The simulator executes this combined stream once; all assertions inspect the same run.
+- Required checks: exact operation retirement; eight active cores; both independent memory controllers make progress in the same run; AppRAM and DataRAM each retain 64 B/cycle/core and 512 B/cycle aggregate at eight cores; per-core transferred-byte accounting sums exactly to each controller's total; CodeFlow refills and data DRAM accesses occur; execution-unit blocking is observable.
+- This validates simulator-level simultaneous mixed-resource pressure only. It does not establish physical silicon behavior, physical bank-group placement/port count, finalized Fabric arbitration/QoS, or the deferred 2× clock/time-interleaving integration.
+- CI integration: compile and numbered architecture-contract steps added to `.github/workflows/nexus-cpu-simulator.yml`.
+- Status: **IMPLEMENTED**, pending CI validation. No architecture resource counts or bandwidth values were changed.
