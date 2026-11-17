@@ -120,21 +120,21 @@ class DataRamMSHRTests(unittest.TestCase):
 
 
 class BandwidthPolicyTests(unittest.TestCase):
-    def test_bandwidth_is_shared_without_static_per_core_quota(self):
+    def test_nexus_uses_independent_per_core_data_ram_ports(self):
         profile = sim.PROFILES["nexus_balanced_128"]
-        for cores in (8, 16, 32, 64):
-            with self.subTest(cores=cores):
-                result = sim.simulate_cpu({"tiny": [sim.Op(0, "INT")]}, profile, cores)
-                self.assertEqual(result["aggregate_dram_bytes_per_cycle"], 64)
-                self.assertIsNone(result["per_core_dram_bytes_per_cycle"])
-                self.assertEqual(
-                    result["dram_bandwidth_policy"],
-                    "shared lockstep controller; work-conserving aggregate bus; no static per-core quota",
-                )
+        result = sim.simulate_cpu(
+            {"tiny": [sim.Op(0, "INT")]}, profile, 8
+        )
+        self.assertEqual(result["aggregate_dram_bytes_per_cycle"], 512)
+        self.assertEqual(result["per_core_dram_bytes_per_cycle"], 64)
+        self.assertEqual(
+            result["dram_bandwidth_policy"],
+            "per-core Fabric-facing DataRAM ports; aggregate capacity scales with active cores",
+        )
 
-    def test_vendor_profiles_use_same_chip_wide_bandwidth_ceiling(self):
+    def test_vendor_profiles_keep_their_own_chip_wide_bandwidth(self):
         expected = {"amd_9950x3d2": 21, "intel_xeon_698x": 160,
-                    "apple_m6": 48, "nexus_balanced_128": 64}
+                    "apple_m6": 48, "nexus_balanced_128": 512}
         for key, bandwidth in expected.items():
             with self.subTest(profile=key):
                 self.assertEqual(sim.PROFILES[key]["dram_bytes_per_cycle"], bandwidth)
@@ -1128,8 +1128,10 @@ class IntegratedCodeFlowTests(unittest.TestCase):
 
 
 class TestNexusMemoryBandwidthRevision(unittest.TestCase):
-    def test_nexus_has_double_reference_dram_bandwidth(self):
-        self.assertEqual(sim.PROFILES["nexus_balanced_128"]["dram_bytes_per_cycle"], 64)
+    def test_nexus_data_ram_contract_is_64_bytes_per_cycle_per_core(self):
+        profile = sim.PROFILES["nexus_balanced_128"]
+        self.assertEqual(profile["data_ram_bytes_per_cycle_per_core"], 64)
+        self.assertEqual(profile["dram_bytes_per_cycle"], 512)
         for key, expected in (("amd_9950x3d2", 21), ("intel_xeon_698x", 160), ("apple_m6", 48)):
             self.assertEqual(sim.PROFILES[key]["dram_bytes_per_cycle"], expected)
 
