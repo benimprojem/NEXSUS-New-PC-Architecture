@@ -14,6 +14,14 @@ assert set(data["architectures"]) == archs
 assert tuple(data["core_counts"]) == cores
 assert set(data["runs"]) == policies
 assert len(data["kernel_names"]) == 10
+assert len(data["configuration_audit"]) == 16
+for row in data["configuration_audit"]:
+    assert row["aggregate_dram_ceiling_bytes_per_cycle"] == 512
+    if row["architecture_id"] == "nexus_balanced_128":
+        assert row["data_ram_bytes_per_cycle_per_core"] == 64
+        assert row["data_ram_core_facing_aggregate_bytes_per_cycle"] == 64 * row["cores"]
+        assert row["app_ram_bytes_per_cycle_per_core"] == 64
+        assert row["app_ram_aggregate_bytes_per_cycle"] == 64 * row["cores"]
 
 for policy in policies:
     for count in cores:
@@ -21,7 +29,13 @@ for policy in policies:
         assert set(run) == archs
         assert {row["cores_configured"] for row in run.values()} == {count}
         assert {row["aggregate_dram_bytes_per_cycle"] for row in run.values()} == {512}
-        assert len({row["dram_latency_cycles"] for row in run.values()}) == 4
+        expected_latency = {
+            "amd_9950x3d2": 120,
+            "intel_xeon_698x": 150,
+            "apple_m6": 100,
+            "nexus_balanced_128": 120,
+        }
+        assert {arch: run[arch]["dram_latency_cycles"] for arch in archs} == expected_latency
         for kernel in data["kernel_names"]:
             ops = {run[arch]["kernels"][kernel]["ops"] for arch in archs}
             assert len(ops) == 1, (policy, count, kernel, ops)
