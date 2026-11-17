@@ -89,6 +89,32 @@ def main():
         for cores in CORE_COUNTS:
             data["runs"][policy][str(cores)] = simulate(workloads, cores, policy)
 
+    audit_rows = []
+    for cores in CORE_COUNTS:
+        for arch in ARCHS:
+            profile = SIM.PROFILES[arch]
+            nexus = arch == "nexus_balanced_128"
+            audit_rows.append({
+                "architecture_id": arch,
+                "cores": cores,
+                "clock_ghz": 3.0,
+                "aggregate_dram_ceiling_bytes_per_cycle": 512,
+                "dram_latency_cycles": profile["dram_lat"],
+                "data_ram_bytes_per_cycle_per_core": 64 if nexus else "N/A",
+                "data_ram_core_facing_aggregate_bytes_per_cycle": 64 * cores if nexus else "N/A",
+                "app_ram_bytes_per_cycle_per_core": 64 if nexus else "N/A",
+                "app_ram_aggregate_bytes_per_cycle": 64 * cores if nexus else "N/A",
+                "l1_kib_per_core": profile["l1_kb"],
+                "l2_kib_per_group": profile["l2_kb"],
+                "l3_kib_per_group": profile["l3_kb"],
+                "l4_kib_per_group": profile["l4_kb"],
+                "l1_latency_cycles": profile["l1_lat"],
+                "l2_latency_cycles": profile["l2_lat"],
+                "l3_latency_cycles": profile["l3_lat"],
+                "l4_latency_cycles": profile["l4_lat"],
+            })
+
+    data["configuration_audit"] = audit_rows
     rows = []
     for policy in data["runs"]:
         for arch in ARCHS:
@@ -119,6 +145,13 @@ def main():
                     })
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    with (args.output_dir / "core-scaling-configuration-audit.csv").open(
+        "w", newline="", encoding="utf-8"
+    ) as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(audit_rows[0]))
+        writer.writeheader()
+        writer.writerows(audit_rows)
+
     (args.output_dir / "core-scaling-results.json").write_text(
         json.dumps(data, indent=2), encoding="utf-8"
     )
@@ -131,6 +164,12 @@ def main():
 
     lines = [
         "# 1/2/4/8-core scaling comparison",
+        "",
+        "## Configuration audit",
+        "",
+        "| Architecture | Cores | Clock GHz | DRAM B/cycle | DRAM latency | DataRAM B/cycle/core | DataRAM aggregate | AppRAM B/cycle/core | AppRAM aggregate | L1 KiB | L2 KiB | L3 KiB | L4 KiB |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        *[f"| {row['architecture_id']} | {row['cores']} | {row['clock_ghz']:.1f} | {row['aggregate_dram_ceiling_bytes_per_cycle']} | {row['dram_latency_cycles']} | {row['data_ram_bytes_per_cycle_per_core']} | {row['data_ram_core_facing_aggregate_bytes_per_cycle']} | {row['app_ram_bytes_per_cycle_per_core']} | {row['app_ram_aggregate_bytes_per_cycle']} | {row['l1_kib_per_core']} | {row['l2_kib_per_group']} | {row['l3_kib_per_group']} | {row['l4_kib_per_group']} |" for row in audit_rows],
         "",
         "All four models use 3.0 GHz and a 512 B/cycle aggregate DRAM ceiling. Native architecture-specific DRAM latency is retained. Results are simulated, not silicon measurements.",
         "",
@@ -169,6 +208,7 @@ def main():
     print(f"PASS: {len(rows)} per-kernel scaling rows; logical operation counts match.")
     print(f"Report: {args.output_dir / 'core-scaling-results.md'}")
     print(f"CSV: {args.output_dir / 'core-scaling-results.csv'}")
+    print(f"Configuration audit: {args.output_dir / 'core-scaling-configuration-audit.csv'}")
 
 
 if __name__ == "__main__":
