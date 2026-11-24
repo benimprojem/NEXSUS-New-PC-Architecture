@@ -51,7 +51,8 @@ These tests are designed from the architecture contract upward. Implement them i
 | NEX-T014 | Memory path contract | App RAM/Data RAM independence, per-core Data RAM service and cache-fill topology invariants | VALID |
 | NEX-T015 | Dynamic RAC admission and distributed writeback | Shared 80R/64W logical pool, atomic reservations, age-prioritized work-conserving selection, physical bank conflicts, same-destination write rejection and parallel writes to distinct banks | VALID |
 | NEX-T016 | Cycle-level RAC and 16-wide issue integration | Proves 16 backend issues/cycle when front-end/RAC permit it; mixed 16-op issue window exceeds 80R demand, so simulator caps reads at 80, reports RAC stalls, preserves all operations and stays within 64W | VALID |
-| NEX-T017 | Cycle-level physical register-bank ports | Explicit RA/FA/DA/MA operand identities enforce configurable per-bank read/write ports; different banks proceed in parallel, same-bank port conflicts retry, same-cycle duplicate destinations serialize, and missing identity is rejected when physical-port mode is enabled | IMPLEMENTED |
+| NEX-T017 | Cycle-level physical register-bank ports | Explicit RA/FA/DA/MA operand identities enforce configurable per-bank read/write ports; different banks proceed in parallel, same-bank port conflicts retry, same-cycle duplicate destinations serialize, and missing identity is rejected when physical-port mode is enabled | VALID |
+| NEX-T018 | Physical register sub-bank mapping | Configurable bank count per RA/FA/DA/MA class; register index maps deterministically by index modulo bank count; per-sub-bank read/write limits, collisions, parallelism and MA512 paired-entry accesses are tested without freezing a default topology | IMPLEMENTED |
 
 ### 3.1 NEX-T001 implementation record
 
@@ -107,6 +108,24 @@ These tests are designed from the architecture contract upward. Implement them i
 - Issue-peak instrumentation commit: `1aa13f142da8a9e75dbf71bd66db5344c3bd9ae9`
 - Validation status: **IMPLEMENTED — the new explicit 16-issue peak assertion is awaiting CI**. The earlier aggregate RAC cap test passed the regression suite on CI run `45442320176`; the expanded T016 scope must be revalidated.
 - Scope limitation: aggregate logical slot budgeting is integrated. Physical bank-port conflicts, exact register destination identity and distributed writeback timing remain modeled by NEX-T015 or follow-up integrated-cycle tests.
+
+### 3.10 NEX-T017 cycle-level physical register-bank ports
+
+- Simulator: `NEXUS CPU/tools/cpu_comparison_sim.py`
+- Regression tests: `NEXUS CPU/tools/test_cpu_comparison_sim.py` → `RACCycleIntegrationTests`
+- Explicit `(class, register_index, 64-bit_slot_width)` metadata is required when physical-port mode is enabled.
+- Legacy per-register-class physical port maps remain available; no default physical port counts are frozen.
+- Validation: **VALID** on CI run [45470623199](https://github.com/benimprojem/NEXSUS-New-PC-Architecture/actions/runs/45470623199); all workflow steps passed.
+- Scope limitation: this version models one physical bank group per register class. NEX-T018 adds sub-bank mapping; actual SRAM macro topology, replication, bypass and writeback timing remain open.
+
+### 3.11 NEX-T018 physical register sub-bank mapping
+
+- Simulator parameters: `rac_physical_bank_counts`, `rac_physical_read_ports_per_bank`, and `rac_physical_write_ports_per_bank`.
+- Mapping: `physical_subbank = register_index % bank_count`, independently within RA/FA/DA/MA. One operand entry consumes one physical port; its 64-bit logical slot width is separately charged to the 80R/64W RAC.
+- Legacy NEX-T017 class-level port maps remain supported for compatibility.
+- Tests cover distinct-sub-bank parallelism, same-sub-bank conflict/retry with progress in another class, missing class mapping rejection, and 512-bit MA paired entries using two physical entries/eight logical slots.
+- No bank count or per-bank port count is selected as the architecture default. This configurable mapping is not a claim about final SRAM macro implementation.
+- Status: **IMPLEMENTED — awaiting CI**.
 
 ### 3.10 NEX-T017 cycle-level physical register-bank ports
 
