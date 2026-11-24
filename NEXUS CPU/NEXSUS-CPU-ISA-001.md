@@ -303,6 +303,40 @@ Memory komutlarının numeric OP atamaları Encoding belgesi §8.5–§8.6 ile e
 
 MEMXFER, register bank XFER (0x85) ile aynı komut değildir. Kaynak/hedef L1–L4 domain'leri, RA içindeki byte adresleri ve RA içindeki byte uzunluğu ile CPU kontrollü kopyalama yapar. Synchronous XFER.MEM tamamlanana kadar bekler; XFER.START token üretir; XFER.WAIT token'ın tamamlanmasını bekler. Her iki uç için erişim izni, aralık ve sahiplik kontrolleri `NEXSUS-CPU-MEMORY-ACCESS-CONTROL-001.md` belgesindeki kurallara tabidir. MEMXFER 52-bit payload alan eşlemesi ve token edge-case davranışları Instruction Encoding §4.15'te tanımlıdır. Uzunluk 64-bit unsigned byte count'tur ve sabit küçük bir ISA üst sınırı yoktur; token kayıt sayısı implementation-defined olup platform/OS capability bilgisinde raporlanır. §4.14 yalnızca SYS/FENCE formatıdır.
 
+### 5.6 OW/TW doğrudan adresleme ve register aktarımı
+
+OW ve TW, L1–L4 Data RAM domain'lerinden ayrı, çekirdek-yerel ve doğrudan byte-adreslenebilir çalışma alanlarıdır. Her ikisi de 8 KiB kapasitelidir; geçerli offset aralığı 0–8191'dir. Bu alanlar register bankı değildir ve RAC'ın 32R+32W bütçesine dahil değildir.
+
+| Mnemonic | Operand | İşlev |
+|---|---|---|
+| WLOAD.OW / WLOAD.TW | DA, [offset veya RA+disp] | Seçilen workspace'ten DA staging bankına ham bit okur |
+| WSTORE.OW / WSTORE.TW | [offset veya RA+disp], DA | DA staging bankından seçilen workspace'e ham bit yazar |
+| XFER.WS.MEM | [DataRAM address], workspace offset, length, direction | OW/TW ile seçilen L1–L4 Data RAM domain'i arasında blok aktarımı |
+| XFER.WS.START | aynı aralık/yön operandları | Blok aktarımını asenkron başlatır ve mevcut XFER token modelini kullanır |
+| XFER.WAIT | mevcut token | XFER.WS.START dahil başlatılmış aktarımın tamamlanmasını bekler |
+
+**Adresleme ve erişim genişliği**
+- Workspace adresi byte offset'tir. Absolute offset biçimi `[0x120]`; register-relative biçim `[RA4 + 0x120]` olarak gösterilir. RA tabanlı biçimde displacement byte cinsindendir; indeksli biçim için assembler/encoding desteği ayrıca atanacaktır.
+- WLOAD/WSTORE, LOAD/STORE ile aynı erişim genişliklerini kullanır: 8/16/32/64/128/256/512 bit. 128/256/512-bit erişimler ardışık DA kayıtlarına eşlenir; DA31 sınırı ve doğal hizalama zorunludur.
+- Workspace erişimi, seçilen genişliğe göre doğal hizalı olmalıdır. `offset + W/8` değeri 8192'yi aşamaz. Negatif offset, 64-bit taşma veya sınır dışı erişim fault üretir; adres sarımı yapılmaz.
+- WLOAD tüm DA hedef dilimlerini doğrulama tamamlanmadan değiştirmez. WSTORE için tüm aralık ve izin kontrolleri yazma başlamadan tamamlanır; validation fault durumunda workspace'in hiçbir byte'ı değişmez.
+- Kısmi genişlikte WLOAD, DA hedefinin kullanılmayan üst bitlerini sıfırlar; WSTORE yalnızca seçilen W bitini yazar. Veri little-endian'dır.
+
+**Register banklarıyla veri alışverişi**
+- Register→workspace: mevcut `MOV.DA.RA`, `MOV.DA.FA` veya `MOV.DA.MA` komutları veriyi DA staging bankına alır; ardından `WSTORE.OW/TW` yazar.
+- Workspace→register: `WLOAD.OW/TW` DA staging bankına okur; ardından `MOV.RA.DA`, `MOV.FA.DA` veya `MOV.MA.DA` hedef register bankını geri yükler.
+- DA staging kullanımı açık ve görünürdür; OW/TW erişimi RA/FA/DA/MA banklarına gizli yan etkiyle yazamaz. DA'nın save/restore sırasında korunması gerekiyorsa ABI, DA staging clobber setini save maskesine dahil eder.
+- Bu mekanizma register bankları arasında yeni bir örtük alias veya doğrudan workspace-register bypass yolu tanımlamaz.
+
+**OW/TW ile Data RAM arasında blok aktarımı**
+- `XFER.WS.MEM`, tek bir OW veya TW byte aralığını seçilmiş L1–L4 Data RAM domain'indeki byte aralığına kopyalar; yön tersine çevrilebilir. Tam 8 KiB çalışma alanı tek işlemle taşınabilir.
+- Bu blok aktarımı DA registerlarını kullanmaz; transfer motoru/Fabric yolunu kullanır. Bu nedenle RAC register erişim bütçesini tüketmez, fakat Data RAM bank/controller ve transfer-engine kaynaklarını kullanır.
+- Kaynak aralığı transfer boyunca read-reserved; hedef aralık write-reserved ve unpublished olur. Başarılı tamamlanma hedef aralığı kullanılabilir kılar. Runtime transfer hatasında kısmi fiziksel yazma mümkün olsa da hedef aralık mantıksal olarak invalid/unpublished kalır; yazılım tam aralığı yeniden yazmadan yayımlayamaz.
+- `XFER.WS.START` kabul edildiğinde token, kaynak/hedef sahipliği ve rezervasyon tamamlanana veya hata kesinleşene kadar korunur. `XFER.WAIT` terminal sonucu tüketir. Var olan XFER token generation ve stale-token kuralları aynen geçerlidir.
+- OW/TW kaynağı aktarım boyunca değiştirilemez; hedef workspace ise transfer tamamlanana kadar CPU tarafından okunamaz/yazılamaz. Bu, kaynak snapshot tutarlılığını ve hedefin kısmi görünür olmamasını sağlar.
+
+**Encoding durumu:** WLOAD/WSTORE ve XFER.WS.* mnemonic/semantiği ISA taslağına eklendi; numeric opcode ve WS-MEM/WS-MEMXFER bit alanı henüz atanmadı. Mevcut 0x40–0x88 opcode atamaları değiştirilmemiştir. Encoding belgesi güncellenirken reserved opcode alanı ve operand alanları ayrıca doğrulanacaktır.
+
 ## 5.3 Little-endian bellek ve register-grup sıralaması
 
 NEXSUS CPU, veri belleği ve SPM byte erişimlerinde **little-endian** kullanır. En düşük bellek adresi, çok byte'lı değerin en düşük anlamlı byte'ını taşır.
