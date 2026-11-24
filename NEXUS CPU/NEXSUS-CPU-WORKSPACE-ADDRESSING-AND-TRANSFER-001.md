@@ -54,7 +54,7 @@ Rules:
 7. A faulting WLOAD leaves every DA destination unchanged. A validation-faulting WSTORE changes no workspace byte.
 8. WLOAD/WSTORE are synchronous architectural accesses. Their internal latency and bank/port implementation are microarchitectural.
 
-Numeric opcodes and the exact WS-MEM bit layout are deliberately not assigned in this document. They must be reconciled with the current instruction encoding map before encoding is frozen.
+Numeric opcodes and field layouts are assigned in NEXSUS-CPU-INSTRUCTION-ENCODING-001.md: WLOAD=0x89, WSTORE=0x8A, XFER.WS.MEM=0x8B, XFER.WS.START=0x8C; WSMEM uses FMT=1110 and workspace block transfers extend the existing MEMXFER payload.
 
 ## 4. Register-bank save and restore
 
@@ -101,8 +101,8 @@ The workspace selector is not an authorization token.
 
 ## 7. Open implementation items
 
-- Numeric opcode allocation for WLOAD/WSTORE and XFER.WS.*.
-- Exact WS-MEM and WS-MEMXFER bit layouts and immediate-width tradeoffs.
+- Decoder implementation and validation tests for WLOAD/WSTORE and XFER.WS.*.
+- Microarchitectural implementation of the assigned WSMEM and MEMXFER workspace fields.
 - Whether indexed workspace addressing is needed in the first encoding revision; base+displacement and absolute offset are the baseline forms.
 - Workspace bank count, multi-read/write ports, arbitration, and transfer bandwidth.
 - Whether a full-workspace transfer receives a dedicated fast path or is serviced as a normal bounded block transfer.
