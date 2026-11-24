@@ -28,6 +28,8 @@ PL2 is not an unrestricted bypass. No software privilege level can read or write
 
 ## 3. OW — OS workspace
 
+OW is directly byte-addressable by authorized PL1/PL2 code through WLOAD.OW/WSTORE.OW; PL0 remains denied. The workspace access mechanism does not weaken the syscall mediation boundary.
+
 1. OW is reserved for OS execution and OS-defined syscall/I/O exchange.
 2. PL0 cannot address OW directly, even while making a syscall.
 3. On a syscall transition, the OS may read validated arguments from the agreed exchange interface and write results/status for return to the caller.
@@ -35,7 +37,22 @@ PL2 is not an unrestricted bypass. No software privilege level can read or write
 5. Large or long-lived payloads remain in validated Data RAM buffers or handles; OW is bounded staging/workspace, not a general user buffer.
 6. OS access to OW is permitted in PL1 and PL2.
 
+## 3.1 OW/TW direct addressing and data movement
+
+OW and TW are each 8 KiB, core-local, byte-addressable workspaces. Their offset range is 0–8191. They are not register banks and do not consume the shared RAC 32R+32W register-access budget.
+
+- Both workspaces support byte offsets and direct offset or RA-base-plus-byte-displacement addressing.
+- WLOAD reads from the selected workspace into DA staging registers; WSTORE writes DA staging registers to the selected workspace. Supported widths are 8/16/32/64/128/256/512 bits, subject to natural alignment, DA range, and the 8 KiB workspace boundary.
+- Register-bank save/restore uses the already-defined explicit transfer instructions: MOV.DA.RA / MOV.RA.DA, MOV.DA.FA / MOV.FA.DA, and MOV.DA.MA / MOV.MA.DA, with WSTORE/WLOAD as the workspace edge. No implicit register-bank alias is created.
+- XFER.WS.MEM and XFER.WS.START transfer a selected byte range between OW/TW and an L1–L4 Data RAM domain. The transfer engine moves the block directly and does not consume DA staging entries or RAC register-access slots.
+- During a workspace→Data RAM transfer, the source range is read-reserved. During Data RAM→workspace transfer, the destination workspace range is write-reserved and unavailable to CPU reads/writes until completion. Data RAM target ranges follow the existing transfer reservation and unpublished-destination rules.
+- The full 8 KiB workspace may be transferred as one block. Partial transfers are permitted only when the complete source and destination ranges fit their respective bounds.
+- Every access validates privilege, active task ownership, direction, range, alignment, and mapping before acceptance. Validation faults cause no partial architectural update or write. Runtime multi-beat transfer failure may leave physical destination bytes changed, but the destination range remains logically invalid/unpublished until fully overwritten successfully.
+- The instruction mnemonics and architectural behavior are specified in ISA §5.6. Numeric opcode allocation and exact WS-MEM encoding remain open; no existing opcode assignment is changed by this policy section.
+
 ## 4. TW — active user workspace
+
+TW is directly byte-addressable by its current PL0 owner through WLOAD.TW/WSTORE.TW. It is general-purpose task-local storage, not a mandatory LIFO stack; software may organize it as stack-like frames, fixed-offset records, tables, or scratch buffers.
 
 1. TW is the only workspace directly accessible to PL0.
 2. Access is limited to the task currently executing on that core. A task cannot address another task's TW image.
@@ -86,6 +103,8 @@ EB belongs exclusively to the CPU's internal execution machinery. No software at
 7. Existing workspace capacities, register banks, transfer instructions, and task-context format are unchanged.
 
 ## 10. Related specifications
+
+- NEXSUS-CPU-WORKSPACE-ADDRESSING-AND-TRANSFER-001.md
 
 - NEXSUS-CPU-CONTEXT-SAVE-RESTORE-001.md
 - NEXSUS-CPU-TASK-SCHEDULING-SPM-RESIDENCY-001.md
