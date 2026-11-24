@@ -339,7 +339,7 @@ OW ve TW, L1–L4 Data RAM domain'lerinden ayrı, çekirdek-yerel ve doğrudan b
 
 ## 5.3 Little-endian bellek ve register-grup sıralaması
 
-NEXSUS CPU, veri belleği ve SPM byte erişimlerinde **little-endian** kullanır. En düşük bellek adresi, çok byte'lı değerin en düşük anlamlı byte'ını taşır.
+NEXSUS CPU, Data RAM ve OW/TW workspace byte erişimlerinde **little-endian** kullanır. En düşük bellek adresi, çok byte'lı değerin en düşük anlamlı byte'ını taşır.
 
 - 64-bit değerin bit[7:0] alanı en düşük adreste, bit[63:56] alanı en yüksek adreste bulunur.
 - 128/256/512-bit LOAD işlemlerinde en düşük adresli 64-bit parça ilk DA kaydına yazılır; sonraki parçalar artan adres sırasıyla artan DA selector'larına yerleştirilir. STORE ters yönde aynı eşlemeyi kullanır.
@@ -560,7 +560,7 @@ Eski SPM0–SPM7 adları yeni mimari metinlerde kullanılmaz. Bunların güncel 
 | Context Pool (CP0–CP3) | 4 × 8 KiB | Denied | Context-manager paths only | Controlled maintenance/debug | Protected saved task contexts; ordinary application and unrelated OS code cannot access |
 | Exception Workspace (XW) | 8 KiB; 8 × 1 KiB depth slices | Denied | Denied by default | Denied to ordinary software | Exception hardware only; exceptional explicitly authorized read-only diagnostic inspection may be defined; software writes are never allowed |
 
-**No generic software SPM load/store instruction is defined.** Workspace access uses the existing privileged context, syscall, exception and transfer mechanisms. EB is not a data workspace and cannot be addressed by software. C0 and CS0–CS7 are code staging/residency resources controlled by CodeFlow Manager (CFM); software does not treat their physical slot identifiers as general-purpose addresses. Code Stream Transfer (CST) may fill only the inactive EB bank, and the bank switch occurs only after content, task identity, generation, mapping, permissions and valid-byte range are verified.
+**OW/TW için rol kontrollü WLOAD/WSTORE komutları tanımlıdır.** Bu komutlar yalnızca OW ve TW'ye erişir; EB, CP0–CP3 ve XW için genel amaçlı yazılım load/store komutu yoktur. EB software tarafından adreslenemez; CP0–CP3 yalnızca OS context-manager yollarına, XW ise exception hardware'a aittir. C0 and CS0–CS7 are code staging/residency resources controlled by CodeFlow Manager (CFM); software does not treat their physical slot identifiers as general-purpose addresses. Code Stream Transfer (CST) may fill only the inactive EB bank, and the bank switch occurs only after content, task identity, generation, mapping, permissions and valid-byte range are verified.
 
 OW/TW/CP/XW ownership and privilege checks are mandatory on every access. PL2 is not an unrestricted bypass: it does not grant ordinary software access to EB or XW. A permission/ownership violation raises a precise protection exception. Detailed policy is normative in `NEXSUS-CPU-SPM-ACCESS-PROTECTION-001.md` and `NEXSUS-CPU-MEMORY-PATH-AND-NAMING-001.md`.
 
@@ -1064,13 +1064,13 @@ R4 alan yerleşimi ve FMT kodu `NEXSUS-CPU-INSTRUCTION-ENCODING-001.md` belgesin
 9. Branch predictor, pipeline ve issue width.
 10. CALL/RET, interrupt ve context-state modeli.
 11. FENCE ve memory consistency modeli.
-12. SPM erişim port/bank ve atomic/partial-write semantiği.
+12. OW/TW workspace erişim port/bank ve atomic/partial-write semantiği.
 
 ## 13. İlişkili belgeler
 
 - [Instruction Encoding Specification — 64-bit komut kodlaması](NEXSUS-CPU-INSTRUCTION-ENCODING-001.md)
 - [CPU ana mimarisi](Yeni%20Nesil%20Ayr%C4%B1%C5%9Ft%C4%B1r%C4%B1lm%C4%B1%C5%9F%20Register%20Tabanl%C4%B1%20CPU%20Mimarisi.md)
-- [SPM ve register views](NEXSUS%20CPU%20%E2%80%94%20SPM,%20Register%20G%C3%B6r%C3%BCn%C3%BCmleri%20ve%20Do%C4%9Frudan%20Alan%20Eri%C5%9Fimi.md)
+- [Register views ve doğrudan workspace erişimi](NEXSUS%20CPU%20%E2%80%94%20SPM,%20Register%20G%C3%B6r%C3%BCn%C3%BCmleri%20ve%20Do%C4%9Frudan%20Alan%20Eri%C5%9Fimi.md)
 - [NEXSUS PC Architecture README](../README.md)
 
 
@@ -1259,7 +1259,7 @@ Burada RA10/RA20 ilgili bellek adresini tutan register'lardır; köşeli parante
 NEXUS Flow'daki `area` ve `zone` tanımları, bu mekanizmanın compiler tarafındaki doğal karşılığı olabilir:
 
 - `area`: yalnızca ilgili çekirdeğin özel L1 alanını hedefler; çekirdek-local çalışma alanı ve lifetime kapsamıdır.
-- `zone`: yalnızca çekirdekler arası paylaşılan L2/L3/L4 bellek alanlarını hedefler. SPM veya L1, zone seviyesi olarak kabul edilmez.
+- `zone`: yalnızca çekirdekler arası paylaşılan L2/L3/L4 bellek alanlarını hedefler. OW/TW workspace veya L1, zone seviyesi olarak kabul edilmez.
 - Compiler, scope/lifetime ve erişim örüntülerini yerleşim ve kod optimizasyonu için kullanabilir; bu bilgi tek başına bellek aktarımı başlatmaz.
 - `area`/`zone` bildirimi veriyi otomatik olarak L1–L4'e taşımaz veya LOAD işlemi üretmez.
 - Programın açıkça istediği veri okuma/yazma işlemi LOAD/STORE ile; farklı domain'e gerçek kopyalama ise XFER ile gerçekleştirilir. Compiler yalnızca bu açık semantiği koruyan komutlar üretir.
