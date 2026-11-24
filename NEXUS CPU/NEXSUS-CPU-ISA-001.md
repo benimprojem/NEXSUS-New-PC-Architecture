@@ -1116,28 +1116,44 @@ Bu örnek sadece 512-bit operand/result register eşlemesini gösterir; matris s
 
 ## 15. Register bank portları ve paralel issue
 
-Bu bölümde mantıksal operand talebi ile fiziksel register-file port sayısı birbirinden ayrılır. Teorik tam eşzamanlı issue halinde:
+Bu bölümde mantıksal operand talebi ile fiziksel register-file port sayısı birbirinden ayrılır. Seçilen başlangıç profili çekirdek başına 16-wide global issue ve 80R/64W mantıksal RAC bütçesidir. Bu değerler her execution unit'in her cycle çalışacağı anlamına gelmez.
 
 | Register bank | Mantıksal read talebi / cycle | Mantıksal write talebi / cycle | Kaynak |
 |---|---:|---:|---|
 | RA | 48 scalar operand | 24 sonuç | 8 Arithmetic ALU × (2R+1W), 8 Logic × (2R+1W), 8 Compare × (2R+1W) |
 | FA | 24 scalar operand | 10 sonuç | 6 FP64 × (2R+1W), 4 FMA × (3R+1W) |
 | DA | 4 store-source read | 8 load-result write | LOAD=8, STORE=4; transfer/XFER ayrıca hesaba katılır |
-| MA | Operand biçimine bağlı | Operand biçimine bağlı | VEC=2 ve ME512=1; her opcode'un MA pair/entry tüketimiyle hesaplanır |
+| MA | Opcode/tile biçimine bağlı | Opcode/tile biçimine bağlı | VEC=2 ve ME512=1; aşağıdaki MA-entry tablosuna göre hesaplanır |
 | OS / WS | WLOAD/WSTORE workspace endpoint | WLOAD/WSTORE workspace endpoint | DA staging ile ortak, deneyle belirlenecek RAC bütçesini paylaşır; XFER block path ayrı transfer engine kullanır |
 | CP0–CP3 / XW | Protected context / exception access | OS context manager / exception hardware | Özel korumalı uç noktalar; genel RAC operand bütçesi dışında |
 
-RA ve FA rakamları 64-bit kayıt operandı sayısıdır; fiziksel byte/bit genişliği, pair erişimi ve bypass ayrıca değerlendirilir. FA'nın FP128 işlemleri iki ardışık FA entry'si tüketir. MA tarafında VEC ve ME512'nin her komut için kullandığı kaynak/hedef sayısı opcode bazında normalize edilmeden fiziksel port sayısı sabitlenmeyecektir.
+RA ve FA rakamları 64-bit kayıt operandı sayısıdır; fiziksel byte/bit genişliği, pair erişimi ve bypass ayrıca değerlendirilir. FA'nın FP128 işlemleri iki ardışık FA entry'si tüketir.
+
+**MA logical operand footprint (256-bit MA entries):**
+
+| Opcode family | Source reads | Destination writes | Counting rule |
+|---|---:|---:|---|
+| VADD/VSUB/VMUL/VDIV/VMIN/VMAX/VAND/VOR/VXOR/VMOD/VCMP/VSHL/VSHR | 2 MA entries | 1 MA entry | D/A/B or D/A/count; each operand is one 256-bit MA entry |
+| VMACC | 3 MA entries | 1 MA entry | A/B/acc read, D write |
+| VSUM | 1 MA entry | 1 MA entry | One source and one 256-bit result |
+| VDOT | 2 MA entries | 1 MA entry | A/B read, 256-bit D result |
+| MMUL.S/U | 2T entries | T entries | T = ceil(N×N×W/256); A/B read, D write |
+| MMAC.S/U | 3T entries | T entries | A/B/C read, D write; T as above |
+| MTRANS | T entries | T entries | Source and destination tile groups |
+| MREDUCE | T entries | O entries | T = ceil(N×N×W/256); O = ceil(N×(W+ceil(log2(N)))/256) |
+| ME512 512-bit pair operand | 2 entries per pair operand | 2 entries per pair result | Each 512-bit pair is two physical 256-bit MA entries |
+
+A full MA tile operand is counted by its complete architectural register group, even if the ME512 datapath internally processes it in 512-bit slices. Full source/destination aliasing does not silently reduce logical accounting; any read reuse, in-place forwarding or write elision must be explicitly modeled as a physical optimization while preserving atomic architectural commit. Partial-overlap rules and alignment are enforced by the ISA tile-group rules.
 
 Fiziksel uygulama için tek bir 48-read/24-write RA register-file veya 24-read/10-write FA register-file zorunlu değildir. Bankalama, read replication, operand broadcast/collector, bypass ve sınıf bazlı writeback portları birlikte tasarlanabilir. Aynı fiziksel register'a aynı cycle birden fazla write yasaktır; farklı hedeflere paralel writeback ise bank/port ve global writeback kapasitesi izin verdiği ölçüde yapılır.
 
-**RAC erişim tavanı UNDER EVALUATION:** RA/FA/DA/MA register bankları ile CPU kaynaklı WS/OS WLOAD/WSTORE uç noktalarının toplamı deneyle belirlenecek mantıksal 64-bit read/write slotlarını paylaşır. İlk deney noktası 48R+48W/cycle; karşılaştırma noktaları 32/32, 64/48, 80/48 ve 80/64'tür. RAC, hazır issue-queue komutlarının tam operand ayak izini atomik rezerve eder; kullanılmayan erişim kapasitesi başka sınıflara aktarılır. WLOAD workspace read + DA write; WSTORE DA read + workspace write slotlarını birlikte rezerve eder. 128/256/512-bit workspace erişimleri 2/4/8 slot tüketir. XFER.WS.MEM/START ayrı transfer motorunu kullanır ve RAC mantıksal slotlarını tüketmez. CP0–CP3 ve XW özel korumalı/hardware uç noktalarıdır; bunlar bu bütçeye dahil değildir. Fiziksel bank/port/replica topolojisi, bank çakışmaları, bypass ve writeback uygulaması OPEN'dır. Ayrıntılar RAC-48RW-EVALUATION belgesindedir.
+**RAC mantıksal erişim bütçesi BASELINE = 80R/64W per core per cycle:** RA/FA/DA/MA register bankları ile CPU kaynaklı WS/OS WLOAD/WSTORE uç noktaları ortak dinamik tahsis edilen mantıksal 64-bit read/write slotlarını paylaşır. Bu, tek bir monolitik 80R/64W SRAM zorunluluğu değildir. RAC hazır komutun tam operand ayak izini atomik rezerve eder; kullanılmayan kapasite başka sınıflara aktarılır. WLOAD workspace read + DA write; WSTORE DA read + workspace write slotlarını birlikte rezerve eder. 128/256/512-bit workspace erişimleri 2/4/8 slot tüketir. XFER.WS.MEM/START ayrı transfer motorunu kullanır ve RAC mantıksal slotlarını tüketmez. CP0–CP3 ve XW özel korumalı/hardware uç noktalarıdır; bunlar bu bütçeye dahil değildir. Fiziksel bank/port/replica topolojisi, bank çakışmaları, bypass ve writeback uygulaması ölçümle doğrulanacaktır. Ayrıntılar RAC-48RW-EVALUATION belgesindedir.
 
 ## 16. Issue queue ve paralel issue modeli
 
 - Ayrı issue queue'ları: Arithmetic ALU, Logic, Compare, FP64, FMA, VEC, ME512, LOAD ve STORE.
 - Her kuyruk yalnızca kendi execution sınıfına ait hazır komutları besler; aynı sınıftaki birden çok lane/unit kuyruktan seçilir.
-- Global dispatch/issue katmanı kuyruklar arasında seçim yapar. Global issue width henüz OPEN'dır; birim sayılarını toplamak her çevrimde o kadar komut issue edileceği anlamına gelmez.
+- Global dispatch/issue katmanı kuyruklar arasında seçim yapar. **Global issue width baseline = 16 instruction/cycle per core**; 8/12/24/32 yalnızca kontrollü karşılaştırma noktalarıdır. Birim sayılarını toplamak her çevrimde o kadar komut issue edileceği anlamına gelmez.
 - Bir komut ancak operandları hazır, register read port/collector kapasitesi mevcut, hedef writeback kaynağı ayrılabilir ve ilgili execution unit müsaitse issue edilir.
 - Queue depth ve fiziksel port sayısı ayrı parametrelerdir. Queue depth, ROB kapasitesiyle aynı şey değildir.
 - FP64=6 ve FMA=4 bağımsız kaynak havuzlarıdır; aynı çevrimde toplam issue global genişlik ve FA operand/writeback erişimiyle sınırlanır.
