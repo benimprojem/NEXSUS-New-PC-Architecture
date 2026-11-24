@@ -1153,7 +1153,7 @@ Fiziksel uygulama için tek bir 48-read/24-write RA register-file veya 24-read/1
 
 - Ayrı issue queue'ları: Arithmetic ALU, Logic, Compare, FP64, FMA, VEC, ME512, LOAD ve STORE.
 - Her kuyruk yalnızca kendi execution sınıfına ait hazır komutları besler; aynı sınıftaki birden çok lane/unit kuyruktan seçilir.
-- Global dispatch/issue katmanı kuyruklar arasında seçim yapar. **Global issue width baseline = 16 instruction/cycle per core**; 8/12/24/32 yalnızca kontrollü karşılaştırma noktalarıdır. Birim sayılarını toplamak her çevrimde o kadar komut issue edileceği anlamına gelmez.
+- Global dispatch/issue katmanı kuyruklar arasında seçim yapar. **Global backend issue width baseline = 16 instruction/cycle per core**; current front-end/dispatch is 8, so 16 is not a sustained-IPC guarantee. 8/12/24/32 are controlled backend comparison points; delivery width is swept separately. Birim sayılarını toplamak her çevrimde o kadar komut issue edileceği anlamına gelmez.
 - Bir komut ancak operandları hazır, register read port/collector kapasitesi mevcut, hedef writeback kaynağı ayrılabilir ve ilgili execution unit müsaitse issue edilir.
 - Queue depth ve fiziksel port sayısı ayrı parametrelerdir. Queue depth, ROB kapasitesiyle aynı şey değildir.
 - FP64=6 ve FMA=4 bağımsız kaynak havuzlarıdır; aynı çevrimde toplam issue global genişlik ve FA operand/writeback erişimiyle sınırlanır.
