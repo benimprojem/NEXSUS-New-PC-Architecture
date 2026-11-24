@@ -305,7 +305,7 @@ MEMXFER, register bank XFER (0x85) ile aynı komut değildir. Kaynak/hedef L1–
 
 ### 5.6 OS/WS doğrudan adresleme ve register aktarımı
 
-OS ve WS, L1–L4 Data RAM domain'lerinden ayrı, çekirdek-yerel ve doğrudan byte-adreslenebilir çalışma alanlarıdır. Her ikisi de 8 KiB kapasitelidir; geçerli offset aralığı 0–8191'dir. Bu alanlar register bankı değildir; ancak CPU kaynaklı WLOAD/WSTORE erişimleri RA/FA/DA/MA ile aynı dinamik RAC bütçesini paylaşır; güncel deney noktaları RAC-48RW-EVALUATION belgesindedir.
+OS ve WS, L1–L4 Data RAM domain'lerinden ayrı, çekirdek-yerel ve doğrudan byte-adreslenebilir çalışma alanlarıdır. Her ikisi de 8 KiB kapasitelidir; geçerli offset aralığı 0–8191'dir. Bu alanlar register bankı değildir; ancak CPU kaynaklı WLOAD/WSTORE erişimleri RA/FA/DA/MA ile aynı çekirdek başına 80R/64W dinamik RAC başlangıç bütçesini paylaşır; fiziksel port ve bank çakışmaları ayrıca doğrulanır.
 
 | Mnemonic | Operand | İşlev |
 |---|---|---|
