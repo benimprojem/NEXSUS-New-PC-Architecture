@@ -52,7 +52,7 @@ These tests are designed from the architecture contract upward. Implement them i
 | NEX-T015 | Dynamic RAC admission and distributed writeback | Shared 80R/64W logical pool, atomic reservations, age-prioritized work-conserving selection, physical bank conflicts, same-destination write rejection and parallel writes to distinct banks | VALID |
 | NEX-T016 | Cycle-level RAC and 16-wide issue integration | Proves 16 backend issues/cycle when front-end/RAC permit it; mixed 16-op issue window exceeds 80R demand, so simulator caps reads at 80, reports RAC stalls, preserves all operations and stays within 64W | VALID |
 | NEX-T017 | Cycle-level physical register-bank ports | Explicit RA/FA/DA/MA operand identities enforce configurable per-bank read/write ports; different banks proceed in parallel, same-bank port conflicts retry, same-cycle duplicate destinations serialize, and missing identity is rejected when physical-port mode is enabled | VALID |
-| NEX-T018 | Physical register sub-bank mapping | Configurable bank count per RA/FA/DA/MA class; register index maps deterministically by index modulo bank count; per-sub-bank read/write limits, collisions, parallelism and MA512 paired-entry accesses are tested without freezing a default topology | IMPLEMENTED |
+| NEX-T018 | Physical register sub-bank mapping | Configurable bank count per RA/FA/DA/MA class; register index maps deterministically by index modulo bank count; per-sub-bank read/write limits, collisions, parallelism and MA512 paired-entry accesses are tested without freezing a default topology | VALID |
 
 ### 3.1 NEX-T001 implementation record
 
@@ -118,6 +118,18 @@ These tests are designed from the architecture contract upward. Implement them i
 - Validation: **VALID** on CI run [45470623199](https://github.com/benimprojem/NEXSUS-New-PC-Architecture/actions/runs/45470623199); all workflow steps passed.
 - Scope limitation: this version models one physical bank group per register class. NEX-T018 adds sub-bank mapping; actual SRAM macro topology, replication, bypass and writeback timing remain open.
 
+### 3.### 3.10 NEX-T017 cycle-level physical register-bank ports
+
+- Simulator: `NEXUS CPU/tools/cpu_comparison_sim.py`
+- Regression tests: `NEXUS CPU/tools/test_cpu_comparison_sim.py` → `RACCycleIntegrationTests`
+- New operation metadata: explicit `rac_read_accesses` and `rac_write_accesses`, each containing `(bank, register_index, 64-bit_slot_width)`.
+- Physical port maps are optional profile parameters, separate from the shared logical 80R/64W budgets. No default physical port counts are frozen.
+- Tests cover cross-bank parallel access, same-bank read-port collision with retry and cross-bank progress, duplicate same-cycle destination serialization, and mandatory explicit register identity when physical-port mode is enabled.
+- Implementation commit: `3301d67b9166e3701db87bc8f67eabac930200a1`
+- Test commit: `c48818df61ce165e661f82a1919567f68f2a8db6`
+- Validation: **VALID** on CI run [45470623199](https://github.com/benimprojem/NEXSUS-New-PC-Architecture/actions/runs/45470623199); all workflow steps passed.
+- Scope limitation: physical ports are configurable model constraints; actual SRAM macro port topology, replication, bypass and writeback timing are not selected.
+
 ### 3.11 NEX-T018 physical register sub-bank mapping
 
 - Simulator parameters: `rac_physical_bank_counts`, `rac_physical_read_ports_per_bank`, and `rac_physical_write_ports_per_bank`.
@@ -125,19 +137,8 @@ These tests are designed from the architecture contract upward. Implement them i
 - Legacy NEX-T017 class-level port maps remain supported for compatibility.
 - Tests cover distinct-sub-bank parallelism, same-sub-bank conflict/retry with progress in another class, missing class mapping rejection, and 512-bit MA paired entries using two physical entries/eight logical slots.
 - No bank count or per-bank port count is selected as the architecture default. This configurable mapping is not a claim about final SRAM macro implementation.
-- Status: **IMPLEMENTED — awaiting CI**.
-
-### 3.10 NEX-T017 cycle-level physical register-bank ports
-
-- Simulator: `NEXUS CPU/tools/cpu_comparison_sim.py`
-- Regression tests: `NEXUS CPU/tools/test_cpu_comparison_sim.py` → `RACCycleIntegrationTests`
-- New operation metadata: explicit `rac_read_accesses` and `rac_write_accesses`, each containing `(bank, register_index, 64-bit_slot_width)`.
-- Physical port maps are optional profile parameters, separate from the shared logical 80R/64W budgets. No default physical port counts are frozen.
-- Tests cover four-bank parallel read/write, same-bank read-port collision with retry and cross-bank progress, duplicate same-cycle destination serialization, and mandatory explicit register identity when physical-port mode is enabled.
-- Implementation commit: `3301d67b9166e3701db87bc8f67eabac930200a1`
-- Test commit: `c48818df61ce165e661f82a1919567f68f2a8db6`
-- Validation status: **IMPLEMENTED — awaiting CI**.
-- Scope limitation: physical ports are configurable model constraints; actual SRAM macro port topology, replication, bypass and writeback timing are not selected.
+- Validation: **VALID** on CI run [45483820830](https://github.com/benimprojem/NEXSUS-New-PC-Architecture/actions/runs/45483820830), commit `5a834219292d97355034987d2c311e66cfd5fc8f`. All 38 workflow steps passed, including compile, numbered contract tests, regression tests, architecture sweeps, full benchmark-table generation and artifact upload.
+- Scope limitation: validates deterministic sub-bank mapping and configurable per-sub-bank port constraints in the simulator. Actual SRAM macro topology, bank replication, bypass-network timing and integrated writeback timing remain OPEN.
 
 ### 3.3 NEX-T012 architecture definition\n\n- Architectural decision: System Fabric clock = 2× CPU core clock.\n- Scheduling model: two Fabric scheduling ticks are available per CPU cycle; requests may be time-interleaved across destination queues.\n- The model must distinguish scheduler opportunity from physical link bandwidth and destination service capacity.\n- Required tests: two-tick cadence; alternating destinations; same-destination queue contention; independent destination progress; backpressure; fairness under sustained mixed traffic; no implicit 2× link-bandwidth multiplier.\n- Execution status: **PLANNED**. Exact lane width, queue depth, multi-client arbitration, and destination service curves remain open.\n\n## 4. Historical test files — retained, not yet re-certified
 
