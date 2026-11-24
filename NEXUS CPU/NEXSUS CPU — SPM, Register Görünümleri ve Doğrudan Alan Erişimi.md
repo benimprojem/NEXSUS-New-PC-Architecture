@@ -1,4 +1,6 @@
-# NEXSUS CPU — SPM, Register Görünümleri ve Doğrudan Alan Erişimi
+# NEXSUS CPU — Register Views and Direct Workspaces
+
+> Bu dosyanın eski dosya yolu geriye dönük bağlantılar için korunmuştur. Güncel çalışma alanı adları OW/TW'dir; eski SPM0–SPM7 modeli artık mimari referans değildir. Yetkili adresleme ve aktarım tanımı: [Workspace Addressing and Transfer](NEXSUS-CPU-WORKSPACE-ADDRESSING-AND-TRANSFER-001.md).
 
 ## 1. Tasarım Amacı
 
@@ -19,74 +21,38 @@ Temel ilke:
 
 **Aynı sonucu daha az talimatla ve daha az gereksiz veri hareketiyle elde etmek mümkünse, mimari bu yolu tercih etmelidir.**
 
-## 2. System Page Memory (SPM)
+## 2. OW ve TW çalışma alanları
 
-SPM, NEXSUS CPU içerisinde bulunan, doğrudan adreslenebilir ve sayfalara ayrılmış çalışma belleğidir.
+NEXSUS CPU, doğrudan byte-adreslenebilir iki genel amaçlı çalışma alanı sağlar:
 
-SPM0, CPU çalışırken yürütme aşamasında oluşan geçici komutsal durumun, ara değerlerin ve sonuçların saklandığı alandır. Stack benzeri geçici saklama işlevi görür; ancak zorunlu LIFO sırası yoktur ve doğrudan adreslenir. SPM1–SPM7 ise aynı doğrudan adreslenebilir modeli veri tarafında uygular; geçici veriler ve ara hesaplama değerleri için kullanılır.
+| Alan | Kapasite | Sahiplik | Kullanım |
+|---|---:|---|---|
+| Operating-System Workspace (OW) | 8 KiB | OS | Kernel scratch, syscall/I/O exchange, OS kayıtları |
+| Task Workspace (TW) | 8 KiB | Çalışan task | Task-local veri, register spill, geçici yapılar ve çalışma dosyaları |
 
-SPM, geleneksel yığının bire bir karşılığı değildir. Veriler zorunlu bir LIFO sırasına göre değil, tanımlı adresleri ve alanları üzerinden yönetilir.
+OW ve TW, register bankı değildir. Her biri kendi 0–8191 byte offset aralığına sahiptir. TW zorunlu LIFO stack değildir; yazılım isterse stack frame, ister sabit offset'li kayıt, dizi, tablo veya geçici buffer olarak kullanabilir.
 
-### 2.1 SPM0 — 256 adet 64-bit temel kayıt
+EB, OW/TW'den ayrıdır: EB 4 KiB çift bankalı instruction-fetch alanıdır ve yazılım tarafından adreslenemez. CP0–CP3 korumalı OS context pool; XW ise exception hardware'a özel alandır. Bu alanlar WLOAD/WSTORE ile genel amaçlı erişime açılmaz.
 
-SPM0, komutların kendisini veya fetch/dispatch kuyruğunu saklamaz. CPU çalışırken komutların yürütülmesi sonucunda oluşan geçici komutsal durumu, ara değerleri ve sonuçları tutar. Stack benzeri bir çalışma alanıdır; ancak veriler LIFO sırasına bağlı olmadan doğrudan adreslenebilir.
+## 3. Workspace adresleme ve erişim modeli
 
-SPM0 kapasitesi 256 × 64 bit = 16.384 bit = 2 KiB olarak belirlenir.
+Workspace offset'i byte cinsindendir. Doğrudan offset ve RA tabanlı displacement biçimleri desteklenir:
 
-| Özellik | Değer |
-|---|---:|
-| Toplam kapasite | 2 KiB |
-| Temel kayıt sayısı | 256 |
-| Temel kayıt genişliği | 64 bit |
-| Temel kayıt genişliği | 64 bit |
-| 8-bit byte erişimi | Desteklenir |
-| Desteklenen erişim genişlikleri | 8/16/32/64/128/256/512 bit |
+```asm
+WLOAD.TW.W64  DA0, [0x120]
+WSTORE.TW.W64 [0x120], DA0
+WLOAD.TW.W64  DA1, [RA4 + 0x120]
+WSTORE.OW.W64 [RA5 + 0x40], DA2
+```
 
-SPM0'ın sekiz sayfası PAGE 0–PAGE 7 olarak tanımlanır.
+- Geçerli workspace aralığı 0–8191'dir; adres sarımı yoktur.
+- WLOAD/WSTORE 8/16/32/64/128/256/512-bit erişimleri destekler.
+- Erişimler doğal hizalı olmalıdır; tam erişim aralığı 8 KiB sınırları içinde kalmalıdır.
+- WLOAD/WSTORE DA staging bankını kullanır. RA/FA/MA register banklarıyla veri alışverişi mevcut MOV.DA.RA / MOV.RA.DA, MOV.DA.FA / MOV.FA.DA ve MOV.DA.MA / MOV.MA.DA komutlarıyla açıkça yapılır.
+- OW/TW ile L1–L4 Data RAM arasında büyük aralık aktarımı XFER.WS.MEM veya XFER.WS.START ile yapılır; XFER.WAIT asenkron aktarımın tamamlanmasını bekler.
+- Workspace erişimi RAC'ın 32R+32W register erişim bütçesine dahil değildir. Workspace bank/port sayısı ve erişim bant genişliği ayrı mikro-mimari konudur.
 
-Her sayfa 4096 bayt fiziksel kapasiteye sahiptir ve 512 adet 64 bitlik kayıt eşdeğerine karşılık gelir.
-
-SPM0'da 64 bitlik kayıt temel adreslenebilir birimdir. Daha küçük alanların kullanılması, kaydın fiziksel olarak ayrı belleklere bölünmesini gerektirmez.
-
-SPM0'ın birincil görevi yürütme sırasında oluşan geçici komutsal durum, ara değerler ve sonuçlar için doğrudan adreslenebilir alan sağlamaktır. Genel geçici veri ve ara hesaplama değerleri SPM1–SPM7 alanlarında tutulur.
-
-### 2.2 SPM1–SPM7 — Değişken genişlikli veri alanları
-
-SPM1–SPM7, değişken boyutlu geçici veriler ve ara hesaplama değerleri için ayrılmış doğrudan adreslenebilir çalışma alanlarıdır. Her biri SPM sayfa/ofset modeliyle erişilir; yazılım ve derleyici ihtiyaç duyduğu alanı doğrudan adresleyebilir. Her alanın kapasitesi 8 KiB olarak belirlenmiştir; fiziksel bank/port düzeni mikro-mimari aşamasında belirlenecektir.
-
-Desteklenmesi hedeflenen veri genişlikleri:
-
-- 8 bit
-- 16 bit
-- 32 bit
-- 64 bit
-- 128 bit
-- 256 bit
-- 512 bit
-
-SPM1–SPM7'nin her biri 8 KiB kapasitelidir; toplam kapasiteleri 56 KiB'tır. Byte adresleme sayesinde veri alanları doğal boyutlarına göre tanımlanabilir. SPM0–SPM7'nin tamamı 8/16/32/64/128/256/512-bit erişim genişliklerini destekler.
-
-128/256/512-bit değerler tek bir mantıksal veri veya erişim genişliği olarak ele alınır; 64-bit temel kayıt mimarisinde gerektiğinde ardışık kayıtlar üzerinden birleştirilir.
-
-SPM0–SPM7, mimaride ayrı işlevsel çalışma alanları olarak tanımlanır; fiziksel bellek dizileri, bank paylaşımı ve port düzeni donanım tasarımında kesinleştirilir. Bunların mutlaka ayrı fiziksel bellek dizileri olması gerekmez.
-
-## 3. Sayfa Kimliği ve Ofset Adreslemesi
-
-SPM erişimi, sayfa kimliği ve sayfa içi ofset kavramlarını kullanır.
-
-Genel adresleme modeli:
-
-`SPM_ADDRESS = PAGE_ID + OFFSET`
-
-Bu ifade kavramsal bir gösterimdir; gerçek kodlama alanların bit düzeyindeki yerleşimiyle belirlenecektir.
-
-SPM0 için sekiz sayfa ve her sayfada 512 adet 64 bitlik kayıt bulunduğundan, sayfa kimliği 3 bit ve kayıt ofseti 9 bit ile temsil edilebilir.
-
-Bu iki alan toplam 12 bitlik mantıksal kayıt konumu oluşturur.
-
-SPM1–SPM7'de byte adresleme kullanılır. 8 KiB alan içindeki byte konumunu belirlemek için 13 bitlik ofset yeterlidir.
-
-SPM0 kayıt ofsetiyle, SPM1–SPM7 ise byte ofsetiyle adreslenir; tüm alanlarda geniş erişimler ardışık byte/kayıtları kapsayabilir.
+Tam operand, fault, permission ve encoding kuralları [NEXSUS-CPU-WORKSPACE-ADDRESSING-AND-TRANSFER-001.md](NEXSUS-CPU-WORKSPACE-ADDRESSING-AND-TRANSFER-001.md) ve Instruction Encoding belgesinde tanımlıdır.
 
 ## 4. Register Bankları ve Görünümleri
 
@@ -135,62 +101,25 @@ FA kayıtları 64-bit fiziksel genişliktedir. FP32 ve FP64 tek kayıt kullanır
 - DA: 32 × 64 bit = 256 byte
 - MA: 32 × 256 bit = 1 KiB
 
-Toplam fiziksel register kapasitesi **1.75 KiB**'tır. SPM kapasitesi bu toplama dahil değildir.
-## 5. Donanım Destekli Kısmi Yazma
+Toplam fiziksel register kapasitesi **1.75 KiB**'tır. OW/TW kapasitesi bu toplama dahil değildir.
+## 5. Workspace alan güncelleme semantiği
 
-SPM, 64 bitlik kayıtların tamamını yeniden yazmak zorunda kalmadan seçilen alanları güncelleyebilecek biçimde tasarlanır.
+Workspace erişimleri byte offset ve WLOAD/WSTORE genişliği üzerinden yapılır. Bir struct alanını güncellemek için derleyici, alanın bulunduğu byte aralığını belirler ve gerekli okuma–maskeleme–birleştirme–yazma dizisini üretir.
 
-Örneğin bir kayıt şu alanlardan oluşabilir:
+Ayrı bir atomik bit-field workspace yazma komutu bu ISA sürümünde atanmış değildir. WSTORE yalnızca seçilen W bitini yazar; aynı 64-bit word içindeki diğer alanları korumak gerekiyorsa yazılım/derleyici read-modify-write yapmalıdır. Eşzamanlı güncelleme gerekiyorsa normal workspace erişimi tek başına atomicity sağlamaz; uygun synchronization gerekir.
 
-| Alan | Veri türü | Genişlik |
-|---|---|---:|
-| a | f32 | 32 bit |
-| b | i16 | 16 bit |
-| c | u16 | 16 bit |
-| **Toplam** | | **64 bit** |
+Donanım destekli daha dar alan güncellemesi ileride ayrı opcode veya açık mask alanı olarak değerlendirilebilir; mevcut WLOAD/WSTORE semantiği değiştirilmeden eklenmelidir.
 
-Bu alanlar tek bir 64 bitlik kayıt içinde tutulabilir.
+## 6. OW/TW erişim komutları
 
-Bir program yalnızca `b` alanını güncellediğinde, donanım bu alanı değiştirmeli ve `a` ile `c` alanlarının değerlerini korumalıdır.
-
-Bunun için kısmi yazma mekanizması şu bilgileri kullanabilir:
-
-- Hedef sayfa ve ofset.
-- Alanın başlangıç biti.
-- Alan genişliği.
-- Yazılacak değer.
-- Gerekli erişim ve eşzamanlılık kuralları.
-
-Donanım, seçilen alanın yazılmasını doğrudan desteklerse işlemci genel amaçlı bir oku–maskele–birleştir–yaz dizisini her defasında üretmek zorunda kalmaz.
-
-Kısmi yazma, mimari düzeyde tek komutla temsil edilebilir. Bunun donanım içinde tek çevrimde tamamlanması zorunlu değildir.
-
-## 6. SPM Erişim Komut Grubu
-
-SPM için ayrı bir komut grubu tasarlanabilir.
-
-Aşağıdaki adlar işlevleri açıklamak için kullanılan geçici gösterimlerdir; kesin ISA tanımları değildir.
-
-| Komut ailesi | İşlev |
+| Komut | İşlev |
 |---|---|
-| SPM.RD | 64 bitlik kayıt okuma |
-| SPM.WR | 64 bitlik kayıt yazma |
-| SPM.GET | Bir kaydın seçilen alanını okuma |
-| SPM.PUT | Bir kaydın seçilen alanını güncelleme |
-| SPM.MASK | Maskeli alan güncelleme |
-| SPM.COPY | Kayıt veya alan kopyalama |
+| WLOAD.OW / WLOAD.TW | Workspace'ten DA staging bankına okuma |
+| WSTORE.OW / WSTORE.TW | DA staging bankından workspace'e yazma |
+| XFER.WS.MEM | Workspace ile L1–L4 Data RAM arasında senkron blok aktarımı |
+| XFER.WS.START / XFER.WAIT | Asenkron blok aktarımı ve tamamlanma |
 
-Örnek kavramsal kullanım:
-
-`SPM.RD RA01, PAGE_0, OFFSET_12`
-
-Bu ifade, belirtilen SPM0 konumundaki 64 bitlik kaydın RA01'e alınmasını temsil eder.
-
-`SPM.PUT PAGE_0, OFFSET_12, RB0, FIELD_B`
-
-Bu ifade, RB0'daki 32 bitlik değerin tanımlı hedef alana yazılmasını temsil eder. Gerçek komut biçimi alan genişliğini ve başlangıç konumunu açıkça belirtmelidir.
-
-Komutların gerçek operandları, kodlamaları, erişim gecikmeleri ve hata davranışları ISA tasarımı sırasında kesinleştirilecektir.
+Register bank save/restore, DA staging üzerinden açık MOV transferleriyle yapılır. Workspace ile register bankı arasında gizli alias veya implicit writeback yoktur. Numeric opcode ve bit alanları [Instruction Encoding](NEXSUS-CPU-INSTRUCTION-ENCODING-001.md) belgesinde tanımlıdır.
 
 ## 7. Nexus Flow ve Yapılandırılmış Veri
 
@@ -220,15 +149,13 @@ Bir alanın güncellenmesi gerektiğinde derleyici, hedef donanımın kısmi yaz
 
 ## 8. İşletim Sistemi ve Ara Hesaplama Desteği
 
-SPM'nin kullanım alanları şunlardır:
+OW ve TW'nin kullanım alanları şunlardır:
 
-- İşletim sistemi ile CPU arasındaki çalışma ve aktarım verileri.
-- Geçici hesaplama sonuçları.
-- Registerlarda tutulması uygun olmayan ara değerler.
-- Küçük yapılandırılmış veri nesneleri.
-- Doğrudan adreslenebilir geçici çalışma alanları.
+- OW: işletim sistemi çalışma verileri, syscall/I/O exchange ve kernel bookkeeping.
+- TW: task-local geçici hesaplama sonuçları, register spill, küçük yapılandırılmış veri nesneleri ve doğrudan adreslenebilir çalışma dosyaları.
+- XFER.WS.MEM: OW/TW verisini Data RAM'e kalıcılaştırma veya Data RAM'den geri yükleme.
 
-SPM, işletim sisteminin yönetebildiği bir CPU içi kaynak olarak tasarlanır. GPU, FAPU ve diğer düğümler için ortak bir SPM oluşturulmaz; bu birimler kendi bellek erişim mekanizmalarını kullanmaya devam eder.
+OW/TW çekirdek-yerel kaynaklardır. GPU, FAPU ve diğer düğümlere otomatik olarak ortak workspace görünümü verilmez; bu birimler kendi bellek erişim mekanizmalarını kullanır.
 
 ## 9. Tasarım Hedefleri ve Sınırlar
 
@@ -249,7 +176,7 @@ Amaç, her uygulamada sabit oranda kod azaltımı vaat etmek değil; donanım ve
 
 ## 10. Sonuç
 
-NEXSUS CPU'nun SPM ve register görünüm mimarisi, yazılımın veriyle doğrudan çalışmasını ve donanımın gereksiz ara adımları azaltmasını hedefler.
+NEXSUS CPU'nun OW/TW ve register görünüm mimarisi, yazılımın veriyle doğrudan çalışmasını ve donanımın gereksiz ara adımları azaltmasını hedefler.
 
 64 bitlik temel kayıt erişimi, değişken genişlikli veri alanları, sayfa kimliği–ofset adreslemesi ve donanım destekli kısmi yazma birlikte ele alınır.
 
