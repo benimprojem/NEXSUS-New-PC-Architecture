@@ -159,8 +159,8 @@ A complete register payload is 1,792 bytes. The remaining space in a 2 KiB slot 
 4. Validate the incoming application's identity, generation, memory permissions, shared grants, and context image.
 5. Restore incoming register state from CP or Data RAM.
 6. Establish a new WS access epoch only after WS has been cleared/initialized or an explicitly authorized continuation has restored data through CPU-mediated LOAD→DA→WSTORE.
-8. Refill instruction code through the App RAM → C0 → CS0–CS7 → CST → EB path.
-9. Resume PL0 only after register state and the new WS access epoch/initialization state are valid.
+7. Refill instruction code through the App RAM → C0 → CS0–CS7 → CST → EB path.
+8. Resume PL0 only after register state and the new WS access epoch/initialization state are valid.
 
 WS is not automatically saved on deschedule. If its contents must survive, the application/OS explicitly exports them to protected Data RAM before the access epoch ends. If they are not preserved, the OS clears or reinitializes WS before another protection domain receives access.
 
