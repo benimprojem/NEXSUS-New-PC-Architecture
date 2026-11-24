@@ -1958,6 +1958,7 @@ class RACCycleIntegrationTests(unittest.TestCase):
 
     def test_same_bank_read_port_conflict_retries_without_blocking_other_banks(self):
         p = self._physical_rac_profile()
+        p.rac_physical_read_ports["RA"] = 1
         ops = [
             sim.Op(0, "INT", rac_reads=1, rac_writes=1,
                    rac_read_accesses=(("RA", 0, 1),),
