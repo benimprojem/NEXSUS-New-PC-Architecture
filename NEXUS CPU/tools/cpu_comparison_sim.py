@@ -70,9 +70,13 @@ class CoreProfile:
     scheduler_entries: int = 0  # 0 keeps the legacy ROB-sized scheduling window
     rac_read_budget: int = 0  # logical 64-bit slots/core/cycle; 0 disables RAC model
     rac_write_budget: int = 0
-    # Optional physical register-file limits; None keeps them uncommitted.
+    # Legacy per-register-class port limits; retained for NEX-T017 compatibility.
     rac_physical_read_ports: Optional[Dict[str, int]] = None
     rac_physical_write_ports: Optional[Dict[str, int]] = None
+    # NEX-T018: register index maps to index % bank_count.
+    rac_physical_bank_counts: Optional[Dict[str, int]] = None
+    rac_physical_read_ports_per_bank: Optional[Dict[str, int]] = None
+    rac_physical_write_ports_per_bank: Optional[Dict[str, int]] = None
 
 # Publicly documented or independently measured values are marked in docs.
 # Unpublished/uncertain values are conservative model assumptions, not claims.
@@ -1915,10 +1919,23 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
 
             read_accesses = op.rac_read_accesses
             write_accesses = op.rac_write_accesses
+            subbank_mode = p.rac_physical_bank_counts is not None
             physical_ports_enabled = (
                 p.rac_physical_read_ports is not None or
-                p.rac_physical_write_ports is not None
+                p.rac_physical_write_ports is not None or
+                subbank_mode or
+                p.rac_physical_read_ports_per_bank is not None or
+                p.rac_physical_write_ports_per_bank is not None
             )
+            if subbank_mode:
+                for register_class, count in p.rac_physical_bank_counts.items():
+                    if not isinstance(count, int) or count < 1:
+                        raise ValueError(
+                            f"invalid physical RAC bank count for {register_class}: {count!r}"
+                        )
+                if (p.rac_physical_read_ports_per_bank is None and
+                        p.rac_physical_write_ports_per_bank is None):
+                    raise ValueError("sub-bank mode requires per-bank read/write port maps")
             if physical_ports_enabled and (read_accesses is None or write_accesses is None):
                 if op_rac_reads or op_rac_writes:
                     raise ValueError(
@@ -1950,26 +1967,41 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
 
             read_counts = {}
             write_counts = {}
-            for bank, _index, _slots in read_accesses:
-                read_counts[bank] = read_counts.get(bank, 0) + 1
-            for bank, _index, _slots in write_accesses:
-                write_counts[bank] = write_counts.get(bank, 0) + 1
+            def physical_bank_key(register_class, register_index):
+                if subbank_mode:
+                    count = p.rac_physical_bank_counts.get(register_class, 0)
+                    if count < 1:
+                        raise ValueError(
+                            f"missing physical RAC sub-bank count for {register_class}"
+                        )
+                    return (register_class, register_index % count)
+                return register_class
+            for register_class, register_index, _slots in read_accesses:
+                key = physical_bank_key(register_class, register_index)
+                read_counts[key] = read_counts.get(key, 0) + 1
+            for register_class, register_index, _slots in write_accesses:
+                key = physical_bank_key(register_class, register_index)
+                write_counts[key] = write_counts.get(key, 0) + 1
             destinations = [(bank, index) for bank, index, _slots in write_accesses]
             if len(destinations) != len(set(destinations)):
                 raise ValueError(f"op {op.seq} writes one register more than once")
             if any(destination in rac_destinations_this_cycle for destination in destinations):
                 stalls["rac_destination_conflict_op_cycles"] += 1
                 continue
-            if p.rac_physical_read_ports is not None and any(
+            read_port_map = (p.rac_physical_read_ports_per_bank
+                             if subbank_mode else p.rac_physical_read_ports)
+            if read_port_map is not None and any(
                 physical_reads_this_cycle.get(bank, 0) + count >
-                p.rac_physical_read_ports.get(bank, 0)
+                read_port_map.get(bank[0] if subbank_mode else bank, 0)
                 for bank, count in read_counts.items()
             ):
                 stalls["rac_physical_read_port_blocked_op_cycles"] += 1
                 continue
-            if p.rac_physical_write_ports is not None and any(
+            write_port_map = (p.rac_physical_write_ports_per_bank
+                              if subbank_mode else p.rac_physical_write_ports)
+            if write_port_map is not None and any(
                 physical_writes_this_cycle.get(bank, 0) + count >
-                p.rac_physical_write_ports.get(bank, 0)
+                write_port_map.get(bank[0] if subbank_mode else bank, 0)
                 for bank, count in write_counts.items()
             ):
                 stalls["rac_physical_write_port_blocked_op_cycles"] += 1
