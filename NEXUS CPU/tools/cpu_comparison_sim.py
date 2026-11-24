@@ -232,8 +232,8 @@ def build_composite_workload(scale: int = 1) -> Dict[str, List[Op]]:
         )
     result["fma_dependency_chain"] = ops
 
-    # G3) Concurrent FP64 + FMA issue pressure. Equal independent streams
-    # expose whether the FMA subset competes with ordinary FP execution.
+    # G3) Concurrent FP64 + dedicated FMA issue pressure. Equal independent
+    # streams test independent execution pools under the global issue limit.
     ops = []
     for i in range(256*n):
         add_op(ops, "FP", label="mixed FP64/FMA ordinary FP stream")
@@ -1817,11 +1817,7 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
             slots = unit_busy.get(resource, [])
             selected_slots = None
             topology = getattr(p, "execution_topology", {}) or {}
-            if resource == "FP" and op.kind == "FMA":
-                fma_count = min(len(slots), max(0, int(topology.get("FMA_LANES", len(slots)))))
-                slot = next((i for i in range(fma_count) if slots[i] <= cycle), None)
-                selected_slots = [slot] if slot is not None else None
-            elif resource == "INT" and op.exec_width_bits >= 128 and topology.get("INT128_PAIRS"):
+            if resource == "INT" and op.exec_width_bits >= 128 and topology.get("INT128_PAIRS"):
                 selected_slots = next(
                     (pair for pair in topology["INT128_PAIRS"]
                      if all(index < len(slots) and slots[index] <= cycle for index in pair)),
@@ -1838,7 +1834,7 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
                 continue
             vector_factor = (max(1, math.ceil(op.exec_width_bits / p.vector_bits))
                              if is_vector_operation(kind) or (kind == "ME512" and exec_kind == "VEC") else 1)
-            base_latency = (p.latency.get("FMA", p.latency.get(exec_kind, 1))
+            base_latency = (p.latency.get("FMA", p.latency.get(resource, 1))
                             if kind == "FMA" else p.latency.get(exec_kind, 1))
             latency = base_latency * vector_factor
             if kind in ("LOAD", "STORE", "ATOM"):
@@ -2151,11 +2147,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 slots = st["unit_busy"].get(resource, [])
                 topology = getattr(p, "execution_topology", {}) or {}
                 selected_slots = None
-                if resource == "FP" and op.kind == "FMA":
-                    fma_count = min(len(slots), max(0, int(topology.get("FMA_LANES", len(slots)))))
-                    slot_index = next((i for i in range(fma_count) if slots[i] <= cycle), None)
-                    selected_slots = [slot_index] if slot_index is not None else None
-                elif resource == "INT" and op.exec_width_bits >= 128 and topology.get("INT128_PAIRS"):
+                if resource == "INT" and op.exec_width_bits >= 128 and topology.get("INT128_PAIRS"):
                     selected_slots = next(
                         (pair for pair in topology["INT128_PAIRS"]
                          if all(index < len(slots) and slots[index] <= cycle for index in pair)),
@@ -2207,7 +2199,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                             mshr_reserved_this_cycle[core_id] += 1
                         st["hits"][level] += 1
                 item = {"core": core_id, "seq": seq, "slot": slot,
-                        "latency": max((p.latency.get("FMA", p.latency.get(exec_kind, 1))
+                        "latency": max((p.latency.get("FMA", p.latency.get(resource, 1))
                                          if op.kind == "FMA" else p.latency.get(exec_kind, 1)) *
                                        (max(1, math.ceil(op.exec_width_bits / p.vector_bits)) if is_vector_operation(op.kind) or (op.kind == "ME512" and exec_kind == "VEC") else 1),
                                        mem_lat),
