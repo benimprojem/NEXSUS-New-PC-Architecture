@@ -279,7 +279,9 @@ WSMEM, OSSpace/WS içindeki byte-addressed alanlara DA staging bankı üzerinden
 - Access must be naturally aligned to W/8 bytes. DA selector range follows MEM: W128/256/512 uses 2/4/8 consecutive DA registers and may not exceed DA31.
 - WLOAD writes the selected data into DA only after all checks pass. For W<64, unused upper bits of the destination DA register are zeroed. WSTORE changes only the selected W bits.
 - A faulting WLOAD leaves all destination DA entries unchanged. A validation-faulting WSTORE changes no workspace byte.
-- Workspace selector is not an access grant. PL0 may select WS only when it owns the active application execution; OSSpace is PL1/PL2 only. The access-control policy remains authoritative.
+- Workspace selector is not an access grant. PL0 may select WS only during an authorized application execution epoch; WS is not task-ID-owned. OSSpace is PL1/PL2 only. The access-control policy remains authoritative.
+
+WLOAD/WSTORE participate in the single core-wide Resource Access Controller (RAC) budget: 32 logical 64-bit reads + 32 logical 64-bit writes per cycle across RA/FA/DA/MA/WS/OSSpace. A wide WLOAD/WSTORE reserves every workspace and DA lane atomically (2/4/8 slots for 128/256/512 bits). XFER.WS.MEM/START use the independent transfer engine and do not consume these logical RAC slots.
 
 | OP | Mnemonic | Format | İşlev |
 |---:|---|---|---|
@@ -772,7 +774,7 @@ XFER.WS.MEM (OP=0x8B) and XFER.WS.START (OP=0x8C) reuse the MEMXFER payload and 
 
 DST_WS=0 and SRC_WS=1 are mandatory. SD must be 00 and SRA selects the OSSpace/WS source byte offset; DD selects the L1–L4 Data RAM destination domain and DRA its Data RAM byte address. LRA contains the unsigned byte length. Any DST_WS=1 or SRC_WS=0 encoding is illegal and must not start a transfer. XFER.WS.MEM requires TRA=0; XFER.WS.START writes its token to TRA. XFER.WAIT (0x88) consumes either MEMXFER token type.
 
-Workspace offsets and complete ranges must fit in 0–8191. Block transfer is byte-granular and does not require natural alignment. The source workspace range is read-reserved and cannot be modified during transfer. Workspace is never a destination. Data RAM destination reservation and unpublished-range behavior follow the existing MEMXFER rules. Data RAM→workspace and App RAM→workspace transfer requests are not representable as valid workspace MEMXFER instructions. A full 8 KiB workspace can be copied in one request. RAC shared access slots and DA staging entries are not consumed by this block path.
+Workspace offsets and complete ranges must fit in 0–8191. Block transfer is byte-granular and does not require natural alignment. The source workspace range is read-reserved and cannot be modified during transfer. Workspace is never a destination. Data RAM destination reservation and unpublished-range behavior follow the existing MEMXFER rules. Data RAM→workspace and App RAM→workspace transfer requests are not representable as valid workspace MEMXFER instructions. A full 8 KiB workspace can be copied in one request. The block path does not consume RAC logical access slots or DA staging entries; it uses the independent transfer engine and physical workspace read bandwidth.
 
 **Completion, visibility ve ordering**
 - XFER.MEM başarıyla döndüğünde hedef aralığın tamamı hedef domain'in NDC kuralları içinde kullanılabilir olur; komut issuing core için hedef domain'e acquire-completion etkisi sağlar.
