@@ -115,7 +115,7 @@ The NEXSUS backend must read architecture parameters from versioned configuratio
 The selected architectural starting profile includes:
 - RA0–RA31, FA0–FA31, DA0–DA31 (32 × 64-bit each) and MA0–MA31 (32 × 256-bit);
 - per core: Arithmetic ALU=8, Logic=8, Compare=8, FP64=6, dedicated FMA=4, VEC=2, ME512=1, LOAD=8 and STORE=4;
-- global issue width=16 instructions/cycle, scheduler entries=256 and ROB=512;
+- global backend issue width=16 instructions/cycle; current simulator front-end/dispatch widths=8; scheduler entries=256 and ROB=512. Sustained issue throughput remains front-end-limited until delivery-width sweeps justify widening;
 - shared dynamic RAC logical budget=80R/64W per core per cycle. This is a 64-bit-slot budget, not a monolithic physical SRAM port count. RA/FA/DA/MA are separate physical register domains; physical bank/replica topology and distributed writeback remain configurable;
 - CodeFlow path: App RAM→C0 (64 KiB)→CS0–CS7 (8 × 2 KiB)→CST→EB (2 × 2 KiB banks). Registered stage-rate assumptions are specified in the CodeFlow/decision documents;
 - OS workspace=8 KiB; WS=8 KiB; CP0–CP3 (4 × 8 KiB); XW=8 KiB, each with defined roles/permissions;
