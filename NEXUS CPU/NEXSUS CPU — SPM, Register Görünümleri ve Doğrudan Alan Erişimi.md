@@ -117,7 +117,7 @@ Donanım destekli daha dar alan güncellemesi ileride ayrı opcode veya açık m
 | WLOAD.OW / WLOAD.TW | Workspace'ten DA staging bankına okuma |
 | WSTORE.OW / WSTORE.TW | DA staging bankından workspace'e yazma |
 | XFER.WS.MEM | Workspace ile L1–L4 Data RAM arasında senkron blok aktarımı |
-| XFER.WS.START / XFER.WAIT | Asenkron blok aktarımı ve tamamlanma |
+| XFER.WS.START / XFER.WAIT | Asenkron workspace export ve tamamlanma |
 
 Register bank save/restore, DA staging üzerinden açık MOV transferleriyle yapılır. Workspace ile register bankı arasında gizli alias veya implicit writeback yoktur. Numeric opcode ve bit alanları [Instruction Encoding](NEXSUS-CPU-INSTRUCTION-ENCODING-001.md) belgesinde tanımlıdır.
 
