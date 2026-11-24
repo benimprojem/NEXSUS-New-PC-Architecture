@@ -100,7 +100,7 @@ These tests are designed from the architecture contract upward. Implement them i
 - Regression test: `NEXUS CPU/tools/test_cpu_comparison_sim.py` → `RACCycleIntegrationTests`
 - NEXSUS profile: issue=16, RAC=80R/64W per core per cycle; reference profiles leave RAC limits disabled.
 - Default per-op slot accounting covers scalar INT/ARITH/LOGIC/CMP/FP, FMA, vector widths, LOAD/STORE/ATOM and workspace operations. Unusual ME512 opcodes can provide explicit read/write slot overrides; default MMAC uses a 512-bit per-operand slice.
-- Required proof: the mixed 16-op test requests 86R/37W in its first issue window; at most 80R/64W are admitted in one cycle, blocked instructions retry, and all operations eventually complete.
+- Required proof: the mixed 16-op test requests 86R/37W in its first issue window; at most 80R/64W are admitted in one cycle, blocked instructions retry, and all operations eventually complete. The test raises front-end/dispatch to 16 to isolate backend issue/RAC behavior; the selected integrated profile remains front-end=8/dispatch=8, so this test does not claim sustained 16 IPC.
 - Implementation commit: `f73305e0682c6416fff52222f73ef89f37ded4c2`
 - Test commit: `97103182204f3f3c648965359b6026f9bc92ca31`
 - Validation: **VALID** on CI run [45442320176](https://github.com/benimprojem/NEXSUS-New-PC-Architecture/actions/runs/45442320176), commit `9f01e4ee94f09498870816a9f8b69898192d62b4`; numbered contract tests and regression suite passed. The full workflow continues through additional independent sweeps.
