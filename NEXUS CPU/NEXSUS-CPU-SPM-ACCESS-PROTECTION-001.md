@@ -39,7 +39,7 @@ OSSpace is directly byte-addressable by authorized PL1/PL2 code through WLOAD.OS
 
 ## 3.1 OSSpace/WS direct addressing and data movement
 
-OSSpace and WS are each 8 KiB, core-local, byte-addressable workspaces. Their offset range is 0–8191. They are not register banks, but CPU-originated WLOAD/WSTORE operations participate in the same core-wide RAC budget as RA/FA/DA/MA: 32 logical 64-bit reads and 32 logical 64-bit writes per cycle in total. Wide WLOAD/WSTORE operations reserve their complete workspace and DA footprints atomically. XFER.WS.MEM/START use the separate transfer engine and do not consume these logical slots.
+OSSpace and WS are each 8 KiB, core-local, byte-addressable workspaces. Their offset range is 0–8191. They are not register banks, but CPU-originated WLOAD/WSTORE operations participate in the same core-wide RAC budget as RA/FA/DA/MA. RAC capacity is under evaluation; the next candidate is 48 logical 64-bit reads + 48 writes per cycle. OSSpace and WS are physically independent 8 KiB arrays, each proposed as 16 banks × 512 B with 1R+1W per bank. Wide WLOAD/WSTORE operations reserve their complete workspace and DA footprints atomically. XFER.WS.MEM/START use the separate transfer engine and do not consume RAC logical slots, but compete with WLOAD for the selected workspace's physical read banks.
 
 - Both workspaces support byte offsets and direct offset or RA-base-plus-byte-displacement addressing.
 - WLOAD reads from the selected workspace into DA staging registers; WSTORE writes DA staging registers to the selected workspace. Supported widths are 8/16/32/64/128/256/512 bits, subject to natural alignment, DA range, and the 8 KiB workspace boundary.
