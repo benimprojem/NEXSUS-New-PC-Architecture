@@ -345,3 +345,20 @@ Each CodeFlow comparison row must include:
 ### 15.6 Revalidation status
 
 Historical CodeFlow-integrated comparison totals that do not separate one-time startup from primed steady-state occupancy are **provisional and must be recalculated before being used for architecture ranking**. This correction does not change any hardware capacity or bandwidth decision; it changes benchmark accounting and model validation requirements.
+
+
+### 15.7 Current selected frontend rates and startup-fill arithmetic
+
+The current Architecture Decision Register (section 4.2) specifies the comparison-model operating point:
+- App RAM instruction connection: 64 B/cycle/core (512 B/cycle across 8 cores);
+- App RAM→C0 stage: 16 B/cycle;
+- C0→CS: 20 B/cycle;
+- CS→EB (CST): 20 B/cycle;
+- EB consumption: 16 B/cycle;
+- frontend queue depth: 2.
+
+These rates are distinct. The 64 B/cycle core-facing App RAM capacity must not be substituted for the 16 B/cycle App RAM→C0 modeled refill-stage rate when calculating the stage's current startup transfer duration.
+
+For a full 64-KiB C0 cold fill at the current modeled 16 B/cycle stage rate, the **payload transfer duration alone** is 4,096 cycles. Any configured first-beat/control overhead must be reported separately and only once per modeled startup/fill transaction. This arithmetic is a model-derived value, not a measured startup time. Initial CS prefill (up to 16 KiB at 20 B/cycle) and EB prefill (4 KiB at 20 B/cycle) are additional stage work, but they may overlap with upstream transfer once pages are available; therefore do not simply add all stage-duration totals to assert a startup critical path. The startup critical path must be calculated from the event-level pipeline timeline.
+
+The standalone pipeline's 8-byte App-RAM beat setting is a different configurable abstraction. It is not the selected comparison operating point and must not be used to replace the rates in the decision register without an explicit architecture/model update.
