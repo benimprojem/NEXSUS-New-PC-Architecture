@@ -76,7 +76,9 @@ Initial worst-case logical operand demand, before broadcast/replication:
 - DA: up to **8 load-result writes + 4 store-source reads/cycle**, before transfer/XFER demand.
 - MA: VEC=2 and ME512=1 are included in the port budget; exact MA-entry reads/writes remain OPEN until every vector/matrix opcode's operand footprint is normalized to 256-bit MA entries.
 
-These are logical operand slots, not a frozen physical multiport register-file implementation. Physical port counts must be derived for all consumers together, including LOAD/STORE, XFER, conversions, bypass and writeback. Evaluate banked register files, read replication, operand broadcast/collectors and distributed writeback rather than assuming a single huge multiported array. Same-destination multiwrite remains prohibited.
+**FIXED shared access budget:** one core-wide pool of **32 logical register reads + 32 logical register writes per cycle**, shared across RA/FA/DA/MA (not 32+32 per bank). A centralized Register Access Controller (RAC) arbitrates dynamically using ready issue-queue demand, operand counts, bank availability and queue age. The allocator is work-conserving and starvation-resistant; it atomically reserves all source reads and destination writes for an instruction, otherwise that instruction does not issue. Idle capacity in one class is available to another. Pair operations count each physical register entry. Same-destination multiwrite remains prohibited.
+
+These are logical access limits, not a commitment to one monolithic multiported array. Banking, replication, operand broadcast/collectors, bypass and distributed writeback remain implementation choices. Bank conflicts and the physical topology must be modeled separately; no class has a permanently reserved fixed share of the 32R/32W pool.
 
 **Queue depths, physical read/write ports, bank/replica topology, cross-unit connectivity, same-cycle conflict policy, forwarding and writeback arbitration remain OPEN** until a full demand matrix and cycle-level contention tests are complete.
 
