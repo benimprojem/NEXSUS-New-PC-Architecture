@@ -95,8 +95,8 @@ OW and TW are directly byte-addressable, core-local 8 KiB working files. TW is g
 - WLOAD (0x89) and WSTORE (0x8A), using WSMEM format, move 8/16/32/64/128/256/512-bit values between OW/TW and DA staging.
 - Workspace offsets are byte addresses 0–8191. Addressing supports absolute workspace offset and RA base + signed byte displacement. Natural alignment and complete-range bounds checks apply.
 - Register banks are saved/restored explicitly through MOV.DA.RA / MOV.RA.DA, MOV.DA.FA / MOV.FA.DA, and MOV.DA.MA / MOV.MA.DA. DA staging clobbers remain visible to the ABI.
-- XFER.WS.MEM (0x8B) copies a selected OW/TW range to or from an L1–L4 Data RAM domain. XFER.WS.START (0x8C) starts the asynchronous form; XFER.WAIT (0x88) consumes the token.
-- A full 8 KiB workspace may be transferred as one block. This path uses the transfer engine and Data RAM controller, not DA staging or RAC register-access slots.
+- XFER.WS.MEM (0x8B) copies a selected OW/TW range only to an L1–L4 Data RAM domain. XFER.WS.START (0x8C) starts the asynchronous export; XFER.WAIT (0x88) consumes the token. The reverse direction is forbidden.
+- A full 8 KiB workspace may be exported as one block. This path uses the transfer engine and Data RAM controller, not DA staging or RAC register-access slots. Restore is CPU-mediated through Data RAM LOAD→DA→WSTORE; App RAM is never a workspace data source.
 - OW/TW permissions and source/destination reservation rules are defined in Workspace Addressing and Transfer and Workspace Access Protection.
 
 ## 6. Exception-storage separation — preserve existing decisions
