@@ -1,13 +1,15 @@
-# NEXSUS CPU — RAC 48R/48W Evaluation and Workspace Bank Split
+# NEXSUS CPU — RAC 80R/64W Baseline and Workspace Bank Split
 
 **Document ID:** NEXSUS-CPU-RAC-48RW-EVALUATION-001  
-**Status:** Evaluation proposal — not frozen  
+**Status:** BASELINE selected — physical implementation and workload validation remain open  
 **Date:** 2026-11-24
 
 ## 1. Decisions and proposals
 
 - **Workspace physical separation: selected direction.** OS and WS are separate 8 KiB SRAM arrays. Each array has 16 banks × 512 B. They share no physical banks or ports.
-- **RAC capacity: under evaluation.** Compare 32R/32W, 48R/48W and larger budgets. 48R/48W is the next candidate to test, not yet a frozen architectural limit.
+- **RAC logical capacity: BASELINE = 80R/64W per cycle.** This is the selected starting point; tests may justify later adjustment.
+- **Global issue width: BASELINE = 16 instructions/cycle.** Compare 8/12/24/32 as sensitivity points; see the issue-width study.
+- **Physical register organization: domain-separated RA/FA/DA/MA banks with a shared dynamic RAC allocator.** Use banked/replicated arrays, operand collectors/broadcast where proven, bypass and distributed writeback rather than one monolithic multiported SRAM.
 - RAC values count logical 64-bit lane accesses per cycle, not physical SRAM ports.
 - One shared dynamic allocator serves RA/FA/DA/MA and CPU-originated WLOAD/WSTORE workspace accesses. No fixed per-class partition is reserved.
 
@@ -101,4 +103,6 @@ Age-based fairness is required, but a ready high-priority instruction may use id
 
 The physical workspace direction is now **two independent 8 KiB arrays, each 16 banks × 512 B with 1R+1W per bank**.
 
-The global issue-width candidates are 16/24/32 instructions/cycle and remain OPEN. The RAC direction is **48R/48W as the next experiment**, not a final fixed value. The current operand table already shows a 76R/42W subtotal if RA, FA and DA resources all reach their documented peak concurrently, before MA and workspace-transfer traffic. Therefore the next decisive step is to determine the global issue width and realistic simultaneous instruction mix, then run the RAC budget sweep. Do not freeze 48/48 until those results are available.
+The selected starting point is **16-wide issue with an 80R/64W logical RAC budget**. Compare issue widths 8/12/24/32 and RAC alternatives 32/32, 48/48, 64/48 and 80/48 in controlled sweeps. The known scalar/FP/FMA read envelope at width 16 is 36R, leaving 44 logical read slots for MA, memory staging and workspace traffic; the one-result write envelope is 16W, leaving 48 write slots before wide/pair writes and WSTORE traffic. This is intentionally a generous initial budget, not proof that every execution unit can issue simultaneously.
+
+The physical organization is domain-separated RA/FA/DA/MA banks behind a shared, dynamically allocated RAC. Multiple banks can write independently in the same cycle, subject to physical bank availability and writeback arbitration. The same architectural destination must not receive conflicting multiwrites in one cycle. Atomic reservations prevent partially issued instructions. Re-evaluate 16-wide and 80R/64W only after normalized MA footprints and cycle-level throughput, fairness, bank-conflict, area, power and timing results are available.
