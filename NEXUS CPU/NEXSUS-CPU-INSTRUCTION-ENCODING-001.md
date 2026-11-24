@@ -1078,7 +1078,7 @@ BR payload alanları: COND[3:0], TEST[4:0], RESERVED[10:0], DISP[31:0]. RESERVED
 | 0111–1111 | Reserved | Illegal encoding |
 
 - JMP: COND=ALWAYS ve TEST=0 zorunludur.
-- BR: COND=0001–0110; TEST herhangi bir RA0–RA63 selector'ı olabilir.
+- BR: COND=0001–0110; TEST herhangi bir RA0–RA31 selector'ı olabilir.
 - CALL: COND=ALWAYS; TEST link register selector'ıdır. Çağrı öncesi TEST alanındaki RA kaydının eski değeri kullanılmaz; başarılı kontrol akışı commit'inde return address bu kayda yazılır.
 - JMP için TEST=0 zorunludur. Koşullu BR'de TEST, karşılaştırılacak RA register selector'ıdır.
 - DISP signed 32-bit byte displacement'tir. Hedef adres `packet_start_PC + sign_extend(DISP)` olarak hesaplanır; DISP 8-byte hizalı olmalıdır. Hedef, 64-bit komut adres alanında ve geçerli instruction boundary üzerinde bulunmalıdır.
