@@ -103,9 +103,9 @@ PROFILES = {
         "name": "NEXSUS CPU / 8-core proposed architecture",
         "core_count": 8, "core_type": "uniform", "frontend": 8,
         "dispatch": 8, "issue": 10, "retire": 8, "rob": 512, "scheduler_entries": 256,
-        "units": {"INT": 8, "FP": 6, "FMA": 4, "VEC": 2, "LOAD": 8, "STORE": 4, "BR": 2, "CTX": 1, "ATOM": 1, "ME512": 1, "IRQ": 1},
-        "execution_topology": {"INT128_PAIRS": [[0, 1], [2, 3]]},
-        "latency": {"INT": 1, "FP": 3, "VEC": 2, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 4, "ME512": 4, "IRQ": 6},
+        "units": {"ARITH": 8, "LOGIC": 8, "CMP": 8, "FP": 6, "FMA": 4, "VEC": 2, "LOAD": 8, "STORE": 4, "BR": 2, "CTX": 1, "ATOM": 1, "ME512": 1, "IRQ": 1},
+        "execution_topology": {"ARITH128_PAIRS": [[0, 1], [2, 3]]},
+        "latency": {"ARITH": 1, "LOGIC": 1, "CMP": 1, "FP": 3, "FMA": 4, "VEC": 2, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 4, "ME512": 4, "IRQ": 6},
         "l1_kb": 1024, "l2_kb": 2048, "l3_kb": 8192, "l4_kb": 65536,
         "l1_lat": 2, "l2_lat": 8, "l3_lat": 24, "l4_lat": 64, "dram_lat": 120,
         "branch_penalty": 8, "frequency_ghz": 3.0, "bank_hash": "folded", "dram_bytes_per_cycle": 512,
@@ -127,14 +127,20 @@ def add_op(ops: List[Op], kind: str, deps=(), address=0, width=8, label="", comm
                   exec_width_bits))
     return seq
 
-def execution_resource_kind(kind: str, matrix_unit: str) -> str:
-    """Map arithmetic opcodes to the physical issue resource."""
+def execution_resource_kind(kind: str, matrix_unit: str, available_units=None) -> str:
+    """Map operation classes to independent physical execution pools.
+
+    INT remains a compatibility alias for Arithmetic ALU. Reference profiles
+    without split scalar pools continue to use their generic INT resource.
+    """
     if kind == "FMA":
         return "FMA"
     if kind == "ME512":
         return matrix_unit
     if kind.startswith("VEC_"):
         return "VEC"
+    if kind == "INT" and available_units is not None and "ARITH" in available_units:
+        return "ARITH"
     return kind
 
 
@@ -1810,20 +1816,20 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
                 stalls["issue_width_blocked_op_cycles"] += 1
                 continue
             kind = op.kind
-            exec_kind = execution_resource_kind(kind, p.matrix_unit)
+            exec_kind = execution_resource_kind(kind, p.matrix_unit, unit_busy)
             # Reference CPU profiles without a dedicated FMA pool model FMA
             # through their generic FP resource. NEXSUS has an explicit FMA pool.
             resource = exec_kind if exec_kind in unit_busy else ("FP" if kind == "FMA" else exec_kind)
             slots = unit_busy.get(resource, [])
             selected_slots = None
             topology = getattr(p, "execution_topology", {}) or {}
-            if resource == "INT" and op.exec_width_bits >= 128 and topology.get("INT128_PAIRS"):
+            if resource in ("INT", "ARITH") and op.exec_width_bits >= 128 and topology.get("ARITH128_PAIRS", topology.get("INT128_PAIRS")):
                 selected_slots = next(
-                    (pair for pair in topology["INT128_PAIRS"]
+                    (pair for pair in topology.get("ARITH128_PAIRS", topology.get("INT128_PAIRS", []))
                      if all(index < len(slots) and slots[index] <= cycle for index in pair)),
                     None,
                 )
-            elif resource == "INT" and topology.get("INT128_PAIRS"):
+            elif resource in ("INT", "ARITH") and topology.get("ARITH128_PAIRS", topology.get("INT128_PAIRS")):
                 slot = next((i for i,t in enumerate(slots) if t <= cycle), None)
                 selected_slots = [slot] if slot is not None else None
             else:
@@ -2141,7 +2147,7 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                 if issued_now >= p.issue:
                     st["stalls"]["issue_width_blocked_op_cycles"] += 1
                     continue
-                exec_kind = execution_resource_kind(op.kind, p.matrix_unit)
+                exec_kind = execution_resource_kind(op.kind, p.matrix_unit, st["unit_busy"])
                 # Non-NEXSUS reference profiles may expose only a generic FP pool.
                 resource = exec_kind if exec_kind in st["unit_busy"] else ("FP" if op.kind == "FMA" else exec_kind)
                 slots = st["unit_busy"].get(resource, [])
