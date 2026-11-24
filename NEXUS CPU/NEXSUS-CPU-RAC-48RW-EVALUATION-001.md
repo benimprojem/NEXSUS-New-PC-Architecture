@@ -8,7 +8,7 @@
 
 - **Workspace physical separation: selected direction.** OS and WS are separate 8 KiB SRAM arrays. Each array has 16 banks × 512 B. They share no physical banks or ports.
 - **RAC logical capacity: BASELINE = 80R/64W per cycle.** This is the selected starting point; tests may justify later adjustment.
-- **Global issue width: BASELINE = 16 instructions/cycle.** Compare 8/12/24/32 as sensitivity points; see the issue-width study.
+- **Global backend issue width: BASELINE = 16 instructions/cycle.** Current front-end/dispatch remains 8; compare 8/12/24/32 as backend sensitivity points and evaluate delivery width separately; see the issue-width study.
 - **Physical register organization: domain-separated RA/FA/DA/MA banks with a shared dynamic RAC allocator.** Use banked/replicated arrays, operand collectors/broadcast where proven, bypass and distributed writeback rather than one monolithic multiported SRAM.
 - RAC values count logical 64-bit lane accesses per cycle, not physical SRAM ports.
 - One shared dynamic allocator serves RA/FA/DA/MA and CPU-originated WLOAD/WSTORE workspace accesses. No fixed per-class partition is reserved.
