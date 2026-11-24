@@ -50,7 +50,8 @@ These tests are designed from the architecture contract upward. Implement them i
 | NEX-T013 | Instruction pipeline overlap | Continuous CodeFlow page delivery, EB ping-pong safety, registered stage rates and non-starving steady-state feed | VALID |
 | NEX-T014 | Memory path contract | App RAM/Data RAM independence, per-core Data RAM service and cache-fill topology invariants | VALID |
 | NEX-T015 | Dynamic RAC admission and distributed writeback | Shared 80R/64W logical pool, atomic reservations, age-prioritized work-conserving selection, physical bank conflicts, same-destination write rejection and parallel writes to distinct banks | VALID |
-| NEX-T016 | Cycle-level RAC and 16-wide issue integration | Proves 16 backend issues/cycle when front-end/RAC permit it; mixed 16-op issue window exceeds 80R demand, so simulator caps reads at 80, reports RAC stalls, preserves all operations and stays within 64W | IMPLEMENTED |
+| NEX-T016 | Cycle-level RAC and 16-wide issue integration | Proves 16 backend issues/cycle when front-end/RAC permit it; mixed 16-op issue window exceeds 80R demand, so simulator caps reads at 80, reports RAC stalls, preserves all operations and stays within 64W | VALID |
+| NEX-T017 | Cycle-level physical register-bank ports | Explicit RA/FA/DA/MA operand identities enforce configurable per-bank read/write ports; different banks proceed in parallel, same-bank port conflicts retry, same-cycle duplicate destinations serialize, and missing identity is rejected when physical-port mode is enabled | IMPLEMENTED |
 
 ### 3.1 NEX-T001 implementation record
 
@@ -106,6 +107,18 @@ These tests are designed from the architecture contract upward. Implement them i
 - Issue-peak instrumentation commit: `1aa13f142da8a9e75dbf71bd66db5344c3bd9ae9`
 - Validation status: **IMPLEMENTED — the new explicit 16-issue peak assertion is awaiting CI**. The earlier aggregate RAC cap test passed the regression suite on CI run `45442320176`; the expanded T016 scope must be revalidated.
 - Scope limitation: aggregate logical slot budgeting is integrated. Physical bank-port conflicts, exact register destination identity and distributed writeback timing remain modeled by NEX-T015 or follow-up integrated-cycle tests.
+
+### 3.10 NEX-T017 cycle-level physical register-bank ports
+
+- Simulator: `NEXUS CPU/tools/cpu_comparison_sim.py`
+- Regression tests: `NEXUS CPU/tools/test_cpu_comparison_sim.py` → `RACCycleIntegrationTests`
+- New operation metadata: explicit `rac_read_accesses` and `rac_write_accesses`, each containing `(bank, register_index, 64-bit_slot_width)`.
+- Physical port maps are optional profile parameters, separate from the shared logical 80R/64W budgets. No default physical port counts are frozen.
+- Tests cover four-bank parallel read/write, same-bank read-port collision with retry and cross-bank progress, duplicate same-cycle destination serialization, and mandatory explicit register identity when physical-port mode is enabled.
+- Implementation commit: `3301d67b9166e3701db87bc8f67eabac930200a1`
+- Test commit: `c48818df61ce165e661f82a1919567f68f2a8db6`
+- Validation status: **IMPLEMENTED — awaiting CI**.
+- Scope limitation: physical ports are configurable model constraints; actual SRAM macro port topology, replication, bypass and writeback timing are not selected.
 
 ### 3.3 NEX-T012 architecture definition\n\n- Architectural decision: System Fabric clock = 2× CPU core clock.\n- Scheduling model: two Fabric scheduling ticks are available per CPU cycle; requests may be time-interleaved across destination queues.\n- The model must distinguish scheduler opportunity from physical link bandwidth and destination service capacity.\n- Required tests: two-tick cadence; alternating destinations; same-destination queue contention; independent destination progress; backpressure; fairness under sustained mixed traffic; no implicit 2× link-bandwidth multiplier.\n- Execution status: **PLANNED**. Exact lane width, queue depth, multi-client arbitration, and destination service curves remain open.\n\n## 4. Historical test files — retained, not yet re-certified
 
