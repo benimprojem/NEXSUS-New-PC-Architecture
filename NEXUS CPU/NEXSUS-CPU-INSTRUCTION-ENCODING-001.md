@@ -726,7 +726,7 @@ Payload toplamı 52 bittir: DD(2) + DRA(5) + SD(2) + SRA(5) + LRA(5) + TRA(5) + 
 | SRA | [42:38] | Kaynak byte adresini tutan RA selector'ı |
 | LRA | [37:33] | Byte uzunluğunu tutan RA selector'ı |
 | TRA | [32:28] | START için token hedef RA'sı; WAIT için token kaynağı RA'sı |
-| RESERVED | [27:0] | v1'de tamamı sıfır olmalıdır |
+| RESERVED / WS flags | [27:0] | Normal MEMXFER'da sıfır; workspace MEMXFER'da §4.15.1 flag alanları |
 
 **Domain selector kodları**
 
@@ -1243,6 +1243,8 @@ Bellek komutları tek bir opcode'a sıkıştırılmayacaktır: normal LOAD/STORE
 | 0x4E | FETCH_AND | ATOM | Atomic fetch-and |
 | 0x4F | FETCH_OR | ATOM | Atomic fetch-or |
 | 0x84 | FETCH_XOR | ATOM | Atomic fetch-xor; atomic aile tamamlayıcısı |
+| 0x89 | WLOAD | WSMEM | OW/TW workspace'den DA'ya okuma |
+| 0x8A | WSTORE | WSMEM | DA'dan OW/TW workspace'e yazma |
 | 0x86 | XFER.MEM | MEMXFER | Synchronous Lx-domain transfer |
 | 0x87 | XFER.START | MEMXFER | Asynchronous transfer start/token |
 | 0x88 | XFER.WAIT | MEMXFER | Transfer token completion wait |
