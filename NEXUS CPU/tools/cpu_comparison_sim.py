@@ -1834,7 +1834,7 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
                 continue
             vector_factor = (max(1, math.ceil(op.exec_width_bits / p.vector_bits))
                              if is_vector_operation(kind) or (kind == "ME512" and exec_kind == "VEC") else 1)
-            base_latency = (p.latency.get("FMA", p.latency.get(resource, 1))
+            base_latency = (p.latency.get("FMA", p.latency.get("FP", 1))
                             if kind == "FMA" else p.latency.get(exec_kind, 1))
             latency = base_latency * vector_factor
             if kind in ("LOAD", "STORE", "ATOM"):
