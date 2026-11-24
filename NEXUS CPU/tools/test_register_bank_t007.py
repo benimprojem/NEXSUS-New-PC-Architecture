@@ -1,7 +1,9 @@
 import unittest
 
 from register_bank_model import (
-    BANK_LAYOUT, RA_VIEWS, RegisterAccessError, RegisterFile,
+    BANK_LAYOUT, RA_VIEWS, RAC_READ_BUDGET, RAC_WRITE_BUDGET,
+    RegisterAccessError, RegisterFile, ma_opcode_rac_footprint,
+    ma_reduction_output_entries, ma_tile_entries,
 )
 
 
@@ -106,6 +108,37 @@ class RegisterBankConnectivityT007(unittest.TestCase):
             forwarding=True,
         ), [9])
         self.assertEqual(rf.read("RA", 2), 9)
+
+
+    def test_rac_baseline_is_80_reads_and_64_writes_per_core_cycle(self):
+        self.assertEqual(RAC_READ_BUDGET, 80)
+        self.assertEqual(RAC_WRITE_BUDGET, 64)
+
+    def test_256_bit_ma_entries_count_as_four_64_bit_rac_slots(self):
+        self.assertEqual(ma_opcode_rac_footprint("VEC_R3"), (8, 4))
+        self.assertEqual(ma_opcode_rac_footprint("VMACC"), (12, 4))
+        self.assertEqual(ma_opcode_rac_footprint("VSUM"), (4, 4))
+        self.assertEqual(ma_opcode_rac_footprint("VDOT"), (8, 4))
+        self.assertEqual(ma_opcode_rac_footprint("ME512_PAIR"), (8, 8))
+
+    def test_matrix_tile_rac_footprints_scale_with_full_ma_groups(self):
+        # N8.W32 uses eight 256-bit MA entries per tile.
+        self.assertEqual(ma_tile_entries(8, 32), 8)
+        self.assertEqual(ma_opcode_rac_footprint("MMUL", n=8, element_width=32),
+                         (64, 32))
+        self.assertEqual(ma_opcode_rac_footprint("MMAC", n=8, element_width=32),
+                         (96, 32))
+        self.assertEqual(ma_opcode_rac_footprint("MTRANS", n=8, element_width=32),
+                         (32, 32))
+        self.assertEqual(ma_opcode_rac_footprint("MREDUCE", n=8, element_width=32),
+                         (32, 8))
+        self.assertEqual(ma_reduction_output_entries(8, 32), 2)
+
+    def test_matrix_tile_shape_limits_match_isa(self):
+        self.assertEqual(ma_tile_entries(2, 64), 1)
+        self.assertEqual(ma_tile_entries(4, 64), 4)
+        with self.assertRaisesRegex(RegisterAccessError, "unsupported MA tile"):
+            ma_tile_entries(8, 64)
 
 
 if __name__ == "__main__":
