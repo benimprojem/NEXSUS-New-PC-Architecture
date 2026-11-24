@@ -1131,19 +1131,19 @@ RA ve FA rakamları 64-bit kayıt operandı sayısıdır; fiziksel byte/bit geni
 
 **MA logical operand footprint (256-bit MA entries):**
 
-| Opcode family | Source MA entries read | Destination MA entries written | RAC logical slots (64-bit lanes) | Counting rule |
+| Opcode family | Total source MA entries | Total destination MA entries | RAC slots/cycle (64-bit lanes) | Counting rule |
 |---|---:|---:|---|
-| VADD/VSUB/VMUL/VDIV/VMIN/VMAX/VAND/VOR/VXOR/VMOD/VCMP/VSHL/VSHR | 2 | 1 | 8R / 4W | D/A/B or D/A/count; each MA operand is 256-bit |
+| VADD/VSUB/VMUL/VDIV/VMIN/VMAX/VAND/VOR/VXOR/VMOD/VCMP/VSHL/VSHR | 2 | 1 | 8R / 4W | D/A/B or D/A/count; one 256-bit entry per operand |
 | VMACC | 3 | 1 | 12R / 4W | A/B/acc read, D write |
 | VSUM | 1 | 1 | 4R / 4W | One source and one 256-bit result |
 | VDOT | 2 | 1 | 8R / 4W | A/B read, 256-bit D result |
-| MMUL.S/U | 2T | T | 8T R / 4T W | T = ceil(N×N×W/256); A/B read, D write |
-| MMAC.S/U | 3T | T | 12T R / 4T W | A/B/C read, D write; T as above |
-| MTRANS | T | T | 4T R / 4T W | Source and destination tile groups |
-| MREDUCE | T | O | 4T R / 4O W | T = ceil(N×N×W/256); O = ceil(N×(W+ceil(log2(N)))/256) |
+| MMUL.S/U | 2T | T | 8×min(T,2)R / 4×min(T,2)W | T = ceil(N×N×W/256); A/B read, D write; at most a 512-bit slice per operand per cycle |
+| MMAC.S/U | 3T | T | 12×min(T,2)R / 4×min(T,2)W | A/B/C read, D write; T as above; at most a 512-bit slice per operand per cycle |
+| MTRANS | T | T | 4×min(T,2)R / 4×min(T,2)W | Source/destination tile groups streamed in 512-bit slices |
+| MREDUCE | T | O | 4×min(T,2)R / 4×min(O,2)W | T = ceil(N×N×W/256); O = ceil(N×(W+ceil(log2(N)))/256) |
 | ME512 512-bit pair operand | 2 entries per pair operand | 2 entries per pair result | 8 RAC slots per pair read/write | Each 512-bit pair is two physical 256-bit MA entries; each MA entry is four 64-bit slots |
 
-A full MA tile operand is counted by its complete architectural register group, even if the ME512 datapath internally processes it in 512-bit slices. **Each 256-bit MA entry contributes four logical 64-bit RAC slots**, so all R/W slot totals multiply MA-entry counts by four. Full source/destination aliasing does not silently reduce logical accounting; any read reuse, in-place forwarding or write elision must be explicitly modeled as a physical optimization while preserving atomic architectural commit. Partial-overlap rules and alignment are enforced by the ISA tile-group rules.
+A full MA tile operand is counted by its complete architectural register group and remains reserved for the instruction. It is not read or written in one giant cycle: the ME512 path streams at most one 512-bit slice per operand per cycle in this provisional model. **Each 256-bit MA entry contributes four logical 64-bit RAC slots**. Thus the table separates total tile register groups from per-cycle slice service; the 512-bit-per-operand-per-cycle assumption remains a microarchitectural parameter to validate. Full source/destination aliasing does not silently reduce logical accounting; any read reuse, in-place forwarding or write elision must be explicitly modeled as a physical optimization while preserving atomic architectural commit. Partial-overlap rules and alignment are enforced by the ISA tile-group rules.
 
 Fiziksel uygulama için tek bir 48-read/24-write RA register-file veya 24-read/10-write FA register-file zorunlu değildir. Bankalama, read replication, operand broadcast/collector, bypass ve sınıf bazlı writeback portları birlikte tasarlanabilir. Aynı fiziksel register'a aynı cycle birden fazla write yasaktır; farklı hedeflere paralel writeback ise bank/port ve global writeback kapasitesi izin verdiği ölçüde yapılır.
 
