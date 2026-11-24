@@ -162,7 +162,7 @@ The simulator's earlier generic SPM2 application working-access experiment is **
 
 - OSSpace: 8 KiB, OS-owned, directly byte-addressable by authorized PL1/PL2 code.
 - WS: 8 KiB, general-purpose per-core application workspace; PL0 accesses it during an authorized application execution epoch. It is not task-ID-owned or automatically saved as task context.
-- WLOAD/WSTORE access OSSpace/WS through DA staging. Workspace endpoints and RA/FA/DA/MA register operands share the core-wide RAC budget of 32 logical 64-bit reads + 32 logical 64-bit writes per cycle; wide workspace operations reserve both endpoint footprints atomically. Physical workspace SRAM bank/port behavior remains separately modeled.
+- WLOAD/WSTORE access OSSpace/WS through DA staging. Workspace endpoints and RA/FA/DA/MA register operands share the core-wide RAC budget. The former 32R/32W limit is under evaluation; the next candidate is 48R/48W, with read-biased alternatives to be tested. Wide workspace operations reserve both endpoint footprints atomically. Physical workspace SRAM bank/port behavior remains separately modeled. See NEXSUS-CPU-RAC-48RW-EVALUATION-001.md.
 - XFER.WS.MEM / XFER.WS.START export OSSpace/WS→L1–L4 Data RAM only. The transfer engine may read a workspace source but can never write a workspace destination.
 - Data RAM→WS/OSSpace restore is CPU-mediated through Data RAM LOAD→DA→WSTORE. App RAM is not a workspace data source; it remains on the independent instruction-fetch path.
 - An optional OS/application exchange window consists of paired OSSpace and WS ranges copied by privileged CPU WLOAD/WSTORE operations at syscall handoff. It is not a shared alias or DMA window.
@@ -396,7 +396,7 @@ The old `FMA_LANES` subset model and the test asserting that FMA count must be n
 
 - Global issue width remains a shared admission limit.
 - FA register read/write ports, operand delivery, bypass and result writeback may constrain simultaneous FP64 + FMA execution.
-- The shared 32R/32W RAC budget applies across RA/FA/DA/MA. It is not 32R/32W per bank, and no fixed FA-only port allocation is assumed.
+- The shared RAC budget applies across RA/FA/DA/MA and workspace WLOAD/WSTORE endpoints. Its final R/W capacity is under evaluation; it is not a per-bank budget, and no fixed FA-only port allocation is assumed.
 - No result such as “10 operations per cycle” is accepted until FA port topology and global issue limits are modeled and validated.
 
 ### 16.2 Required validation
