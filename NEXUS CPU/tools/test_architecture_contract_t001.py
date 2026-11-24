@@ -15,11 +15,14 @@ profile = PROFILES[PROFILE_ID]
 
 # CPU block and per-core execution resources.
 assert profile["core_count"] == 8
-assert profile["units"]["INT"] == 8
+assert profile["units"]["ARITH"] == 8
+assert profile["units"]["LOGIC"] == 8
+assert profile["units"]["CMP"] == 8
 assert profile["units"]["FP"] == 6
 assert profile["units"]["VEC"] == 2
 assert profile["units"]["ME512"] == 1
-assert profile["execution_topology"]["FMA_LANES"] == 4
+assert profile["units"]["FMA"] == 4
+assert "FMA_LANES" not in profile["execution_topology"]
 
 # Cache capacities and sharing topology for one eight-core block.
 assert profile["l1_kb"] == 1024
