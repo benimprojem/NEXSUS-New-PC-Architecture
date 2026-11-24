@@ -27,10 +27,10 @@ Bu tabloda verilen lane/unit sayıları geçerli NEXSUS çekirdek konfigürasyon
 
 | Register | Fiziksel yapı | Rol |
 |---|---|---|
-| RA0–RA31 | 64 × 64-bit | Integer, adres ve scalar state |
-| FA0–FA31 | 64 × 64-bit | Floating-point state; FP32/FP64 ve eşli FP128 |
-| DA0–DA31 | 64 × 64-bit | Data staging / transfer |
-| MA0–MA31 | 64 × 256-bit | Vector/matrix operands |
+| RA0–RA31 | 32 × 64-bit | Integer, adres ve scalar state |
+| FA0–FA31 | 32 × 64-bit | Floating-point state; FP32/FP64 ve eşli FP128 |
+| DA0–DA31 | 32 × 64-bit | Data staging / transfer |
+| MA0–MA31 | 32 × 256-bit | Vector/matrix operands |
 | RBn | RAn alt 32-bit görünümü | 32-bit integer erişim |
 | RCn | RAn alt 16-bit görünümü | 16-bit integer erişim |
 | RDn | RAn alt 8-bit görünümü | 8-bit integer erişim |
