@@ -1218,21 +1218,42 @@ class ExecutionResourceCountSweepTests(unittest.TestCase):
 
 
 class FMAResourceSweepTests(unittest.TestCase):
-    def test_fma_sweep_preserves_work_for_all_fp_topologies(self):
+    def test_profile_has_six_fp64_lanes_and_four_separate_fma_units(self):
+        profile = sim.PROFILES["nexus_balanced_128"]
+        self.assertEqual(profile["units"]["FP"], 6)
+        self.assertEqual(profile["units"]["FMA"], 4)
+        self.assertEqual(sim.execution_resource_kind("FP", "ME512"), "FP")
+        self.assertEqual(sim.execution_resource_kind("FMA", "ME512"), "FMA")
+
+    def test_fma_sweep_preserves_work_for_independent_resource_topologies(self):
         workloads = sim.build_composite_workload(scale=1)
         result = sim.run_fma_resource_sweep(
             workloads, sim.PROFILES["nexus_balanced_128"],
-            fp_counts=(6, 8), fma_counts=(2, 4),
+            fp_counts=(6, 8), fma_counts=(2, 4, 6),
         )
         self.assertEqual(set(result["results"]), {
-            "FP6_FMA2", "FP6_FMA4", "FP8_FMA2", "FP8_FMA4",
+            "FP6_FMA2", "FP6_FMA4", "FP6_FMA6",
+            "FP8_FMA2", "FP8_FMA4", "FP8_FMA6",
         })
         for variant in result["results"].values():
             for name, row in variant["kernels"].items():
                 self.assertTrue(row["ops_preserved"], name)
-        self.assertEqual(result["results"]["FP6_FMA2"]["kernels"]["fma_throughput"]["ops"], 512)
+        self.assertEqual(result["results"]["FP6_FMA4"]["kernels"]["fma_throughput"]["ops"], 512)
 
-    def test_more_fma_lanes_do_not_reduce_fma_throughput(self):
+    def test_independent_fp_and_fma_streams_do_not_share_execution_slots(self):
+        workloads = {"independent": [
+            sim.Op(0, "FP"), sim.Op(1, "FMA"),
+            sim.Op(2, "FP"), sim.Op(3, "FMA"),
+        ]}
+        profile = dict(sim.PROFILES["nexus_balanced_128"])
+        profile["issue"] = 2
+        result = sim.simulate_cpu(workloads, profile, 1)
+        row = result["kernels"]["independent"]
+        self.assertEqual(row["ops"], 4)
+        self.assertEqual(row["issue_span_cycles"], 2)
+        self.assertEqual(row["stall_counters"]["execution_unit_blocked_op_cycles"], 0)
+
+    def test_more_dedicated_fma_units_do_not_reduce_fma_throughput(self):
         workloads = sim.build_composite_workload(scale=1)
         result = sim.run_fma_resource_sweep(
             workloads, sim.PROFILES["nexus_balanced_128"],
@@ -1242,47 +1263,36 @@ class FMAResourceSweepTests(unittest.TestCase):
         four = result["results"]["FP6_FMA4"]["kernels"]["fma_throughput"]["cycles"]
         self.assertGreaterEqual(two, four)
 
-    def test_fma_dependency_chain_preserves_work_and_latency_result(self):
+    def test_fma_dependency_chain_preserves_work(self):
         workloads = sim.build_composite_workload(scale=1)
         result = sim.run_fma_resource_sweep(
             workloads, sim.PROFILES["nexus_balanced_128"],
             fp_counts=(6,), fma_counts=(2, 4),
         )
-        two = result["results"]["FP6_FMA2"]["kernels"]["fma_dependency_chain"]
-        four = result["results"]["FP6_FMA4"]["kernels"]["fma_dependency_chain"]
-        self.assertEqual(two["ops"], 256)
-        self.assertEqual(four["ops"], 256)
-        self.assertTrue(two["ops_preserved"])
-        self.assertTrue(four["ops_preserved"])
-        self.assertGreater(two["cycles"], 0)
-        self.assertGreater(four["cycles"], 0)
+        for count in (2, 4):
+            row = result["results"][f"FP6_FMA{count}"]["kernels"]["fma_dependency_chain"]
+            self.assertEqual(row["ops"], 256)
+            self.assertTrue(row["ops_preserved"])
+            self.assertGreater(row["cycles"], 0)
 
-    def test_mixed_fp_fma_stream_preserves_work_and_reports_contention(self):
+    def test_mixed_fp_fma_stream_preserves_work_with_separate_resources(self):
         workloads = sim.build_composite_workload(scale=1)
         result = sim.run_fma_resource_sweep(
             workloads, sim.PROFILES["nexus_balanced_128"],
-            fp_counts=(6,), fma_counts=(2, 4),
+            fp_counts=(6,), fma_counts=(4,),
         )
-        two = result["results"]["FP6_FMA2"]["kernels"]["fp_fma_mixed"]
-        four = result["results"]["FP6_FMA4"]["kernels"]["fp_fma_mixed"]
-        self.assertEqual(two["ops"], 512)
-        self.assertEqual(four["ops"], 512)
-        self.assertTrue(two["ops_preserved"])
-        self.assertTrue(four["ops_preserved"])
-        self.assertGreater(two["cycles"], 0)
-        self.assertGreater(four["cycles"], 0)
-        # Mixed throughput is recorded independently of isolated FP/FMA tests.
-        self.assertIn("execution_unit_blocked_op_cycles", two)
-        self.assertIn("execution_unit_blocked_op_cycles", four)
+        row = result["results"]["FP6_FMA4"]["kernels"]["fp_fma_mixed"]
+        self.assertEqual(row["ops"], 512)
+        self.assertTrue(row["ops_preserved"])
+        self.assertGreater(row["cycles"], 0)
 
-    def test_fma_lanes_are_subset_of_fp_lanes(self):
+    def test_fma_count_can_exceed_fp_count(self):
         workloads = sim.build_composite_workload(scale=1)
         result = sim.run_fma_resource_sweep(
             workloads, sim.PROFILES["nexus_balanced_128"],
-            fp_counts=(6,), fma_counts=(2, 4),
+            fp_counts=(2,), fma_counts=(4,),
         )
-        for row in result["results"].values():
-            self.assertLessEqual(row["fma_lanes_per_core"], row["fp64_lanes_per_core"])
+        self.assertIn("FP2_FMA4", result["results"])
 
     def test_fma_latency_changes_dependency_chain_not_issue_throughput(self):
         workloads = sim.build_composite_workload(scale=1)
@@ -1291,10 +1301,7 @@ class FMAResourceSweepTests(unittest.TestCase):
             latencies=(3, 4, 5, 6), fp_count=6, fma_count=4,
         )
         self.assertEqual(set(result["results"]), {"3", "4", "5", "6"})
-        chain_cycles = []
-        fma_issue_spans = []
-        fp_issue_spans = []
-        fp_cycles = []
+        chain_cycles, fma_issue_spans, fp_issue_spans, fp_cycles = [], [], [], []
         for row in result["results"].values():
             self.assertEqual(row["kernels"]["fma_dependency_chain"]["ops"], 256)
             self.assertEqual(row["kernels"]["fma_throughput"]["ops"], 512)
@@ -1306,12 +1313,9 @@ class FMAResourceSweepTests(unittest.TestCase):
             fp_cycles.append(row["kernels"]["fp_throughput"]["cycles"])
         self.assertEqual(chain_cycles, sorted(chain_cycles))
         self.assertEqual(len(set(chain_cycles)), 4)
-        # Total completion includes the final result-latency drain. Compare
-        # issue spans to verify that independent FMA throughput is unchanged.
         self.assertEqual(len(set(fma_issue_spans)), 1)
         self.assertEqual(len(set(fp_issue_spans)), 1)
         self.assertEqual(len(set(fp_cycles)), 1)
-
 
 
 class AppRamControllerTests(unittest.TestCase):
