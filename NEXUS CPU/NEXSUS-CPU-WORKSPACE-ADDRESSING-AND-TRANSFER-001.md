@@ -52,7 +52,8 @@ Rules:
 5. A narrow WLOAD zeroes unused high bits in the destination DA register. WSTORE changes only the selected W bits.
 6. All permission, ownership, bounds, alignment, and DA-selector checks occur before architectural commit.
 7. A faulting WLOAD leaves every DA destination unchanged. A validation-faulting WSTORE changes no workspace byte.
-8. WLOAD/WSTORE are synchronous architectural accesses. Their internal latency and bank/port implementation are microarchitectural.
+8. WLOAD/WSTORE are synchronous architectural accesses. Their internal latency and workspace bank/port implementation are microarchitectural.
+9. WLOAD reserves DA destination write entries through the shared RAC; WSTORE reserves DA source read entries through RAC. Wide accesses reserve every DA entry they touch atomically. If the shared 32R+32W budget is unavailable, the instruction waits without a partial register or workspace operation. The workspace SRAM port itself is not a RAC register port.
 
 Numeric opcodes and field layouts are assigned in NEXSUS-CPU-INSTRUCTION-ENCODING-001.md: WLOAD=0x89, WSTORE=0x8A, XFER.WS.MEM=0x8B, XFER.WS.START=0x8C; WSMEM uses FMT=1110 and workspace block transfers extend the existing MEMXFER payload.
 
@@ -79,7 +80,7 @@ This design lets OW/TW hold register snapshots, spill records, call frames, task
 
 - Source and destination are explicit: workspace selector, workspace offset, Data RAM domain, Data RAM byte address, length, and direction.
 - Length is an unsigned byte count. A complete 8 KiB workspace can be moved in one operation; partial ranges are also permitted.
-- This path uses the transfer engine/Fabric path, not DA staging. It does not consume RAC register-read or register-write slots.
+- This path uses the transfer engine/Fabric path, not DA staging. It does not consume RAC register-read or register-write slots. By contrast, WLOAD/WSTORE do consume RAC slots for their DA register operands.
 - It does consume transfer-engine bandwidth and the relevant Data RAM bank/controller bandwidth. Independent banks/domains may continue in parallel under existing arbitration rules.
 - The source workspace range is read-reserved for the transfer lifetime. A destination workspace range is write-reserved and inaccessible to CPU reads/writes until completion.
 - Data RAM destination ranges use the existing XFER range-reservation and unpublished-destination rules. A destination becomes usable only after successful completion.
