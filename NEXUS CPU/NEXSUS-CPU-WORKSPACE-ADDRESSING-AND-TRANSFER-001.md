@@ -1,7 +1,7 @@
 # NEXSUS CPU — Workspace Addressing and Transfer
 
 **Document ID:** NEXSUS-CPU-WORKSPACE-ADDRESSING-AND-TRANSFER-001  
-**Status:** ISA/architecture proposal — semantic baseline; numeric encoding open  
+**Status:** ISA/architecture baseline — WSMEM and workspace MEMXFER opcode/field assignments recorded; microarchitecture implementation open  
 **Scope:** Direct byte addressing, DA-staged register save/restore, and OW/TW↔Data RAM block movement
 
 ## 1. Design intent
