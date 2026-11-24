@@ -341,7 +341,7 @@ Items already specified in architecture documents are not to be redesigned; they
 
 - The 2026-11-17 explicit clarification establishes independent Data RAM connections of 64 B/cycle per core (512 B/cycle aggregate for eight cores); the older 64 B/cycle aggregate wording is superseded. The 2026-11-13 revision also confirms 32-entry RA/FA/DA/MA banks.
 - The 2026-11-16 App RAM connection correction establishes 64 B/cycle per core and 512 B/cycle aggregate for the eight-core block; System Fabric coordinates independent core-facing paths. Older 64-entry register tables are superseded.
-- The 2026-11-24 workspace naming decision establishes OS Space (OSSpace) and Work Space (WS) as current terms. OW and TW are superseded symbols and must not appear in current architecture text. PX, P0–P7, Ping-Pong, SPM0, and L0I remain legacy terms.
+- The 2026-11-24 workspace naming decision establishes OS Space (OSSpace) and Work Space (WS) as the only current workspace symbols. Superseded workspace symbols must not appear in current architecture text. PX, P0–P7, Ping-Pong, SPM0, and L0I remain legacy terms.
 - The latest explicit execution-resource decision fixes INT=8, FP64=6, FMA=4, VEC=2, ME512=1.
 - Cache sharing is already defined and simulator-tested: private L1, L2 shared per 2 cores, L3 per 4 cores, and L4 per 8-core group. The latest explicit capacity decision fixes these to L1=1 MiB/core, L2=2 MiB/2-core group, L3=8 MiB/4-core group, and L4=64 MiB+/8-core group.
 
