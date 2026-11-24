@@ -6,7 +6,7 @@
 
 ## 1. Naming rule
 
-Use the expanded canonical name and symbol on first mention. The current user/application workspace is **Work Space (WS)**. The privileged operating-system workspace is **OS Space (OSSpace)**. Do not use the superseded TW or OW labels in current specifications, assembly examples, simulator output, or diagrams.
+Use the expanded canonical name and symbol on first mention. The current user/application workspace is **Work Space (WS)**. The privileged operating-system workspace is **OS Space (OSSpace)**. Do not use superseded workspace labels in current specifications, assembly examples, simulator output, or diagrams.
 
 ## 2. Canonical workspace map
 
