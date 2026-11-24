@@ -1925,6 +1925,20 @@ class PerCoreCodeFlowTopologyTests(unittest.TestCase):
 
 
 class RACCycleIntegrationTests(unittest.TestCase):
+    def test_16_wide_backend_can_issue_sixteen_when_frontend_and_rac_allow(self):
+        p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        p.frontend = 16
+        p.dispatch = 16
+        ops = []
+        for _ in range(8):
+            ops.append(sim.Op(len(ops), "INT", rac_reads=1, rac_writes=1))
+        for _ in range(8):
+            ops.append(sim.Op(len(ops), "LOGIC", rac_reads=1, rac_writes=1))
+        result = sim.simulate_stream(ops, p)
+        self.assertEqual(result["issue_peak_ops_per_cycle"], 16)
+        self.assertEqual(result["rac_peak_read_slots_per_cycle"], 16)
+        self.assertEqual(result["rac_peak_write_slots_per_cycle"], 16)
+
     def test_16_wide_mixed_issue_is_limited_by_80r_not_execution_unit_count(self):
         p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
         # Isolate the issue/RAC interaction from the selected 8-wide frontend.
