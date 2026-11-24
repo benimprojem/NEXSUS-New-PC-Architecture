@@ -169,3 +169,85 @@ The scheduler must enforce the privilege and ownership boundaries in `NEXSUS-CPU
 ## 14. Memory protection reference
 
 The scheduler must apply `NEXSUS-CPU-MEMORY-PROTECTION-DOMAINS-001.md` during dispatch and migration. Incoming task-private App RAM/Data RAM ranges and shared grants must be validated before PL0 resumes; outgoing ownership and in-flight shared/Fabric operations must be handled before memory is reassigned or reclaimed.
+
+
+## 15. Stall-triggered automatic task switching (proposal)
+
+This extends the existing OS-controlled task scheduling model with a proposed fast scheduling opportunity: when the current task/core execution stream reaches a qualifying stall, the scheduler may automatically select another READY task rather than leaving execution resources idle.
+
+### 15.1 Trigger and eligibility
+
+Potential stall classes include:
+- Data RAM or App-RAM data access waiting for a response;
+- unresolved dependency or operand wait;
+- execution-resource wait when the task cannot make useful progress;
+- another explicitly modeled wait condition with a known wake event.
+
+A short stall is not automatically worth switching around. The scheduler must consider estimated wait duration, switch/restore cost, whether another task is READY, and resource compatibility. Thresholds and prediction policy remain OPEN pending simulation.
+
+A task is switch-eligible only if its state can be preserved at a safe architectural boundary and the candidate task has valid context, permissions, dependencies, and required resources. The current task becomes BLOCKED/WAITING on the exact cause or remains READY if the policy permits; this classification must not be ambiguous.
+
+### 15.2 Context pool capacity (preserved baseline)
+
+The existing fast resident context capacity remains **16 slots per core × 2 KiB each = 32 KiB total**. These are the SPM3–SPM6 resident task-context slots, four slots per SPM. SPM2 remains the 8 KiB user workspace and is not part of this context pool. P0–P7 are App/code pages and must not be confused with task-context slots.
+
+This capacity permits quick context selection among resident tasks; it does not mean 16 tasks execute simultaneously or that task count is limited to 16. Nonresident task contexts remain in protected Data RAM under the established residency policy.
+
+### 15.3 Conceptual switch flow
+
+1. Detect a modeled stall and identify its cause and expected wake condition.
+2. Evaluate the stall against switch-cost/benefit criteria.
+3. Select a compatible READY task whose dependencies and required resources are currently satisfied.
+4. Preserve the outgoing task's architectural context and live SPM2 image according to the existing context-save ABI and ownership rules.
+5. Restore the candidate context and its SPM2 image; refill P0 from the candidate's App RAM code at the saved PC.
+6. Resume the candidate only when its required state, permissions, mappings, and instruction availability are valid.
+7. Keep the waiting task associated with its wake condition; when that condition completes, make it READY using the established wake-up protocol.
+
+This is an optimization proposal layered on the established context-switch sequence, not a relaxation of safe-save, precise-state, or memory-visibility invariants.
+
+### 15.4 Switch-cost safeguards
+
+The design must avoid thrashing when stalls are short or repeated. Candidate policy inputs include minimum stall threshold, predicted wait length, context residency, expected restore/refill cost, candidate readiness, fairness, and resource match. Exact policy, thresholds, and whether a trigger is hardware-assisted, OS-driven, or hybrid remain OPEN.
+
+## 16. Task-aware AppRAM code-page organization (proposal)
+
+AppRAM code pages (P0–P7) may be organized or annotated by task identity and execution flow so the scheduler can quickly identify a candidate task's next code region. The organization is a code-page placement/metadata idea; it does not change the fixed P0–P7 page count, their size, or the established rule that P0 is refilled for the selected task rather than context-saved.
+
+Task-aware code-page metadata could include task identity/generation, code-domain identity, saved PC or region, page residency/validity, dependency/readiness hints, and expected next-region information. The authoritative task PC and access permissions still come from the task's protected state; metadata is advisory and must be validated before execution.
+
+A code-page organizer may group regions by task, continuation, or predicted execution order. The exact mapping and placement algorithm is OPEN. Code-page organization must not be interpreted as dedicating a fixed pair of P pages per task or guaranteeing all pages are resident for every task.
+
+## 17. Combined Global Scheduler: task-level and instruction-level scheduling
+
+The proposed **Global Scheduler** coordinates two distinct scheduling layers using shared task/resource metadata:
+
+- **Task scheduling (TLP):** chooses which READY task/context should run, including stall-triggered switching and wake-up/fairness.
+- **Instruction scheduling (ILP):** within the chosen task, finds independent operations, applies dependency analysis and register allocation, and matches operations to existing execution resources and available memory/register-bank capacity (see Cross-Bank Pairing and Graph-Coloring Scheduler Plan).
+
+AppRAM task-aware code-page organization can provide candidate code-location and task metadata to the task scheduler. The instruction scheduler then optimizes the selected task's ready operations. When a task cannot make progress, the task scheduler may choose another eligible task; it must not invent execution capacity or violate the resource/port model.
+
+Conceptual hierarchy:
+
+1. **Global Task & Resource Manager:** tracks READY/BLOCKED/RUNNING state, wake conditions, affinity, residency, priority/fairness, and resource availability.
+2. **Task Scheduler:** chooses or switches a task using readiness, stall classification, cost model, context residency, and compatible-resource estimates.
+3. **Instruction Scheduler:** performs liveness/interference coloring, dependency-DAG analysis, ready-set construction, and resource-aware matching/grouping.
+4. **Execution/Memory admission:** validates the candidate group against existing INT, FP, FMA, VEC, ME512, register-bank, AppRAM, and DataRAM constraints.
+
+These layers should exchange metadata and scheduling outcomes, but task switching and instruction grouping remain separate decisions with separate correctness tests. The intended benefit is adaptive use of both task-level parallelism and within-task instruction parallelism, potentially reducing idle periods compared with a scheduler that only exploits one level. Any claim of superiority over Intel Hyper-Threading or another architecture requires simulator benchmarks and later implementation evidence; this document records a design hypothesis, not a measured result.
+
+## 18. Validation additions for automatic switching and task-aware code pages
+
+| Test | Required behavior |
+|---|---|
+| Stall with no other READY task | Do not switch to an ineligible task; safely wait/idle according to policy |
+| Stall with READY resident task | Candidate can be selected when switch-cost policy allows |
+| Stall with READY nonresident task | Residency load cost is included; fallback remains correct |
+| Very short stall | Threshold/cost model prevents pathological switching |
+| Repeated stall/switch pattern | No scheduler thrashing; fairness maintained |
+| Task wake during switch | No lost wake-up; generation/sequence validation succeeds |
+| Context save incomplete | Slot is not released/reused; candidate cannot resume prematurely |
+| Live SPM2 | Save before reassignment and restore before user execution |
+| Task-aware AppRAM page metadata | Task/PC/code-domain information is validated; incorrect metadata cannot dispatch code |
+| P0 refill overlap | Context restore and P0 refill may overlap only when independent; resume waits for both required dependencies |
+| TLP + ILP combined workload | Task switching and cross-bank grouping preserve correctness and resource limits |
+| Fairness/starvation | Policy bounds starvation as specified; exact fairness policy remains OS-defined until chosen |
