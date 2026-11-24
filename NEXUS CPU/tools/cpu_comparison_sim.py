@@ -2084,7 +2084,7 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
         issue_peak_ops_per_cycle = max(issue_peak_ops_per_cycle, issued_this_cycle)
         cycle += 1
     if retired != len(ops):
-        raise RuntimeError(f"simulation did not drain: retired {retired}/{len(ops)}, issued={sum(issued)}, next_frontend={next_frontend}, scheduler={list(scheduler)[:12]}, issue_peak={issue_peak_ops_per_cycle}, stalls={stalls}")
+        raise RuntimeError(f"simulation did not drain: retired {retired}/{len(ops)}, cycle={cycle}, issued={sum(issued)}, done={done}, ready_at={ready_at}, rob={list(rob)[:12]}, next_frontend={next_frontend}, scheduler={list(scheduler)[:12]}, issue_peak={issue_peak_ops_per_cycle}, stalls={stalls}")
     return {
         "cycles": cycle, "ops": len(ops), "retired_ops": retired,
         "completed": retired == len(ops), "ipc": round(retired/max(1,cycle), 3),
