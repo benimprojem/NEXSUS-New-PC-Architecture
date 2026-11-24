@@ -110,3 +110,62 @@ class RegisterFile:
         for bank, index, value in writes:
             self.write(bank, index, value)
         return results
+
+
+# RAC accounting uses 64-bit logical lanes, including wide MA entries.
+RAC_READ_BUDGET = 80
+RAC_WRITE_BUDGET = 64
+MA_ENTRY_BITS = 256
+RAC_LANE_BITS = 64
+
+
+def ma_tile_entries(n, element_width):
+    """Return the complete MA-entry count for one supported square tile."""
+    supported = {
+        2: {8, 16, 32, 64},
+        4: {8, 16, 32, 64},
+        8: {8, 16, 32},
+    }
+    if n not in supported or element_width not in supported[n]:
+        raise RegisterAccessError(
+            f"unsupported MA tile configuration: N={n}, W={element_width}"
+        )
+    return (n * n * element_width + MA_ENTRY_BITS - 1) // MA_ENTRY_BITS
+
+
+def ma_reduction_output_entries(n, element_width):
+    """Return the MA-entry count for a lossless row/column reduction result."""
+    ma_tile_entries(n, element_width)  # validate N/W against the ISA tile table
+    accumulator_width = element_width + (n - 1).bit_length()
+    return (n * accumulator_width + MA_ENTRY_BITS - 1) // MA_ENTRY_BITS
+
+
+def ma_opcode_rac_footprint(opcode, *, n=None, element_width=None):
+    """Return (logical 64-bit RAC read slots, write slots) for an MA opcode.
+
+    Each 256-bit MA entry costs four logical 64-bit slots. This is operand
+    accounting, not a claim about physical SRAM ports or execution latency.
+    """
+    op = opcode.upper()
+    fixed = {
+        "VEC_R3": (8, 4),   # two MA sources, one MA destination
+        "VMACC": (12, 4),   # A, B, accumulator -> D
+        "VSUM": (4, 4),     # one MA source -> one MA destination
+        "VDOT": (8, 4),     # A, B -> one MA destination
+        "ME512_PAIR": (8, 8),
+    }
+    if op in fixed:
+        return fixed[op]
+    if n is None or element_width is None:
+        raise RegisterAccessError(f"{op} requires tile N and element width W")
+    t = ma_tile_entries(n, element_width)
+    if op == "MMUL":
+        return 8 * t, 4 * t
+    if op == "MMAC":
+        return 12 * t, 4 * t
+    if op == "MTRANS":
+        return 4 * t, 4 * t
+    if op == "MREDUCE":
+        out = ma_reduction_output_entries(n, element_width)
+        return 4 * t, 4 * out
+    raise RegisterAccessError(f"unknown MA opcode footprint: {opcode}")
