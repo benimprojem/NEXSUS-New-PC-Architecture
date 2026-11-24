@@ -240,7 +240,7 @@ jobs:
           data = json.load(open("/tmp/nexus-fma-latency-sweep.json", encoding="utf-8"))
           assert data["latencies_cycles"] == [3, 4, 5, 6]
           assert data["fp64_lanes_per_core"] == 6
-          assert data["fma_lanes_per_core"] == 4
+          assert data["dedicated_fma_units_per_core"] == 4
           rows = data["results"]
           chain = [rows[str(x)]["kernels"]["fma_dependency_chain"]["cycles"] for x in data["latencies_cycles"]]
           fma = [rows[str(x)]["kernels"]["fma_throughput"]["issue_span_cycles"] for x in data["latencies_cycles"]]
