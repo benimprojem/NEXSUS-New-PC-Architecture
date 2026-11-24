@@ -38,7 +38,7 @@ Per-workspace bandwidth ceiling is 16 × 8 = 128 bytes/cycle read and 128 bytes/
 
 XFER.WS.MEM/START reads only the selected source workspace through its array read ports. It does not consume RAC logical slots or DA slots, but competes with WLOAD reads in that workspace. The other workspace's banks remain independent.
 
-## 3. Why 48R/48W is worth testing
+## 3. Historical 48R/48W comparison point
 
 The currently documented peak operand demand, before MA and workspace-transfer traffic, is:
 
@@ -64,12 +64,12 @@ Consequences:
 | Candidate | Logical read slots/cycle | Logical write slots/cycle | Assessment |
 |---|---:|---:|---|
 | Current baseline | 32 | 32 | Clearly restrictive against RA+FA peak |
-| **Next candidate** | **48** | **48** | Good intermediate test point; likely write headroom, read contention remains |
+| Historical intermediate | 48 | 48 | Useful comparison point; below the selected 80R/64W baseline |
 | Read-biased candidate | 64 | 48 | Tests whether extra read capacity improves mixed integer/FP throughput |
 | Peak-subtotal candidate | 80 | 48 | Covers the 76R subtotal with small headroom, but excludes MA and WLOAD/WSTORE demand |
-| Symmetric high candidate | 80 | 64 | More balanced high-end experiment; area/power and physical topology cost must be justified |
+| **Selected baseline** | **80** | **64** | Starting logical RAC budget; physical topology cost and throughput to be validated |
 
-The 80R/48W and 80R/64W candidates are experiment points, not recommendations to freeze. A final limit must follow the issue-width and operand-demand study.
+80R/64W is the selected starting baseline; 80R/48W remains a read-heavy comparison alternative. 32/32, 48/48 and 64/48 remain lower sensitivity points. The selected baseline may be reopened only if measured throughput, area, power or timing justifies a change.
 
 ## 5. Dynamic distribution
 
@@ -91,18 +91,18 @@ Age-based fairness is required, but a ready high-priority instruction may use id
 ## 6. Required experiments before freezing
 
 1. Sweep RAC budgets: 32/32, 48/48, 64/48, 80/48, 80/64.
-2. Sweep global issue width at 16/24/32 independently; do not change both dimensions in one test. See `NEXSUS-CPU-ISSUE-WIDTH-RAC-DEMAND-001.md`.
+2. Sweep global issue width at 8/12/16/24/32 independently; do not change both dimensions in one test. See `NEXSUS-CPU-ISSUE-WIDTH-RAC-DEMAND-001.md`.
 3. Run integer-only, FP-only, mixed integer+FP, memory-heavy, vector/matrix, and mixed all-class workloads.
 4. Record per-cycle requested versus granted reads/writes, issue stalls by reason, queue age, bank conflicts, DA conflicts, writeback conflicts, throughput and fairness.
 5. Add simultaneous WS+OS tests to confirm the two independent arrays do not cross-contend.
 6. Add XFER+WLOAD tests on the same workspace and on opposite workspaces.
 7. Test worst-case MA pair and 512-bit DA groups; each MA entry counts as four 64-bit RAC slots. Validate every opcode/tile footprint against the 80R/64W baseline.
-8. Compare area/power/timing estimates for the selected logical budget and physical register-file banking/replication. A logical 48R/48W budget does not require one monolithic 48-port SRAM.
+8. Compare area/power/timing estimates for the selected logical budget and physical register-file banking/replication. A logical 80R/64W budget does not require one monolithic 80-read/64-write SRAM.
 
 ## 7. Current conclusion
 
 The physical workspace direction is now **two independent 8 KiB arrays, each 16 banks × 512 B with 1R+1W per bank**.
 
-The selected starting point is **16-wide issue with an 80R/64W logical RAC budget**. Compare issue widths 8/12/24/32 and RAC alternatives 32/32, 48/48, 64/48 and 80/48 in controlled sweeps. The known scalar/FP/FMA read envelope at width 16 is 36R, leaving 44 logical read slots for MA, memory staging and workspace traffic; the one-result write envelope is 16W, leaving 48 write slots before wide/pair writes and WSTORE traffic. This is intentionally a generous initial budget, not proof that every execution unit can issue simultaneously.
+The selected starting point is **16-wide issue with an 80R/64W logical RAC budget**. Compare issue widths 8/12/24/32 and RAC alternatives 32/32, 48/48, 64/48 and 80/48 in controlled sweeps. The known scalar/FP/FMA read envelope at width 16 is 36R, leaving 44 logical read slots for MA, memory staging and workspace traffic; the one-result write envelope is 16W, leaving 48 write slots before wide/pair writes and WSTORE traffic. Each 256-bit MA entry is four 64-bit slots, but large ME512 tiles are streamed in 512-bit slices rather than charged as a full-tile read in one cycle. This is intentionally a generous initial budget, not proof that every execution unit can issue simultaneously.
 
-The physical organization is domain-separated RA/FA/DA/MA banks behind a shared, dynamically allocated RAC. Multiple banks can write independently in the same cycle, subject to physical bank availability and writeback arbitration. The same architectural destination must not receive conflicting multiwrites in one cycle. Atomic reservations prevent partially issued instructions. Re-evaluate 16-wide and 80R/64W only after normalized MA footprints and cycle-level throughput, fairness, bank-conflict, area, power and timing results are available.
+The physical organization is domain-separated RA/FA/DA/MA banks behind a shared, dynamically allocated RAC. Multiple banks can write independently in the same cycle, subject to physical bank availability and writeback arbitration. The same architectural destination must not receive conflicting multiwrites in one cycle. Atomic reservations prevent partially issued instructions. MA total footprints and provisional 512-bit per-operand slice demand are now documented and formula-tested. Re-evaluate 16-wide and 80R/64W only after cycle-level RAC throughput, fairness, bank-conflict, area, power and timing results are available.
