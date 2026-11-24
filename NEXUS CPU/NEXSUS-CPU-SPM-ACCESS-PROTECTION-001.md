@@ -90,10 +90,10 @@ EB belongs exclusively to the CPU's internal execution machinery. No software at
 
 ## 8. Fault behavior and enforcement requirements
 
-- An access violating privilege, application access epochship, bank role, or active XW slice boundaries raises a precise protection exception.
+- An access violating privilege, application access-epoch violation, bank role, or active XW slice boundaries raises a precise protection exception.
 - The fault reports the workspace and access operation through the existing exception cause/information path; BADADDR/EXCINFO validity follows the CSR exception rules.
 - A protection fault must not partially modify the denied bank.
-- Permission and ownership checks apply to CPU-originated Workspace accesses and any future agent path that can address workspace.
+- Permission and access-epoch checks apply to CPU-originated workspace accesses and any future agent path that can address workspace.
 - No Node, peripheral, DMA, Data RAM controller, App RAM controller, or Fabric agent receives workspace write access. The one-way workspace export engine may read OSSpace/WS but cannot write them. Any future exception to this invariant requires a separate architecture decision and explicit capability.
 - Every protection-domain switch must revoke the previous WS access epoch and clear or fully initialize WS before granting it to a different application domain, unless an explicitly authorized continuation preserves the same data domain.
 - The exact enforcement circuitry and encoding of workspace protection controls remain implementation work; this policy does not assume a particular MMU, TLB, or new instruction.
@@ -111,6 +111,7 @@ EB belongs exclusively to the CPU's internal execution machinery. No software at
 ## 10. Related specifications
 
 - NEXSUS-CPU-WORKSPACE-ADDRESSING-AND-TRANSFER-001.md
+- NEXSUS-CPU-WORKSPACE-BANK-TOPOLOGY-001.md
 
 - NEXSUS-CPU-CONTEXT-SAVE-RESTORE-001.md
 - NEXSUS-CPU-TASK-SCHEDULING-SPM-RESIDENCY-001.md
