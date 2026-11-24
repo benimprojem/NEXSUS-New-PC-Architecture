@@ -88,6 +88,17 @@ These are separate logical resource domains. The table does **not** claim that e
 | Error Log Area | Error Log Area | Placement and capacity not frozen | Persistent diagnostic/error history |
 | General Data Memory | Data RAM | Separate memory system/controller/path from App RAM | Mutable program data, task data, shared data, and protected OS backing |
 
+## 5.1 OW/TW workspace addressing and persistence
+
+OW and TW are directly byte-addressable, core-local 8 KiB working files. TW is general-purpose task-local storage and is not required to follow LIFO stack order. OW remains OS-owned.
+
+- WLOAD (0x89) and WSTORE (0x8A), using WSMEM format, move 8/16/32/64/128/256/512-bit values between OW/TW and DA staging.
+- Workspace offsets are byte addresses 0–8191. Addressing supports absolute workspace offset and RA base + signed byte displacement. Natural alignment and complete-range bounds checks apply.
+- Register banks are saved/restored explicitly through MOV.DA.RA / MOV.RA.DA, MOV.DA.FA / MOV.FA.DA, and MOV.DA.MA / MOV.MA.DA. DA staging clobbers remain visible to the ABI.
+- XFER.WS.MEM (0x8B) copies a selected OW/TW range to or from an L1–L4 Data RAM domain. XFER.WS.START (0x8C) starts the asynchronous form; XFER.WAIT (0x88) consumes the token.
+- A full 8 KiB workspace may be transferred as one block. This path uses the transfer engine and Data RAM controller, not DA staging or RAC register-access slots.
+- OW/TW permissions and source/destination reservation rules are defined in Workspace Addressing and Transfer and Workspace Access Protection.
+
 ## 6. Exception-storage separation — preserve existing decisions
 
 - Exception Context Stack (ECS) holds protected per-core hardware exception-context records; minimum eight entries.
