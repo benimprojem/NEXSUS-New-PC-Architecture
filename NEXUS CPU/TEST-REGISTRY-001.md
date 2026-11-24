@@ -50,6 +50,7 @@ These tests are designed from the architecture contract upward. Implement them i
 | NEX-T013 | Instruction pipeline overlap | Continuous CodeFlow page delivery, EB ping-pong safety, registered stage rates and non-starving steady-state feed | VALID |
 | NEX-T014 | Memory path contract | App RAM/Data RAM independence, per-core Data RAM service and cache-fill topology invariants | VALID |
 | NEX-T015 | Dynamic RAC admission and distributed writeback | Shared 80R/64W logical pool, atomic reservations, age-prioritized work-conserving selection, physical bank conflicts, same-destination write rejection and parallel writes to distinct banks | VALID |
+| NEX-T016 | Cycle-level RAC and 16-wide issue integration | Mixed 16-operation issue window exceeds 80R demand; simulator caps per-cycle reads at 80, reports RAC stalls, preserves all operations and stays within 64W | IMPLEMENTED |
 
 ### 3.1 NEX-T001 implementation record
 
@@ -92,6 +93,18 @@ These tests are designed from the architecture contract upward. Implement them i
 - Implementation commits: `9296508920d7cc2fdbb0d2f597742630b5040936`, `9c1c425533ed0b9ff216e952b7cf2e867de4cc79`, `c54e58bfdbcaa183376c628f98dff2b9b8507f3f`
 - Validation: **VALID** on CI run [45441039124](https://github.com/benimprojem/NEXSUS-New-PC-Architecture/actions/runs/45441039124), commit `c54e58bfdbcaa183376c628f98dff2b9b8507f3f`; numbered contract tests and full regression-test step passed. The remaining full-workflow sweeps are separate validation stages.
 - Scope limitation: this is the logical admission/arbitration model; it does not yet model SRAM macro timing, replica placement, bypass-network delay, or integrated cycle-level execution.
+
+### 3.9 NEX-T016 cycle-level RAC integration
+
+- Simulator: `NEXUS CPU/tools/cpu_comparison_sim.py`
+- Regression test: `NEXUS CPU/tools/test_cpu_comparison_sim.py` → `RACCycleIntegrationTests`
+- NEXSUS profile: issue=16, RAC=80R/64W per core per cycle; reference profiles leave RAC limits disabled.
+- Default per-op slot accounting covers scalar INT/ARITH/LOGIC/CMP/FP, FMA, vector widths, LOAD/STORE/ATOM and workspace operations. Unusual ME512 opcodes can provide explicit read/write slot overrides; default MMAC uses a 512-bit per-operand slice.
+- Required proof: the mixed 16-op test requests 86R/37W in its first issue window; at most 80R/64W are admitted in one cycle, blocked instructions retry, and all operations eventually complete.
+- Implementation commit: `f73305e0682c6416fff52222f73ef89f37ded4c2`
+- Test commit: `97103182204f3f3c648965359b6026f9bc92ca31`
+- Validation status: **IMPLEMENTED — awaiting CI validation**.
+- Scope limitation: aggregate logical slot budgeting is integrated. Physical bank-port conflicts, exact register destination identity and distributed writeback timing remain modeled by NEX-T015 or follow-up integrated-cycle tests.
 
 ### 3.3 NEX-T012 architecture definition\n\n- Architectural decision: System Fabric clock = 2× CPU core clock.\n- Scheduling model: two Fabric scheduling ticks are available per CPU cycle; requests may be time-interleaved across destination queues.\n- The model must distinguish scheduler opportunity from physical link bandwidth and destination service capacity.\n- Required tests: two-tick cadence; alternating destinations; same-destination queue contention; independent destination progress; backpressure; fairness under sustained mixed traffic; no implicit 2× link-bandwidth multiplier.\n- Execution status: **PLANNED**. Exact lane width, queue depth, multi-client arbitration, and destination service curves remain open.\n\n## 4. Historical test files — retained, not yet re-certified
 
