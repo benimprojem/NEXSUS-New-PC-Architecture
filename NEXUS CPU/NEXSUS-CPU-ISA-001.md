@@ -78,12 +78,12 @@ RA/RB/RC/RD aynı RA fiziksel kaydının alt-bit görünümleridir; küçük gö
 | Code Stream Transfer (CST) | Transfer path | Seçilmiş Code Slot'tan inactive EB bankasına aktarım |
 | Execution Buffer (EB) | 2 × 2 KiB | CPU instruction-fetch alanı; aktif ve refill bankaları |
 | CodeFlow Manager (CFM) | Manager/controller | Sayfa sahipliği, generation, izin, validity ve güvenli bank değişimini yönetir |
-| Operating-System Workspace (OW) | 8 KiB | PL1/PL2 OS çalışma ve syscall/I/O exchange alanı |
-| Task Workspace (TW) | 8 KiB | Yalnızca o çekirdekte sahipliği atanmış çalışan task'ın PL0 erişimi |
+| OS Space (OSSpace) | 8 KiB | PL1/PL2 OS çalışma ve syscall/I/O exchange alanı |
+| Work Space (WS) | 8 KiB | Yalnızca o çekirdekte sahipliği atanmış çalışan task'ın PL0 erişimi |
 | Context Pool (CP0–CP3) | 4 × 8 KiB | OS context-manager erişimi; korumalı task context image'ları |
 | Exception Workspace (XW) | 8 KiB; 8 × 1 KiB slice | Exception hardware'a özel; normal yazılım erişimi yok |
 
-Bu kaynaklar RA/FA/DA/MA register bankları değildir ve RAC'ın 32R/32W register erişim bütçesine dahil değildir. CodeFlow/EB erişim ve sahiplik kuralları §6 ve CodeFlow naming belgesinde; OW/TW/CP/XW izinleri §6 ve Workspace Access Protection belgesinde tanımlanır.
+OSSpace ve WS ayrı çalışma alanı uç noktalarıdır; WLOAD/WSTORE işlemleri DA staging ile birlikte RAC'ın ortak 32R/32W bütçesine katılır. CodeFlow/EB erişim ve sahiplik kuralları §6 ve CodeFlow naming belgesinde; OSSpace/WS/CP/XW izinleri §6 ve Workspace Access Protection belgesinde tanımlanır.
 
 ### 2.2 Register bank ve operand kuralları
 
@@ -138,10 +138,10 @@ Bu bölüm, scalar integer komutlarının ilk ISA sürümündeki ortak davranı�
 - DIV.S ve MOD.S operandları W-bit two's-complement signed değer olarak yorumlar.
 - DIV.U ve MOD.U operandları unsigned W-bit değer olarak yorumlar.
 - Bölme sıfır kontrolü tüm DIV/MOD türlerinde yapılır. Bölen sıfırsa `INTEGER_DIVIDE_BY_ZERO_FAULT` oluşur; hedef register değişmez.
-- Signed minimum değer / -1 durumu matematiksel sonuç W-bit signed aralığına sığmadığından `INTEGER_OVERFLOW_FAULT` üretir; hedef register değişmez.
+- Signed minimum değer / -1 durumu matematiksel sonuç W-bit signed aralığına sığmadığından `INTEGER_OVERFLOSSpace_FAULT` üretir; hedef register değişmez.
 - MOD.S, signed bölümün sıfıra doğru yuvarlandığı tanımla uyumlu kalanı üretir. MOD.U unsigned kalanı üretir.
 - MIN/MAX ve CMP.LT/LE/GT/GE komutlarında signedness mnemonic ile açıkça belirtilir. CMP.EQ/NE bit desenlerinin eşitliğini karşılaştırır; signedness gerektirmez.
-- ABS için W-bit signed minimum değerin mutlak değeri temsil edilemez; bu durumda `INTEGER_OVERFLOW_FAULT` oluşur ve hedef korunur.
+- ABS için W-bit signed minimum değerin mutlak değeri temsil edilemez; bu durumda `INTEGER_OVERFLOSSpace_FAULT` oluşur ve hedef korunur.
 
 **Immediate aritmetik**
 
@@ -303,15 +303,15 @@ Memory komutlarının numeric OP atamaları Encoding belgesi §8.5–§8.6 ile e
 
 MEMXFER, register bank XFER (0x85) ile aynı komut değildir. Kaynak/hedef L1–L4 domain'leri, RA içindeki byte adresleri ve RA içindeki byte uzunluğu ile CPU kontrollü kopyalama yapar. Synchronous XFER.MEM tamamlanana kadar bekler; XFER.START token üretir; XFER.WAIT token'ın tamamlanmasını bekler. Her iki uç için erişim izni, aralık ve sahiplik kontrolleri `NEXSUS-CPU-MEMORY-ACCESS-CONTROL-001.md` belgesindeki kurallara tabidir. MEMXFER 52-bit payload alan eşlemesi ve token edge-case davranışları Instruction Encoding §4.15'te tanımlıdır. Uzunluk 64-bit unsigned byte count'tur ve sabit küçük bir ISA üst sınırı yoktur; token kayıt sayısı implementation-defined olup platform/OS capability bilgisinde raporlanır. §4.14 yalnızca SYS/FENCE formatıdır.
 
-### 5.6 OW/TW doğrudan adresleme ve register aktarımı
+### 5.6 OSSpace/WS doğrudan adresleme ve register aktarımı
 
-OW ve TW, L1–L4 Data RAM domain'lerinden ayrı, çekirdek-yerel ve doğrudan byte-adreslenebilir çalışma alanlarıdır. Her ikisi de 8 KiB kapasitelidir; geçerli offset aralığı 0–8191'dir. Bu alanlar register bankı değildir ve RAC'ın 32R+32W bütçesine dahil değildir.
+OSSpace ve WS, L1–L4 Data RAM domain'lerinden ayrı, çekirdek-yerel ve doğrudan byte-adreslenebilir çalışma alanlarıdır. Her ikisi de 8 KiB kapasitelidir; geçerli offset aralığı 0–8191'dir. Bu alanlar register bankı değildir; ancak CPU kaynaklı WLOAD/WSTORE erişimleri RA/FA/DA/MA ile aynı RAC 32R+32W bütçesini paylaşır.
 
 | Mnemonic | Operand | İşlev |
 |---|---|---|
-| WLOAD.OW / WLOAD.TW | DA, [offset veya RA+disp] | Seçilen workspace'ten DA staging bankına ham bit okur |
-| WSTORE.OW / WSTORE.TW | [offset veya RA+disp], DA | DA staging bankından seçilen workspace'e ham bit yazar |
-| XFER.WS.MEM | workspace source, [DataRAM address], length | Yalnızca OW/TW → L1–L4 Data RAM blok aktarımı |
+| WLOAD.OSSpace / WLOAD.WS | DA, [offset veya RA+disp] | Seçilen workspace'ten DA staging bankına ham bit okur |
+| WSTORE.OSSpace / WSTORE.WS | [offset veya RA+disp], DA | DA staging bankından seçilen workspace'e ham bit yazar |
+| XFER.WS.MEM | workspace source, [DataRAM address], length | Yalnızca OSSpace/WS → L1–L4 Data RAM blok aktarımı |
 | XFER.WS.START | aynı kaynak/hedef/uzunluk | Tek yönlü workspace export işlemini asenkron başlatır |
 | XFER.WAIT | mevcut token | XFER.WS.START dahil başlatılmış aktarımın tamamlanmasını bekler |
 
@@ -324,27 +324,27 @@ OW ve TW, L1–L4 Data RAM domain'lerinden ayrı, çekirdek-yerel ve doğrudan b
 - WLOAD, seçilen DA hedef kayıtları için RAC üzerinden register write hakkı; WSTORE ise DA kaynakları için RAC üzerinden register read hakkı rezerve eder. Çoklu DA erişiminde bütün entry'ler atomik rezerve edilir; ortak 32R+32W bütçesi yetmiyorsa komut bekler. Workspace SRAM portları RAC register erişimi değildir.
 
 **Register banklarıyla veri alışverişi**
-- Register→workspace: mevcut `MOV.DA.RA`, `MOV.DA.FA` veya `MOV.DA.MA` komutları veriyi DA staging bankına alır; ardından `WSTORE.OW/TW` yazar.
-- Workspace→register: `WLOAD.OW/TW` DA staging bankına okur; ardından `MOV.RA.DA`, `MOV.FA.DA` veya `MOV.MA.DA` hedef register bankını geri yükler.
-- DA staging kullanımı açık ve görünürdür; OW/TW erişimi RA/FA/DA/MA banklarına gizli yan etkiyle yazamaz. DA'nın save/restore sırasında korunması gerekiyorsa ABI, DA staging clobber setini save maskesine dahil eder.
+- Register→workspace: mevcut `MOV.DA.RA`, `MOV.DA.FA` veya `MOV.DA.MA` komutları veriyi DA staging bankına alır; ardından `WSTORE.OSSpace/WS` yazar.
+- Workspace→register: `WLOAD.OSSpace/WS` DA staging bankına okur; ardından `MOV.RA.DA`, `MOV.FA.DA` veya `MOV.MA.DA` hedef register bankını geri yükler.
+- DA staging kullanımı açık ve görünürdür; OSSpace/WS erişimi RA/FA/DA/MA banklarına gizli yan etkiyle yazamaz. DA'nın save/restore sırasında korunması gerekiyorsa ABI, DA staging clobber setini save maskesine dahil eder.
 - Bu mekanizma register bankları arasında yeni bir örtük alias veya doğrudan workspace-register bypass yolu tanımlamaz.
 
-**OW/TW → Data RAM tek yönlü blok aktarımı**
-- `XFER.WS.MEM`, tek bir OW veya TW byte aralığını seçilmiş L1–L4 Data RAM domain'indeki byte aralığına kopyalar. Yön yalnızca workspace→Data RAM'dir; ters yön kodlanamaz. Tam 8 KiB çalışma alanı tek işlemle dış belleğe kaydedilebilir.
+**OSSpace/WS → Data RAM tek yönlü blok aktarımı**
+- `XFER.WS.MEM`, tek bir OSSpace veya WS byte aralığını seçilmiş L1–L4 Data RAM domain'indeki byte aralığına kopyalar. Yön yalnızca workspace→Data RAM'dir; ters yön kodlanamaz. Tam 8 KiB çalışma alanı tek işlemle dış belleğe kaydedilebilir.
 - Bu blok aktarımı DA registerlarını kullanmaz; transfer motoru/Fabric yolunu kullanır. Bu nedenle RAC register erişim bütçesini tüketmez, fakat Data RAM bank/controller ve transfer-engine kaynaklarını kullanır.
 - Kaynak aralığı transfer boyunca read-reserved; hedef aralık write-reserved ve unpublished olur. Başarılı tamamlanma hedef aralığı kullanılabilir kılar. Runtime transfer hatasında kısmi fiziksel yazma mümkün olsa da hedef aralık mantıksal olarak invalid/unpublished kalır; yazılım tam aralığı yeniden yazmadan yayımlayamaz.
 - `XFER.WS.START` kabul edildiğinde token, kaynak/hedef sahipliği ve rezervasyon tamamlanana veya hata kesinleşene kadar korunur. `XFER.WAIT` terminal sonucu tüketir. Var olan XFER token generation ve stale-token kuralları aynen geçerlidir.
-- OW/TW kaynağı aktarım boyunca değiştirilemez. Workspace hedefi diye bir transfer durumu yoktur. Bu, kaynak snapshot tutarlılığını ve hedefin kısmi görünür olmamasını sağlar.
+- OSSpace/WS kaynağı aktarım boyunca değiştirilemez. Workspace hedefi diye bir transfer durumu yoktur. Bu, kaynak snapshot tutarlılığını ve hedefin kısmi görünür olmamasını sağlar.
 
 **Encoding durumu:** WLOAD/WSTORE ve tek yönlü XFER.WS.* mnemonic/semantiği atanmış opcode ve bit alanlarıyla Instruction Encoding belgesinde tanımlıdır.
 
-**Data RAM'den workspace'e yükleme:** Harici bellekten OW/TW'ye doğrudan DMA/Fabric aktarımı yoktur. Geri yükleme CPU tarafından yapılır: privileged LOAD Data RAM→DA ve ardından WSTORE DA→TW/OW. App RAM bu veri yolunun parçası değildir; yalnızca CodeFlow instruction-fetch kaynağıdır.
+**Data RAM'den workspace'e yükleme:** Harici bellekten OSSpace/WS'ye doğrudan DMA/Fabric aktarımı yoktur. Geri yükleme CPU tarafından yapılır: privileged LOAD Data RAM→DA ve ardından WSTORE DA→WS/OSSpace. App RAM bu veri yolunun parçası değildir; yalnızca CodeFlow instruction-fetch kaynağıdır.
 
-**OS/task gölge alanı:** OS, OW içinde request/response staging alanı tutabilir. Syscall girişinde TW'deki belirlenmiş request aralığı WLOAD.TW→DA→WSTORE.OW ile OW'ye kopyalanır; dönüş öncesinde OW'deki yanıt WLOAD.OW→DA→WSTORE.TW ile task'ın belirlenmiş TW yanıt aralığına kopyalanır. Bu kontrollü CPU kopyasıdır; ortak alias veya DMA yazması değildir. Boyut ve offset'ler OS ABI tarafından belirlenir.
+**OS/task gölge alanı:** OS, OSSpace içinde request/response staging alanı tutabilir. Syscall girişinde WS'deki belirlenmiş request aralığı WLOAD.WS→DA→WSTORE.OSSpace ile OSSpace'ye kopyalanır; dönüş öncesinde OSSpace'deki yanıt WLOAD.OSSpace→DA→WSTORE.WS ile task'ın belirlenmiş WS yanıt aralığına kopyalanır. Bu kontrollü CPU kopyasıdır; ortak alias veya DMA yazması değildir. Boyut ve offset'ler OS ABI tarafından belirlenir.
 
 ### 5.3 Little-endian bellek ve register-grup sıralaması
 
-NEXSUS CPU, Data RAM ve OW/TW workspace byte erişimlerinde **little-endian** kullanır. En düşük bellek adresi, çok byte'lı değerin en düşük anlamlı byte'ını taşır.
+NEXSUS CPU, Data RAM ve OSSpace/WS workspace byte erişimlerinde **little-endian** kullanır. En düşük bellek adresi, çok byte'lı değerin en düşük anlamlı byte'ını taşır.
 
 - 64-bit değerin bit[7:0] alanı en düşük adreste, bit[63:56] alanı en yüksek adreste bulunur.
 - 128/256/512-bit LOAD işlemlerinde en düşük adresli 64-bit parça ilk DA kaydına yazılır; sonraki parçalar artan adres sırasıyla artan DA selector'larına yerleştirilir. STORE ters yönde aynı eşlemeyi kullanır.
@@ -372,15 +372,15 @@ Bu sıralama ISA düzeyinde sabittir; bellek denetleyicisi ve bus byte-lane eşl
 - MEM.AM[0]=1, yalnızca EXT formunda absolute domain address biçimidir: BASE=0 ve DISP=0 zorunludur; literal unsigned 64-bit adres olarak doğrudan kullanılır. EXT olmadan AM[0]=1 illegal encoding'dir.
 - İndeksli adresleme MEMX formatını kullanır: `EA = RA[BASE] + (signed(RA[INDEX]) × SCALE) + sign_extend(DISP28)`. MEMX, MEM ile aynı domain, width, DA staging ve fault kurallarını kullanır.
 - MEMX SCALE kodları 000/001/010/011/100 için sırasıyla ×1/×2/×4/×8/×16'dır; 101–111 reserved'dır. INDEX signed 64-bit RA değeri olarak yorumlanır; displacement byte cinsindendir ve SCALE ile çarpılmaz. MEMX'te AM[0]=0 zorunludur; AM[2:1] yalnızca L1–L4 domain'ini seçer.
-- EXT+MEMX biçiminde MEMX.DISP=0 zorunludur; EXT literal signed 64-bit byte displacement olur. Adres hesabı 64-bit aralık dışına taşarsa `ADDRESS_OVERFLOW_FAULT` oluşur. MEMX absolute adresleme yapmaz; absolute adres için EXT+MEM AM[0]=1 kullanılır.
+- EXT+MEMX biçiminde MEMX.DISP=0 zorunludur; EXT literal signed 64-bit byte displacement olur. Adres hesabı 64-bit aralık dışına taşarsa `ADDRESS_OVERFLOSSpace_FAULT` oluşur. MEMX absolute adresleme yapmaz; absolute adres için EXT+MEM AM[0]=1 kullanılır.
 - LOAD ham bitleri DA'ya getirir. 8/16/32-bit yüklemelerde DA kaydının kullanılmayan üst bitleri sıfırlanır; 64-bit ve daha geniş erişimler DA kayıtlarını tam doldurur.
 - STORE yalnızca W kadar bit yazar. Son DA kaydında erişim genişliğinin dışında kalan bitler belleğe aktarılmaz.
 - LOAD sign-extension yapmaz ve signed/unsigned tür seçmez. DA bir staging bankıdır; scalar tamsayı yorumu gerektiğinde MOV.RA.DA.SX veya MOV.RA.DA.ZX ile açıkça yapılır. SX/ZX kaynak genişliği 8/16/32 bittir ve hedef RA'nın tam 64 bitini yazar; diğer dönüşümler için FCONV kullanılır.
 - Geniş erişimlerde ardışık bellek parçaları artan adres sırasıyla ardışık DA selector'larına yerleştirilir. Her 64-bit DA kaydının iç byte sırası little-endian'dır: en düşük adres en düşük anlamlı byte'a karşılık gelir.
-- Normal base-register formunda 64-bit effective address, `RA[BASE] + sign_extend(DISP32)` ile hesaplanır. EXT base-register formunda literal signed 64-bit byte displacement'tir ve `RA[BASE] + sign_extend(LITERAL64)` hesaplanır; 64-bit taşma/alt-taşma `ADDRESS_OVERFLOW_FAULT` üretir. EXT absolute formunda literal unsigned 64-bit domain adresidir ve doğrudan EA olur. Absolute form fiziksel adres anlamına gelmez; adres seçilen L1/L2/L3/L4 domain'inde yorumlanır. Her iki EXT biçiminde de prefix `RAW_LITERAL/COUNT=1`, MEM.DISP=0 olmalıdır. Domain erişim izni, sınır ve fault kontrolleri bütün biçimlerde geçerlidir.
+- Normal base-register formunda 64-bit effective address, `RA[BASE] + sign_extend(DISP32)` ile hesaplanır. EXT base-register formunda literal signed 64-bit byte displacement'tir ve `RA[BASE] + sign_extend(LITERAL64)` hesaplanır; 64-bit taşma/alt-taşma `ADDRESS_OVERFLOSSpace_FAULT` üretir. EXT absolute formunda literal unsigned 64-bit domain adresidir ve doğrudan EA olur. Absolute form fiziksel adres anlamına gelmez; adres seçilen L1/L2/L3/L4 domain'inde yorumlanır. Her iki EXT biçiminde de prefix `RAW_LITERAL/COUNT=1`, MEM.DISP=0 olmalıdır. Domain erişim izni, sınır ve fault kontrolleri bütün biçimlerde geçerlidir.
 - **Doğal hizalama zorunludur:** effective address, W/8 byte değerine tam bölünmelidir. W=8 her byte adresinde; W=16 2-byte, W=32 4-byte, W=64 8-byte, W=128 16-byte, W=256 32-byte ve W=512 64-byte hizalamada erişilebilir.
 - İlk ISA sürümünde misaligned LOAD/STORE desteklenmez ve otomatik split erişim yapılmaz; hizalama ihlali `ALIGNMENT_FAULT` üretir. Unaligned erişim ileride gerekiyorsa ayrı bir opcode/mod olarak tasarlanır.
-- `EA + W/8 - 1` 64-bit adres uzayını aşarsa `ADDRESS_OVERFLOW_FAULT`; erişim aralığı seçilen L1/L2/L3/L4 domain sınırını aşarsa `MEMORY_BOUNDS_FAULT` oluşur.
+- `EA + W/8 - 1` 64-bit adres uzayını aşarsa `ADDRESS_OVERFLOSSpace_FAULT`; erişim aralığı seçilen L1/L2/L3/L4 domain sınırını aşarsa `MEMORY_BOUNDS_FAULT` oluşur.
 - Erişim izni yoksa `MEMORY_PERMISSION_FAULT`, geçerli bir erişim hedefi/eşlemesi bulunmuyorsa `MEMORY_ACCESS_FAULT` oluşur. Fault komutu başlatan çekirdeğe senkron olarak raporlanır.
 - LOAD fault olduğunda hedef DA kayıtları değişmeden kalır. STORE, tüm aralığın sınır ve izin kontrolleri tamamlanmadan commit edilmez; bu kontrollerden biri başarısızsa hiçbir byte yazılmaz.
 - 128/256/512-bit erişim tek mimari komuttur; mikro-mimari bunu çoklu beat ile gerçekleştirebilir. Bu durum başka çekirdeklerin eşzamanlı erişimlerine karşı atomicity sağlamaz; gerekli senkronizasyon ayrıca yapılır.
@@ -560,14 +560,14 @@ Eski SPM0–SPM7 adları yeni mimari metinlerde kullanılmaz. Bunların güncel 
 | Canonical resource | Capacity | PL0 user | PL1 supervisor / OS | PL2 machine | Ownership and permitted use |
 |---|---:|---|---|---|---|
 | Execution Buffer (EB) | 2 × 2 KiB | No direct access | No direct access | No direct software access | CPU instruction-fetch hardware only; active bank is executable code, inactive bank may be refilled by CST |
-| Operating-System Workspace (OW) | 8 KiB | Denied | Allowed | Allowed | OS-owned; syscall/I/O exchange is mediated by OS; not a general user buffer |
-| Task Workspace (TW) | 8 KiB | Current task only | Controlled save/restore and management | Controlled management | Single per-core user workspace; ownership follows the currently running task |
+| OS Space (OSSpace) | 8 KiB | Denied | Allowed | Allowed | OS-owned; syscall/I/O exchange is mediated by OS; not a general user buffer |
+| Work Space (WS) | 8 KiB | Current task only | Controlled save/restore and management | Controlled management | Single per-core user workspace; ownership follows the currently running task |
 | Context Pool (CP0–CP3) | 4 × 8 KiB | Denied | Context-manager paths only | Controlled maintenance/debug | Protected saved task contexts; ordinary application and unrelated OS code cannot access |
 | Exception Workspace (XW) | 8 KiB; 8 × 1 KiB depth slices | Denied | Denied by default | Denied to ordinary software | Exception hardware only; exceptional explicitly authorized read-only diagnostic inspection may be defined; software writes are never allowed |
 
-**OW/TW için rol kontrollü WLOAD/WSTORE komutları tanımlıdır.** Bu komutlar yalnızca OW ve TW'ye erişir; EB, CP0–CP3 ve XW için genel amaçlı yazılım load/store komutu yoktur. EB software tarafından adreslenemez; CP0–CP3 yalnızca OS context-manager yollarına, XW ise exception hardware'a aittir. C0 and CS0–CS7 are code staging/residency resources controlled by CodeFlow Manager (CFM); software does not treat their physical slot identifiers as general-purpose addresses. Code Stream Transfer (CST) may fill only the inactive EB bank, and the bank switch occurs only after content, task identity, generation, mapping, permissions and valid-byte range are verified.
+**OSSpace/WS için rol kontrollü WLOAD/WSTORE komutları tanımlıdır.** Bu komutlar yalnızca OSSpace ve WS'ye erişir; EB, CP0–CP3 ve XW için genel amaçlı yazılım load/store komutu yoktur. EB software tarafından adreslenemez; CP0–CP3 yalnızca OS context-manager yollarına, XW ise exception hardware'a aittir. C0 and CS0–CS7 are code staging/residency resources controlled by CodeFlow Manager (CFM); software does not treat their physical slot identifiers as general-purpose addresses. Code Stream Transfer (CST) may fill only the inactive EB bank, and the bank switch occurs only after content, task identity, generation, mapping, permissions and valid-byte range are verified.
 
-OW/TW/CP/XW ownership and privilege checks are mandatory on every access. PL2 is not an unrestricted bypass: it does not grant ordinary software access to EB or XW. A permission/ownership violation raises a precise protection exception. Detailed policy is normative in `NEXSUS-CPU-SPM-ACCESS-PROTECTION-001.md` and `NEXSUS-CPU-MEMORY-PATH-AND-NAMING-001.md`.
+OSSpace/WS/CP/XW ownership and privilege checks are mandatory on every access. PL2 is not an unrestricted bypass: it does not grant ordinary software access to EB or XW. A permission/ownership violation raises a precise protection exception. Detailed policy is normative in `NEXSUS-CPU-SPM-ACCESS-PROTECTION-001.md` and `NEXSUS-CPU-MEMORY-PATH-AND-NAMING-001.md`.
 
 ## 7. Floating-point komutları
 
@@ -715,7 +715,7 @@ MA registerları 256-bit fiziksel genişliktedir. ME512 512-bit yürütme yoludu
 - VMIN.S.W / VMAX.S.W signed two's-complement; VMIN.U.W / VMAX.U.W unsigned lane sıralaması kullanır. Signedness mnemonic'te açıkça belirtilir.
 - VAND.W, VOR.W ve VXOR.W her lane üzerinde değil, 256-bit register bit deseninin tamamında bitwise işlem yapar. Lane sınırları sonucu değiştirmez.
 - VSHL.W ve VSHR.W her lane'i bağımsız kaydırır. Her lane'in shift count'u ilgili count operandının aynı lane'indeki düşük bitlerden alınır; count >= W ise sonuç sıfırdır. VSHR mantıksal sağa kaydırmadır. Signed aritmetik sağa kaydırma için VSHR.S.W varyantı sign-fill kullanır.
-- VDIV.S.W / VDIV.U.W ve VMOD.S.W / VMOD.U.W signed/unsigned lane bölme ve kalan işlemleridir. Herhangi bir lane'de bölen sıfırsa tüm komut DIVIDE_BY_ZERO_FAULT üretir ve hedef MA değişmez. Signed lane minimum değeri / -1 durumu INTEGER_OVERFLOW_FAULT üretir; hedefin hiçbir lane'i commit edilmez.
+- VDIV.S.W / VDIV.U.W ve VMOD.S.W / VMOD.U.W signed/unsigned lane bölme ve kalan işlemleridir. Herhangi bir lane'de bölen sıfırsa tüm komut DIVIDE_BY_ZERO_FAULT üretir ve hedef MA değişmez. Signed lane minimum değeri / -1 durumu INTEGER_OVERFLOSSpace_FAULT üretir; hedefin hiçbir lane'i commit edilmez.
 - Vector integer komutlarında kaynak operandlar komut başlangıcında snapshot edilir. Hedefin kaynaklardan biriyle aynı MA selector'ı olması geçerlidir.
 
 ### 8.3 Vector compare ve predicate mask
@@ -809,20 +809,20 @@ Son örnekte dört tile grubu MA0–MA31 aralığını tam olarak kullanır. Bu 
 
 ### 8.8 Matrix reduction
 
-- `MREDUCE.S/U.ROWS` ve `MREDUCE.S/U.COLS`, bir N×N tile'ın her satırındaki veya sütunundaki N elemanı toplar. ROWS sonucu N satır toplamı; COLS sonucu N sütun toplamıdır.
+- `MREDUCE.S/U.ROSSpaceS` ve `MREDUCE.S/U.COLS`, bir N×N tile'ın her satırındaki veya sütunundaki N elemanı toplar. ROSSpaceS sonucu N satır toplamı; COLS sonucu N sütun toplamıdır.
 - Signedness S/U varyantıyla seçilir. Her toplamın tam sonucu için çıktı eleman genişliği `AW = W + ceil(log2(N))` bittir. Böylece signed veya unsigned toplama sonucu kayıpsız korunur.
 - Çıktı elemanları D tile grubuna ardışık, düşük bitlerden başlayarak paketlenir: D[0] ilk satır/sütun toplamıdır. Her çıktı AW bit kullanır; kullanılmayan son register bitleri sıfırlanır.
 - Çıktı register sayısı `ceil(N × AW / 256)` olarak hesaplanır. D grubu kendi register sayısına göre hizalanmalı ve MA31'i aşmamalıdır. A kaynak grubu, giriş tile'ının `ceil(N × N × W / 256)` register'ını kapsar ve aynı şekilde hizalanır.
 - D ve A register aralıkları çakışamaz. Kaynak A komut başında snapshot edilir; sonuç bütün D grubu için tek mimari commit olarak yazılır.
 - N ve W kombinasyonları MMUL/MMAC ile aynıdır. Herhangi bir desteklenmeyen şekil/genişlik, selector hizalama hatası veya register sınırı aşımı `ILLEGAL_OPERAND_CONFIGURATION_FAULT` üretir; hedef değişmez.
-- MREDUCE R2 kullanır. M alanı tile şeklini, W eleman genişliğini seçer. AUX[35] axis seçer: 0=ROWS, 1=COLS; AUX[34:0] sıfır olmalıdır.
+- MREDUCE R2 kullanır. M alanı tile şeklini, W eleman genişliğini seçer. AUX[35] axis seçer: 0=ROSSpaceS, 1=COLS; AUX[34:0] sıfır olmalıdır.
 - Matris çarpımındaki her çıktı elemanının iç çarpımı zaten MMUL/MMAC tanımının parçasıdır. Ayrı `VDOT.S/U.W` ise iki MA vector register'ının karşılık gelen lane çarpımlarını toplayarak tek 256-bit sonuç üretir; bu komut matrix tile çarpımının alternatifi değildir.
 
 Örnekler:
 
 ```asm
 ; 4×4 signed 16-bit tile'ın satır toplamları: AW=18, çıktı 4×18=72 bit
-MREDUCE.S.ROWS.N4.W16 MA12, MA0
+MREDUCE.S.ROSSpaceS.N4.W16 MA12, MA0
 
 ; 8×8 unsigned 32-bit tile'ın sütun toplamları: AW=35, çıktı 8×35=280 bit
 MREDUCE.U.COLS.N8.W32 MA16, MA0
@@ -896,7 +896,7 @@ RELAXED fence yoktur; ek sıralama sağlamayan bir bariyer gereksizdir ve encodi
 
 **Sınırlar**
 
-- İlk sürümde FENCE yalnızca L1–L4 data LOAD/STORE ve ATOM işlemlerini kapsar. App RAM → C0 → CS → EB instruction-fetch yolu, OW/TW/CP/XW workspace erişimleri, register transferleri ve MMIO/device erişimleri kapsam dışıdır.
+- İlk sürümde FENCE yalnızca L1–L4 data LOAD/STORE ve ATOM işlemlerini kapsar. App RAM → C0 → CS → EB instruction-fetch yolu, OSSpace/WS/CP/XW workspace erişimleri, register transferleri ve MMIO/device erişimleri kapsam dışıdır.
 - FENCE veri taşımaz, Lx domain'leri arasında kopyalama yapmaz, zone ownership/lifetime yönetmez ve tek başına coherence oluşturmaz.
 - Scope, paylaşım kapsamını genişletmez veya erişim izni vermez. L1 başka çekirdeğe açılmaz; L2/L3/L4 visibility davranışı ilgili shared domain'in coherence/visibility protokolüyle sağlanmalıdır.
 - SEQ_CST total order yalnızca aynı seçilmiş scope içindeki SEQ_CST fence ve SEQ_CST atomic işlemleri kapsar. Farklı scope'lar arasında ortak total order garanti edilmez.
@@ -953,7 +953,7 @@ Bu örneklerde atomik publish nesnesi ile payload aynı synchronization protokol
 
 **5. L1 ve özel alanlar**
 - L1 private olduğu için başka çekirdeğin doğrudan L1 LOAD/STORE erişimi yoktur. L1 atomic ve FENCE işlemleri yerel çekirdek içi ordering içindir.
-- EB/C0/CS code-fetch kaynakları ve OW/TW/CP/XW workspace erişimleri bu NDC modelinin kapsamına dahil değildir. Code-stream validity ve workspace ownership kuralları kendi mimari belgelerinde tanımlanır.
+- EB/C0/CS code-fetch kaynakları ve OSSpace/WS/CP/XW workspace erişimleri bu NDC modelinin kapsamına dahil değildir. Code-stream validity ve workspace ownership kuralları kendi mimari belgelerinde tanımlanır.
 - MMIO/device erişimleri bu ilk NDC sürümünün dışındadır; device ordering için ayrı I/O fence/interface gerekir.
 
 **6. Uygun producer/consumer örneği**
@@ -1030,7 +1030,7 @@ Bu örnek, producer ile transferi başlatan çekirdek arasındaki L3 synchroniza
 - Scalar CMP komutları 8 Compare Unit'a yönlendirilir.
 - FP32/FP64 komutları altı FP64 lane üzerinde; FMA komutları ayrı dört dedicated FMA birimi üzerinde yürütülür.
 - Vector komutları 2 VEC execution unit'a; 512-bit matrix/vector komutları 1 ME512'ye yönlendirilir.
-- LOAD/STORE komutları Data RAM domain'lerine gider; workspace işlemleri OW/TW/CP/XW rolü ve izinleriyle kontrol edilir. EB, C0 ve CS0–CS7 yalnızca CodeFlow/instruction-fetch yolu tarafından kullanılır.
+- LOAD/STORE komutları Data RAM domain'lerine gider; workspace işlemleri OSSpace/WS/CP/XW rolü ve izinleriyle kontrol edilir. EB, C0 ve CS0–CS7 yalnızca CodeFlow/instruction-fetch yolu tarafından kullanılır.
 - Her execution sınıfının ayrı issue queue'su vardır. Global dispatch/issue seçimi bu kuyruklardan bağımsız hazır komutları seçer.
 - Aynı registera yazma, operand dependency, register-port bütçesi, global issue width ve memory conflict paralelliği sınırlar.
 
@@ -1069,7 +1069,7 @@ R4 alan yerleşimi ve FMT kodu `NEXSUS-CPU-INSTRUCTION-ENCODING-001.md` belgesin
 9. Branch predictor, pipeline ve issue width.
 10. CALL/RET, interrupt ve context-state modeli.
 11. FENCE ve memory consistency modeli.
-12. OW/TW workspace erişim port/bank ve atomic/partial-write semantiği.
+12. OSSpace/WS workspace erişim port/bank ve atomic/partial-write semantiği.
 
 ## 13. İlişkili belgeler
 
@@ -1124,13 +1124,13 @@ Bu bölümde mantıksal operand talebi ile fiziksel register-file port sayısı 
 | FA | 24 scalar operand | 10 sonuç | 6 FP64 × (2R+1W), 4 FMA × (3R+1W) |
 | DA | 4 store-source read | 8 load-result write | LOAD=8, STORE=4; transfer/XFER ayrıca hesaba katılır |
 | MA | Operand biçimine bağlı | Operand biçimine bağlı | VEC=2 ve ME512=1; her opcode'un MA pair/entry tüketimiyle hesaplanır |
-| OW / TW / CP / XW | Rol ve izin kontrollü workspace erişimi | Rol ve izin kontrollü workspace erişimi | EB/C0/CS code-fetch kaynaklarıdır; RAC register operand bütçesine dahil değildir |
+| OSSpace / WS / CP / XW | Rol ve izin kontrollü workspace erişimi | Rol ve izin kontrollü workspace erişimi | EB/C0/CS code-fetch kaynaklarıdır; RAC'ın ortak erişim bütçesine dahildir |
 
 RA ve FA rakamları 64-bit kayıt operandı sayısıdır; fiziksel byte/bit genişliği, pair erişimi ve bypass ayrıca değerlendirilir. FA'nın FP128 işlemleri iki ardışık FA entry'si tüketir. MA tarafında VEC ve ME512'nin her komut için kullandığı kaynak/hedef sayısı opcode bazında normalize edilmeden fiziksel port sayısı sabitlenmeyecektir.
 
 Fiziksel uygulama için tek bir 48-read/24-write RA register-file veya 24-read/10-write FA register-file zorunlu değildir. Bankalama, read replication, operand broadcast/collector, bypass ve sınıf bazlı writeback portları birlikte tasarlanabilir. Aynı fiziksel register'a aynı cycle birden fazla write yasaktır; farklı hedeflere paralel writeback ise bank/port ve global writeback kapasitesi izin verdiği ölçüde yapılır.
 
-**RAC erişim tavanı FIXED:** tüm RA/FA/DA/MA banklarının toplamı çevrim başına 32 mantıksal read + 32 mantıksal write'tır. RAC, hazır issue-queue komutlarının tam operand ayak izini atomik rezerve eder; kullanılmayan erişim kapasitesi başka sınıflara aktarılır. Bank içi fiziksel port/replica topolojisi, bank çakışmaları, bypass ve writeback uygulaması OPEN'dır. LOAD/STORE, XFER, FCONV, vector/matrix ve bütün register-bank transferleri talep matrisine dahil edilmelidir. OW/TW/CP/XW bellek erişimleri RAC'ın RA/FA/DA/MA register erişim bütçesi değildir.
+**RAC erişim tavanı FIXED:** tüm RA/FA/DA/MA banklarının toplamı çevrim başına 32 mantıksal read + 32 mantıksal write'tır. RAC, hazır issue-queue komutlarının tam operand ayak izini atomik rezerve eder; kullanılmayan erişim kapasitesi başka sınıflara aktarılır. Bank içi fiziksel port/replica topolojisi, bank çakışmaları, bypass ve writeback uygulaması OPEN'dır. LOAD/STORE, XFER, FCONV, vector/matrix ve bütün register-bank transferleri talep matrisine dahil edilmelidir. OSSpace/WS/CP/XW bellek erişimleri RAC'ın ortak 32R/32W erişim bütçesinin dışındadır.
 
 ## 16. Issue queue ve paralel issue modeli
 
@@ -1149,7 +1149,7 @@ Fiziksel uygulama için tek bir 48-read/24-write RA register-file veya 24-read/1
 2. Bir komutun yazacağı register, aynı çevrimde bağımlı komutun kaynak operandı olarak kullanılamaz; forwarding varsa bypass ile çözülür.
 3. RA/RB/RC/RD aynı fiziksel RA registerının görünümüdür; bir view'a yazma diğer view okumalarını günceller. FA ayrı banktır; FA pair işlemleri iki FA kaydına bağımlılık ve write-hazard oluşturur.
 4. MA pair kullanan ME512 komutu, pair'in iki fiziksel MA registerını komut tamamlanana veya pipeline'ın güvenli release noktasına kadar rezerve eder.
-5. OW/TW/CP/XW erişimlerinde rol, sahiplik ve privilege kontrolü yapılır; EB/C0/CS kod yolu yazılım erişimine kapalıdır.
+5. OSSpace/WS/CP/XW erişimlerinde rol, sahiplik ve privilege kontrolü yapılır; EB/C0/CS kod yolu yazılım erişimine kapalıdır.
 6. Load-use, FP dependency, matrix dependency ve memory ordering kuralları pipeline/ISA ayrıntı belgesinde genişletilecektir.
 
 ## 18. Açık karar / sonraki tasarım konusu
@@ -1157,7 +1157,7 @@ Fiziksel uygulama için tek bir 48-read/24-write RA register-file veya 24-read/1
 - RA ve FA banklarının multiport maliyeti; banked/replicated/renamed alternatifleri.
 - FA pair erişimlerinin port, hizalama ve forwarding maliyeti.
 - MA pair komutlarının register allocation ve ABI'de nasıl temsil edileceği.
-- OW/TW/CP/XW fiziksel bank/port yerleşimi ve erişim arbitration ayrıntıları; bu kararlar rol/izin sınırlarını değiştiremez.
+- OSSpace/WS/CP/XW fiziksel bank/port yerleşimi ve erişim arbitration ayrıntıları; bu kararlar rol/izin sınırlarını değiştiremez.
 - ME512 accumulator/tiling ve matrix shape formatı.
 - Integer MUL/DIV ve FP DIV/SQRT latency/throughput.
 - Precise exception, branch recovery, interrupt/context-save semantiği.
@@ -1214,15 +1214,15 @@ Bu örnekler little-endian memory byte sıralamasını değil, register bit dili
 
 ## 21. Workspace access, ownership and contention model
 
-OW, TW, CP0–CP3 and XW are separate role-governed workspaces, not one uniformly accessible SPM region. Their ownership and privilege policy is defined in Section 6 and the dedicated access-protection specification. A request must pass role, owner, privilege, bounds and lifetime checks before it can be admitted.
+OSSpace, WS, CP0–CP3 and XW are separate role-governed workspaces, not one uniformly accessible SPM region. Their ownership and privilege policy is defined in Section 6 and the dedicated access-protection specification. A request must pass role, owner, privilege, bounds and lifetime checks before it can be admitted.
 
-- OW is reserved for privileged OS work and mediated syscall/I/O exchange.
-- TW is directly accessible only to the task currently owning that core's user workspace; a live image must be preserved before reassignment.
+- OSSpace is reserved for privileged OS work and mediated syscall/I/O exchange.
+- WS is directly accessible only to the task currently owning that core's user workspace; a live image must be preserved before reassignment.
 - CP0–CP3 are protected context-residency banks. Only OS context-manager paths may allocate, validate, save, restore or evict context slots.
 - XW is exception-hardware-owned and depth-sliced. Normal software reads and writes are denied.
 - EB is a code-fetch workspace, not a software data memory. C0 and CS0–CS7 are managed by CFM/CST and are not general-purpose load/store targets.
 
-Physical bank count, port implementation, interleave/hash and same-cycle service limits for OW/TW/CP/XW remain implementation details. They must be modeled separately from the fixed 32R/32W RAC budget for RA/FA/DA/MA. Role/permission violations are protection faults, not ordinary bank-contention stalls.
+Physical bank count, port implementation, interleave/hash and same-cycle service limits for OSSpace/WS/CP/XW remain implementation details. CPU-originated WS/OSSpace accesses are admitted by the shared 32R/32W RAC budget; physical bank conflicts may still delay service. Role/permission violations are protection faults, not ordinary bank-contention stalls.
 
 
 ## 22. Ayrık veri bellekleri, yerleşim ve aktarım komutları (taslak)
@@ -1264,7 +1264,7 @@ Burada RA10/RA20 ilgili bellek adresini tutan register'lardır; köşeli parante
 NEXUS Flow'daki `area` ve `zone` tanımları, bu mekanizmanın compiler tarafındaki doğal karşılığı olabilir:
 
 - `area`: yalnızca ilgili çekirdeğin özel L1 alanını hedefler; çekirdek-local çalışma alanı ve lifetime kapsamıdır.
-- `zone`: yalnızca çekirdekler arası paylaşılan L2/L3/L4 bellek alanlarını hedefler. OW/TW workspace veya L1, zone seviyesi olarak kabul edilmez.
+- `zone`: yalnızca çekirdekler arası paylaşılan L2/L3/L4 bellek alanlarını hedefler. OSSpace/WS workspace veya L1, zone seviyesi olarak kabul edilmez.
 - Compiler, scope/lifetime ve erişim örüntülerini yerleşim ve kod optimizasyonu için kullanabilir; bu bilgi tek başına bellek aktarımı başlatmaz.
 - `area`/`zone` bildirimi veriyi otomatik olarak L1–L4'e taşımaz veya LOAD işlemi üretmez.
 - Programın açıkça istediği veri okuma/yazma işlemi LOAD/STORE ile; farklı domain'e gerçek kopyalama ise XFER ile gerçekleştirilir. Compiler yalnızca bu açık semantiği koruyan komutlar üretir.
@@ -1405,7 +1405,7 @@ XFER.WAIT RA6
 ```
 
 - Kaynak ve hedef domain/adresleri ile byte uzunluğu açıkça belirtilir. Adresler kendi domain adres uzaylarında yorumlanır.
-- Kaynak ve hedef byte adresleri ayrı RA selector'larının gösterdiği 64-bit RA değerlerinden; byte uzunluğu ise LRA selector'ının gösterdiği 64-bit unsigned RA değerinden alınır. Uzunluk instruction içinde immediate değildir. Nonzero transfer için son byte adresi 64-bit alanda temsil edilebilmelidir; taşma ADDRESS_OVERFLOW_FAULT üretir. ISA sabit küçük bir transfer üst sınırı koymaz; donanım isteği dahili beat'lere bölebilir.
+- Kaynak ve hedef byte adresleri ayrı RA selector'larının gösterdiği 64-bit RA değerlerinden; byte uzunluğu ise LRA selector'ının gösterdiği 64-bit unsigned RA değerinden alınır. Uzunluk instruction içinde immediate değildir. Nonzero transfer için son byte adresi 64-bit alanda temsil edilebilmelidir; taşma ADDRESS_OVERFLOSSpace_FAULT üretir. ISA sabit küçük bir transfer üst sınırı koymaz; donanım isteği dahili beat'lere bölebilir.
 - Kaynak ve hedef aralıkları aktarım başlamadan önce overflow, bounds, permission ve mapping bakımından doğrulanır. Doğrulama hatasında hedefe hiçbir byte yazılmaz. Kabul anında hedef aralık transfer için münhasır olarak ayrılır; aktarım sürerken okunamaz, değiştirilemez, yayımlanamaz veya geri alınamaz.
 - Başarılı synchronous XFER, tamamlandığında hedef aralığın tamamının kaynak aralığın komut başlangıcındaki mantıksal snapshot'ıyla aynı olmasını garanti eder.
 - Aktarım sırasında kaynak aralığa başka çekirdek yazıyorsa, senkronizasyon olmadan alınan snapshot'ın hangi anı temsil edeceği garanti edilmez. Kaynak sabit tutulmalı veya producer/consumer synchronization ile korunmalıdır.
@@ -1494,7 +1494,7 @@ The interrupt/context save protocol is specified in **NEXSUS-CPU-CONTEXT-SAVE-RE
 - Context Pool (CP0–CP3) is protected storage managed only by privileged context-manager paths; it is not exposed through generic software workspace load/store instructions.
 - Exception Workspace (XW) is reserved to exception hardware for depth-selected entry state; persistent exception frames reside in protected Data RAM.
 - MOV.DA.RA / MOV.RA.DA, MOV.DA.FA / MOV.FA.DA, and MOV.DA.MA / MOV.MA.DA provide the existing architectural register-bank transfer paths.
-- LOAD/STORE move DA staging groups to/from the protected Data RAM software frame. OW is used for OS bookkeeping and TW ownership is preserved across task switches.
+- LOAD/STORE move DA staging groups to/from the protected Data RAM software frame. OSSpace is used for OS bookkeeping and WS ownership is preserved across task switches.
 - Since DA is the memory staging bank, the handler must save DA values before using DA to stage RA/FA/MA. Restore DA last, after all other banks have been restored.
 - Save masks are compiler/ABI metadata, not architectural registers or new opcodes.
 
