@@ -161,13 +161,13 @@ The canonical instruction-feed path is App RAM → C0 Code Cache → CS0–CS7 C
 The simulator's earlier generic SPM2 application working-access experiment is **not** the OSSpace/WS architecture model and must not be used as its timing or permission contract. The current architectural workspace contract is:
 
 - OSSpace: 8 KiB, OS-owned, directly byte-addressable by authorized PL1/PL2 code.
-- WS: 8 KiB, owned by the application execution context; PL0 accesses only its own active WS.
+- WS: 8 KiB, general-purpose per-core application workspace; PL0 accesses it during an authorized application execution epoch. It is not task-ID-owned or automatically saved as task context.
 - WLOAD/WSTORE access OSSpace/WS through DA staging. Workspace endpoints and RA/FA/DA/MA register operands share the core-wide RAC budget of 32 logical 64-bit reads + 32 logical 64-bit writes per cycle; wide workspace operations reserve both endpoint footprints atomically. Physical workspace SRAM bank/port behavior remains separately modeled.
 - XFER.WS.MEM / XFER.WS.START export OSSpace/WS→L1–L4 Data RAM only. The transfer engine may read a workspace source but can never write a workspace destination.
 - Data RAM→WS/OSSpace restore is CPU-mediated through Data RAM LOAD→DA→WSTORE. App RAM is not a workspace data source; it remains on the independent instruction-fetch path.
 - An optional OS/application exchange window consists of paired OSSpace and WS ranges copied by privileged CPU WLOAD/WSTORE operations at syscall handoff. It is not a shared alias or DMA window.
 
-**Simulator implementation status:** OSSpace/WS address decode, access permissions, shared RAC accounting, multi-port/bank arbitration, one-way export timing, CPU-mediated restore cost, and syscall shadow-window copies are not yet represented as executable simulator resources. Do not report SPM2's former 2-cycle/one-port assumptions as OSSpace/WS performance. The next workspace-model phase must add explicit OSSpace/WS resource objects and tests for forbidden external writes, export source reservation, bounds/privilege faults, and CPU-mediated restore.
+**Simulator implementation status:** OSSpace/WS address decode, access permissions, shared RAC accounting, multi-port/bank arbitration, one-way export timing, CPU-mediated restore cost, and syscall shadow-window copies are not yet represented as executable simulator resources. Do not report the former generic workspace experiment's 2-cycle/one-port assumptions as OSSpace/WS performance. The next workspace-model phase must add explicit OSSpace/WS resource objects and tests for forbidden external writes, export source reservation, bounds/privilege faults, and CPU-mediated restore.
 
 
 ## 7.1 Cross-architecture comparison fairness
