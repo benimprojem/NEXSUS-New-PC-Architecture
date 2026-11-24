@@ -281,7 +281,7 @@ WSMEM, OSSpace/WS içindeki byte-addressed alanlara DA staging bankı üzerinden
 - A faulting WLOAD leaves all destination DA entries unchanged. A validation-faulting WSTORE changes no workspace byte.
 - Workspace selector is not an access grant. PL0 may select WS only during an authorized application execution epoch; WS is not task-ID-owned. OSSpace is PL1/PL2 only. The access-control policy remains authoritative.
 
-WLOAD/WSTORE participate in the single core-wide Resource Access Controller (RAC) budget: 32 logical 64-bit reads + 32 logical 64-bit writes per cycle across RA/FA/DA/MA/WS/OSSpace. A wide WLOAD/WSTORE reserves every workspace and DA lane atomically (2/4/8 slots for 128/256/512 bits). XFER.WS.MEM/START use the independent transfer engine and do not consume these logical RAC slots.
+WLOAD/WSTORE participate in the single core-wide Resource Access Controller (RAC) budget across RA/FA/DA/MA/WS/OSSpace. The former 32R/32W limit is under review; the next experiment point is 48 logical 64-bit reads + 48 logical 64-bit writes per cycle. See NEXSUS-CPU-RAC-48RW-EVALUATION-001.md. A wide WLOAD/WSTORE reserves every workspace and DA lane atomically (2/4/8 slots for 128/256/512 bits). XFER.WS.MEM/START use the independent transfer engine and do not consume these logical RAC slots.
 
 | OP | Mnemonic | Format | İşlev |
 |---:|---|---|---|
