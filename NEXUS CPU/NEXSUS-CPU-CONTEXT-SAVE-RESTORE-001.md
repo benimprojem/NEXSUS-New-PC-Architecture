@@ -126,6 +126,19 @@ TW is a general-purpose task-local working file. A program may use it as stack-l
 - XFER.WS.START uses the existing asynchronous token model; XFER.WAIT is the completion boundary.
 - A workspace transfer does not implicitly transfer task ownership or grant access to another task/core.
 
+## 8.1 OS/task exchange window
+
+The OS may define a request/response shadow window as paired bounded ranges in OW and the active task's TW. These ranges are copies, not a shared alias.
+
+- On syscall entry, the CPU/OS copies the request bytes from TW to OW using WLOAD.TW → DA → WSTORE.OW.
+- The OS validates and processes the request entirely in its own OW or protected Data RAM buffers.
+- Before returning to PL0, the OS copies response bytes from OW to the designated TW response range using WLOAD.OW → DA → WSTORE.TW.
+- These are privileged CPU-mediated accesses under the controlled context-management path. XFER.WS.MEM is not used for this exchange.
+- The OS ABI chooses the size, offsets, alignment, and payload schema. No fixed portion of the 8 KiB workspaces is reserved by the ISA baseline; an OS may choose a small fixed window or a configurable per-process layout.
+- Outside the syscall handoff, PL0 cannot read OW and unrelated OS code cannot arbitrarily modify TW.
+
+OW itself remains the OS's 8 KiB core-local working file for kernel scratch, scheduler bookkeeping, syscall staging, I/O metadata, and temporary OS structures. Task switches do not turn OW into task-owned state; only explicitly defined OS context/interrupt paths preserve any OW values that must survive nested execution.
+
 ## 9. CP0–CP3 resident context pool
 
 CP0–CP3 are four protected 8 KiB banks. Each bank may be divided into four 2 KiB context slots, giving sixteen resident slots per core.
