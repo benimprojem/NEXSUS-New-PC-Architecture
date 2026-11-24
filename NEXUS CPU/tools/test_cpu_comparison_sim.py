@@ -248,12 +248,23 @@ class SelectedNexusProfileTests(unittest.TestCase):
                          (8, 8, 10, 8, 512))
         self.assertEqual(p["scheduler_entries"], 256)
         self.assertEqual(p["units"], {
-            "INT": 8, "FP": 6, "FMA": 4, "VEC": 2, "LOAD": 8,
-            "STORE": 4, "BR": 2, "CTX": 1, "ATOM": 1, "ME512": 1, "IRQ": 1,
+            "ARITH": 8, "LOGIC": 8, "CMP": 8, "FP": 6, "FMA": 4,
+            "VEC": 2, "LOAD": 8, "STORE": 4, "BR": 2, "CTX": 1,
+            "ATOM": 1, "ME512": 1, "IRQ": 1,
         })
-        self.assertEqual(p["execution_topology"]["INT128_PAIRS"], [[0, 1], [2, 3]])
+        self.assertEqual(p["execution_topology"]["ARITH128_PAIRS"], [[0, 1], [2, 3]])
         self.assertNotIn("FMA_LANES", p["execution_topology"])
 
+
+
+    def test_scalar_execution_classes_use_independent_pools(self):
+        p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        self.assertEqual(sim.execution_resource_kind("INT", p.matrix_unit, p.units), "ARITH")
+        self.assertEqual(sim.execution_resource_kind("LOGIC", p.matrix_unit, p.units), "LOGIC")
+        self.assertEqual(sim.execution_resource_kind("CMP", p.matrix_unit, p.units), "CMP")
+        self.assertEqual(p.units["ARITH"], 8)
+        self.assertEqual(p.units["LOGIC"], 8)
+        self.assertEqual(p.units["CMP"], 8)
 
 class CachePortContentionTests(unittest.TestCase):
     def test_shared_l2_port_serializes_pair_but_other_group_is_independent(self):
