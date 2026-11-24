@@ -24,6 +24,8 @@ class Op:
     exec_width_bits: int = 64
     rac_reads: Optional[int] = None
     rac_writes: Optional[int] = None
+    rac_read_accesses: Optional[Tuple[Tuple[str, int, int], ...]] = None
+    rac_write_accesses: Optional[Tuple[Tuple[str, int, int], ...]] = None
 
 @dataclass
 class CoreProfile:
@@ -68,6 +70,9 @@ class CoreProfile:
     scheduler_entries: int = 0  # 0 keeps the legacy ROB-sized scheduling window
     rac_read_budget: int = 0  # logical 64-bit slots/core/cycle; 0 disables RAC model
     rac_write_budget: int = 0
+    # Optional physical register-file limits; None keeps them uncommitted.
+    rac_physical_read_ports: Optional[Dict[str, int]] = None
+    rac_physical_write_ports: Optional[Dict[str, int]] = None
 
 # Publicly documented or independently measured values are marked in docs.
 # Unpublished/uncertain values are conservative model assumptions, not claims.
@@ -1815,7 +1820,11 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
     branch_misses = 0
     stalls = {"dependency_blocked_op_cycles": 0, "issue_width_blocked_op_cycles": 0,
               "execution_unit_blocked_op_cycles": 0, "rac_read_budget_blocked_op_cycles": 0,
-              "rac_write_budget_blocked_op_cycles": 0, "frontend_limited_cycles": 0,
+              "rac_write_budget_blocked_op_cycles": 0,
+              "rac_physical_read_port_blocked_op_cycles": 0,
+              "rac_physical_write_port_blocked_op_cycles": 0,
+              "rac_destination_conflict_op_cycles": 0,
+              "frontend_limited_cycles": 0,
               "rob_full_cycles": 0, "scheduler_full_cycles": 0,
               "branch_recovery_cycles": 0,
               "memory_latency_exposure_cycles": 0}
@@ -1860,6 +1869,9 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
         issued_this_cycle = 0
         rac_reads_this_cycle = 0
         rac_writes_this_cycle = 0
+        physical_reads_this_cycle = {}
+        physical_writes_this_cycle = {}
+        rac_destinations_this_cycle = set()
         for seq in list(scheduler):
             op = ops[seq]
             if any(not done[x] for x in op.deps):
@@ -1900,6 +1912,68 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
                     rac_writes_this_cycle + op_rac_writes > p.rac_write_budget):
                 stalls["rac_write_budget_blocked_op_cycles"] += 1
                 continue
+
+            read_accesses = op.rac_read_accesses
+            write_accesses = op.rac_write_accesses
+            physical_ports_enabled = (
+                p.rac_physical_read_ports is not None or
+                p.rac_physical_write_ports is not None
+            )
+            if physical_ports_enabled and (read_accesses is None or write_accesses is None):
+                if op_rac_reads or op_rac_writes:
+                    raise ValueError(
+                        f"op {op.seq} needs explicit RAC bank/index metadata "
+                        "when physical RF ports are enabled"
+                    )
+                read_accesses = read_accesses or ()
+                write_accesses = write_accesses or ()
+            read_accesses = tuple(read_accesses or ())
+            write_accesses = tuple(write_accesses or ())
+            def normalize_accesses(accesses, direction):
+                normalized = []
+                for access in accesses:
+                    if (not isinstance(access, (tuple, list)) or len(access) != 3 or
+                            not isinstance(access[0], str) or not access[0] or
+                            not isinstance(access[1], int) or access[1] < 0 or
+                            not isinstance(access[2], int) or access[2] < 1):
+                        raise ValueError(
+                            f"op {op.seq} has invalid RAC {direction} access {access!r}"
+                        )
+                    normalized.append((access[0], access[1], access[2]))
+                return normalized
+            read_accesses = normalize_accesses(read_accesses, "read")
+            write_accesses = normalize_accesses(write_accesses, "write")
+            if op.rac_read_accesses is not None and sum(x[2] for x in read_accesses) != op_rac_reads:
+                raise ValueError(f"op {op.seq} RAC read slots do not match bank metadata")
+            if op.rac_write_accesses is not None and sum(x[2] for x in write_accesses) != op_rac_writes:
+                raise ValueError(f"op {op.seq} RAC write slots do not match bank metadata")
+
+            read_counts = {}
+            write_counts = {}
+            for bank, _index, _slots in read_accesses:
+                read_counts[bank] = read_counts.get(bank, 0) + 1
+            for bank, _index, _slots in write_accesses:
+                write_counts[bank] = write_counts.get(bank, 0) + 1
+            if p.rac_physical_read_ports is not None and any(
+                physical_reads_this_cycle.get(bank, 0) + count >
+                p.rac_physical_read_ports.get(bank, 0)
+                for bank, count in read_counts.items()
+            ):
+                stalls["rac_physical_read_port_blocked_op_cycles"] += 1
+                continue
+            if p.rac_physical_write_ports is not None and any(
+                physical_writes_this_cycle.get(bank, 0) + count >
+                p.rac_physical_write_ports.get(bank, 0)
+                for bank, count in write_counts.items()
+            ):
+                stalls["rac_physical_write_port_blocked_op_cycles"] += 1
+                continue
+            destinations = [(bank, index) for bank, index, _slots in write_accesses]
+            if len(destinations) != len(set(destinations)):
+                raise ValueError(f"op {op.seq} writes one register more than once")
+            if any(destination in rac_destinations_this_cycle for destination in destinations):
+                stalls["rac_destination_conflict_op_cycles"] += 1
+                continue
             vector_factor = (max(1, math.ceil(op.exec_width_bits / p.vector_bits))
                              if is_vector_operation(kind) or (kind == "ME512" and exec_kind == "VEC") else 1)
             base_latency = (p.latency.get("FMA", p.latency.get("FP", 1))
@@ -1938,6 +2012,11 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
             issued_this_cycle += 1
             rac_reads_this_cycle += op_rac_reads
             rac_writes_this_cycle += op_rac_writes
+            for bank, count in read_counts.items():
+                physical_reads_this_cycle[bank] = physical_reads_this_cycle.get(bank, 0) + count
+            for bank, count in write_counts.items():
+                physical_writes_this_cycle[bank] = physical_writes_this_cycle.get(bank, 0) + count
+            rac_destinations_this_cycle.update(destinations)
             rac_read_slots_granted += op_rac_reads
             rac_write_slots_granted += op_rac_writes
             rac_peak_read_slots_per_cycle = max(rac_peak_read_slots_per_cycle, rac_reads_this_cycle)
