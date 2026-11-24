@@ -248,12 +248,11 @@ class SelectedNexusProfileTests(unittest.TestCase):
                          (8, 8, 10, 8, 512))
         self.assertEqual(p["scheduler_entries"], 256)
         self.assertEqual(p["units"], {
-            "INT": 8, "FP": 6, "VEC": 2, "LOAD": 8,
+            "INT": 8, "FP": 6, "FMA": 4, "VEC": 2, "LOAD": 8,
             "STORE": 4, "BR": 2, "CTX": 1, "ATOM": 1, "ME512": 1, "IRQ": 1,
         })
         self.assertEqual(p["execution_topology"]["INT128_PAIRS"], [[0, 1], [2, 3]])
-        self.assertEqual(p["execution_topology"]["FMA_LANES"], 4)
-        self.assertLessEqual(p["execution_topology"]["FMA_LANES"], p["units"]["FP"])
+        self.assertNotIn("FMA_LANES", p["execution_topology"])
 
 
 class CachePortContentionTests(unittest.TestCase):
