@@ -12,7 +12,9 @@ Bu bölüm geçerli çekirdek başına execution kaynaklarını tanımlar. Eski 
 
 | Birim | Çekirdek başına | İşlev |
 |---|---:|---|
-| Integer ALU lane | 8 | 64-bit integer/logic; iki 128-bit eşli lane grubu |
+| Arithmetic Logic Unit | 8 | 64-bit integer arithmetic; iki 128-bit eşli lane grubu |
+| Logic Unit | 8 | Scalar bitwise, boolean, shift/rotate ve bit-mask işlemleri |
+| Compare Unit | 8 | Scalar signed/unsigned karşılaştırmalar; bağımsız sonuç üretimi |
 | FP64 execution lane | 6 | FP32/FP64 arithmetic ve ilgili FP komutları |
 | Dedicated FMA unit | 4 | Fused multiply-add; FP64 lane havuzundan bağımsız execution kaynağı |
 | ME512 | 1 | 512-bit Matrix/Vector execution |
@@ -21,7 +23,30 @@ Bu bölüm geçerli çekirdek başına execution kaynaklarını tanımlar. Eski 
 
 FP64 lane ve FMA birimleri fiziksel execution kaynağı olarak ayrıdır. FMA komutları FP64 lane havuzundan slot tüketmez; normal FP komutları FMA birimlerini kullanmaz. İki kaynak sınıfı aynı çevrimde bağımsız hazır komutlar alabilir. Bu, FA register bankının sınırsız operand beslemesi sağladığı anlamına gelmez: FA read/write portları, bypass ve global issue/dispatch sınırları ayrı kısıtlardır; bunlar için doğrulanmamış ek kapasite varsayılmaz.
 
-Bu tabloda verilen lane/unit sayıları geçerli NEXSUS çekirdek konfigürasyonudur. Eski FPU0/FPU1 minimum modeli ve onun iki-FP-issue çıkarımı geçersizdir.
+Arithmetic Logic Unit, Logic Unit ve Compare Unit birbirinden bağımsız, ayrı execution resource pool'lardır. Bu üç sınıfın her biri için ayrı issue queue bulunur; aynı sınıftaki birimler kendi kuyruğundan beslenir. FP64, FMA, VEC, ME512, LOAD ve STORE için de ayrı sınıf kuyrukları kullanılır. Kuyruk derinlikleri ve fiziksel register port/replication sayıları henüz açık tasarım parametreleridir. Global dispatch/issue kapasitesi tüm kuyruklardan aynı çevrimde seçilebilecek toplam komut sayısını ayrıca sınırlar.\n\nBu tabloda verilen lane/unit sayıları geçerli NEXSUS çekirdek konfigürasyonudur. Eski FPU0/FPU1 minimum modeli ve onun iki-FP-issue çıkarımı geçersizdir.
+
+## 1.1 Issue queue ve register operand talebi
+
+Her execution sınıfının bağımsız issue queue'su vardır: Arithmetic ALU, Logic, Compare, FP64, FMA, VEC, ME512, LOAD ve STORE. Kuyruklar hazır komutları kendi kaynak havuzlarına sunar; global dispatch/issue katmanı toplam seçimi, dependency, operand hazır olma ve register-port uygunluğunu denetler. Queue depth henüz **OPEN**'dır; birim sayısından otomatik türetilmez.
+
+İlk azami scalar operand talebi (tüm birimler aynı çevrimde ikişer kaynaklı komut seçtiği varsayımıyla):
+
+| RA bankı tüketicisi | Kaynak okuma / cycle | Hedef yazma / cycle |
+|---|---:|---:|
+| Arithmetic ALU (8 × 2-source) | 16 | 8 |
+| Logic Unit (8 × 2-source worst case) | 16 | 8 |
+| Compare Unit (8 × 2-source) | 16 | 8 |
+| **RA toplam teorik tepe** | **48** | **24** |
+
+Bu 48R/24W, her sınıfın tam kapasiteyle aynı çevrimde issue edebildiği teorik üst sınırdır; global issue width, aynı hedefe yazma çakışması ve bağımlılıklar gerçek kabulü azaltabilir. Immediate/unary komutlar daha az okuma kullanır. Tek register'ın çoklu tüketicilere broadcast edilmesi fiziksel read talebini azaltabilir; ancak port/replication tasarımı doğrulanmadan garanti sayılmaz.
+
+| Diğer bank | En yüksek temel talep hesabı | Not |
+|---|---|---|
+| FA | FP64: 12R/6W; FMA: 12R/4W; toplam 24R/10W | FP64 iki kaynak, FMA üç kaynak varsayımı; FP128 pair işlemleri ek kayıt dilimi tüketir |
+| DA | LOAD sonuçları 8W; STORE kaynakları 4R | Transfer/XFER ve geniş erişimler ayrıca sayılmalı |
+| MA | VEC=2 ve ME512=1 execution kaynakları | Tam MA read/write sayısı operand başına MA register sayısı ve 256/512-bit biçime göre hesaplanmalı; kesinleştirilmeden port sayısı yazılmaz |
+
+**Port tasarım ilkesi:** RA/FA/DA/MA için yalnızca tek bir monolitik çok portlu register file varsayılmaz. Bankalama, read replication, operand broadcast/collector, bypass ve sınıf bazlı writeback portları birlikte değerlendirilir. Fiziksel port sayısı, yukarıdaki mantıksal operand talebini karşılayacak şekilde seçilecek; aynı register'a aynı cycle birden fazla write yasak kalacaktır. RA/FA/DA/MA port bütçesi tüm execution birimleri ve XFER/LOAD/STORE tüketicileri dahil edilerek doğrulanacaktır.
 
 ## 2. Register sınıfları
 
@@ -41,7 +66,7 @@ RA/RB/RC/RD aynı RA fiziksel kaydının alt-bit görünümleridir; küçük gö
 
 ### 2.1 Register bank ve operand kuralları
 
-- RA0–RA31: integer/scalar/address operandları; integer ve bitwise komutların varsayılan bankı.
+- RA0–RA31: integer/scalar/address operandları; integer arithmetic, scalar logic ve compare komutlarının varsayılan bankı.
 - FA0–FA31: floating-point operandları; FP32/FP64 tek kayıt, FP128 çift kayıt.
 - DA0–DA31: load/store staging ve açık register-bank transferleri.
 - MA0–MA31: 256-bit vector/matrix operandları; 512-bit ME512 işlemlerinde çift MA kaydı.
@@ -56,21 +81,21 @@ Bu bölümdeki scalar/integer komutlarının kaynak ve hedef operandları RA0–
 | Mnemonic (taslak) | Operand biçimi | İşlev | Unit |
 |---|---|---|---|
 | MOV | dst, src | Register kopyalama | Register path |
-| MOVI | dst, imm | Signed 36-bit immediate veya EXT ile tam 64-bit literal yükleme | ALU / immediate path |
-| ADD | dst, src1, src2 | W genişliğinde modulo toplama | ALU |
-| ADDI | dst, src, imm | Signed 36-bit immediate ile toplama | ALU / immediate path |
-| SUB | dst, src1, src2 | W genişliğinde modulo çıkarma | ALU |
-| SUBI | dst, src, imm | Signed 36-bit immediate çıkarma | ALU / immediate path |
-| MUL | dst, src1, src2 | Integer çarpma | ALU / multiply pipeline |
-| DIV.S / DIV.U | dst, src1, src2 | Signed / unsigned integer bölme | ALU / divide pipeline |
-| MOD.S / MOD.U | dst, src1, src2 | Signed / unsigned kalan | ALU / divide pipeline |
-| NEG | dst, src | İki'nin tümleyeni işaret değiştirme | ALU |
-| INC | dst | +1 | ALU |
-| DEC | dst | -1 | ALU |
-| CMP.EQ / CMP.NE / CMP.LT.S / CMP.LT.U / CMP.LE.S / CMP.LE.U / CMP.GT.S / CMP.GT.U / CMP.GE.S / CMP.GE.U | dst, src1, src2 | Karşılaştırma sonucunu RA hedefinde 0 veya 1 olarak üretir; signed/unsigned ilişkisi mnemonic ile açıkça seçilir | ALU |
-| MIN | dst, src1, src2 | Minimum | ALU |
-| MAX | dst, src1, src2 | Maksimum | ALU |
-| ABS | dst, src | Mutlak değer | ALU |
+| MOVI | dst, imm | Signed 36-bit immediate veya EXT ile tam 64-bit literal yükleme | Logic Unit / immediate path |
+| ADD | dst, src1, src2 | W genişliğinde modulo toplama | Logic Unit |
+| ADDI | dst, src, imm | Signed 36-bit immediate ile toplama | Logic Unit / immediate path |
+| SUB | dst, src1, src2 | W genişliğinde modulo çıkarma | Logic Unit |
+| SUBI | dst, src, imm | Signed 36-bit immediate çıkarma | Logic Unit / immediate path |
+| MUL | dst, src1, src2 | Integer çarpma | Logic Unit / multiply pipeline |
+| DIV.S / DIV.U | dst, src1, src2 | Signed / unsigned integer bölme | Logic Unit / divide pipeline |
+| MOD.S / MOD.U | dst, src1, src2 | Signed / unsigned kalan | Logic Unit / divide pipeline |
+| NEG | dst, src | İki'nin tümleyeni işaret değiştirme | Logic Unit |
+| INC | dst | +1 | Logic Unit |
+| DEC | dst | -1 | Logic Unit |
+| CMP.EQ / CMP.NE / CMP.LT.S / CMP.LT.U / CMP.LE.S / CMP.LE.U / CMP.GT.S / CMP.GT.U / CMP.GE.S / CMP.GE.U | dst, src1, src2 | Karşılaştırma sonucunu RA hedefinde 0 veya 1 olarak üretir; signed/unsigned ilişkisi mnemonic ile açıkça seçilir | Compare Unit |
+| MIN | dst, src1, src2 | Minimum | Logic Unit |
+| MAX | dst, src1, src2 | Maksimum | Logic Unit |
+| ABS | dst, src | Mutlak değer | Logic Unit |
 
 
 **Primary opcode eşlemesi:** Scalar/integer/logic komutlarının numeric opcode'ları `NEXSUS-CPU-INSTRUCTION-ENCODING-001.md` bölüm 8.2'de atanmıştır. ADD/ADDI, SUB/SUBI ve AND/ANDI, OR/ORI, XOR/XORI aynı primary opcode'u R3 ve RI formatlarıyla paylaşır. DIV/MOD/MIN/MAX signedness'i opcode yerine R3 M[0] alanından seçer; CMP koşulu AUX[3:0] alanındadır.
@@ -147,20 +172,20 @@ MOVI64 RA4, 0x123456789ABCDEF0
 
 | Mnemonic | Operand | İşlev | Unit |
 |---|---|---|---|
-| AND / ANDI | dst, a, b veya dst, src, imm | Bitwise AND; ANDI signed 36-bit immediate kullanır | ALU |
-| OR / ORI | dst, a, b veya dst, src, imm | Bitwise OR; ORI signed 36-bit immediate kullanır | ALU |
-| XOR / XORI | dst, a, b veya dst, src, imm | Bitwise XOR; XORI signed 36-bit immediate kullanır | ALU |
-| NOT | dst, src | Bitwise NOT | ALU |
-| SHL | dst, src, count | Logical left shift | ALU |
-| SHR | dst, src, count | Logical right shift | ALU |
-| SAR | dst, src, count | Arithmetic right shift | ALU |
-| ROL | dst, src, count | Rotate left | ALU |
-| ROR | dst, src, count | Rotate right | ALU |
-| BSET | dst, src, bit | Kaynak değerinin seçili bitini 1 yaparak hedefe yazar | ALU |
-| BCLR | dst, src, bit | Kaynak değerinin seçili bitini 0 yaparak hedefe yazar | ALU |
-| BTST | dst, src, bit | Seçili bitin durumunu hedefe 0/1 yazar | ALU |
-| BEXT | dst, src, start, width | Seçilen bit aralığını çıkarır; sonuç zero-extend edilir | ALU |
-| BINS | dst, src, start, width | Kaynağın düşük bitlerini hedefte seçilen aralığa yerleştirir; diğer bitleri korur | ALU |
+| AND / ANDI | dst, a, b veya dst, src, imm | Bitwise AND; ANDI signed 36-bit immediate kullanır | Logic Unit |
+| OR / ORI | dst, a, b veya dst, src, imm | Bitwise OR; ORI signed 36-bit immediate kullanır | Logic Unit |
+| XOR / XORI | dst, a, b veya dst, src, imm | Bitwise XOR; XORI signed 36-bit immediate kullanır | Logic Unit |
+| NOT | dst, src | Bitwise NOT | Logic Unit |
+| SHL | dst, src, count | Logical left shift | Logic Unit |
+| SHR | dst, src, count | Logical right shift | Logic Unit |
+| SAR | dst, src, count | Arithmetic right shift | Logic Unit |
+| ROL | dst, src, count | Rotate left | Logic Unit |
+| ROR | dst, src, count | Rotate right | Logic Unit |
+| BSET | dst, src, bit | Kaynak değerinin seçili bitini 1 yaparak hedefe yazar | Logic Unit |
+| BCLR | dst, src, bit | Kaynak değerinin seçili bitini 0 yaparak hedefe yazar | Logic Unit |
+| BTST | dst, src, bit | Seçili bitin durumunu hedefe 0/1 yazar | Logic Unit |
+| BEXT | dst, src, start, width | Seçilen bit aralığını çıkarır; sonuç zero-extend edilir | Logic Unit |
+| BINS | dst, src, start, width | Kaynağın düşük bitlerini hedefte seçilen aralığa yerleştirir; diğer bitleri korur | Logic Unit |
 
 **Primary opcode eşlemesi:** AND/OR/XOR ve immediate alias'ları 0x1D–0x1F; NOT, shift/rotate ve BSET/BCLR/BTST/BEXT/BINS komutları 0x30–0x3A aralığındadır. Numeric atamalar ve alan kısıtları Instruction Encoding belgesi bölüm 8.2'de tanımlıdır.
 
@@ -205,7 +230,7 @@ LOAD ve STORE veri belleği ile DA bankı arasında çalışır. Bellek domain'i
 | FETCH_ADD / FETCH_SUB | DAold, [addr], DAoperand | Atomic toplama/çıkarma; eski değeri döndürür | Atomic RMW |
 | FETCH_AND / FETCH_OR / FETCH_XOR | DAold, [addr], DAoperand | Atomic bitwise güncelleme; eski değeri döndürür | Atomic RMW |
 | LOAD/STORE.POSTINC / PREINC / POSTDEC / PREDEC | DA, [base+offset] | Bellek erişimiyle birlikte RA taban register'ını W/8 kadar otomatik güncelleme | Load/store |
-| LEA | RA, [base+offset] | Adres hesaplama | ALU |
+| LEA | RA, [base+offset] | Adres hesaplama | Logic Unit |
 | MOV.RA.DA | RA, DA | DA'dan integer/scalar registera açık 64-bit bit aktarımı | Register path |
 | MOV.RA.DA.SX / MOV.RA.DA.ZX | RA, DA, W=8/16/32 | DA düşük W bitini RA'nın tam 64-bit değerine signed / zero-extend ederek aktarır | Register path |
 | MOV.DA.RA | DA, RA | RA'dan DA staging'e 64-bit aktarım | Register path |
@@ -939,7 +964,7 @@ Bu örnek, producer ile transferi başlatan çekirdek arasındaki L3 synchroniza
 
 ## 11. Instruction dispatch ve paralellik
 
-- Integer/logic komutları ALU0/ALU1 (ve konfigürasyonda ALU2) üzerinde yürütülür.
+- Integer/logic komutları Logic Unit0/ALU1 (ve konfigürasyonda Logic Unit2) üzerinde yürütülür.
 - FP32/FP64 komutları altı FP64 lane üzerinde; FMA komutları ayrı dört dedicated FMA birimi üzerinde yürütülür.
 - Vector/matrix komutları ME512'ye yönlendirilir.
 - LOAD/STORE ve SPM komutları ilgili memory/register path'ine gider.
@@ -973,7 +998,7 @@ R4 alan yerleşimi ve FMT kodu `NEXSUS-CPU-INSTRUCTION-ENCODING-001.md` belgesin
 1. Numeric opcode atamaları ve instruction bit layout'unun dondurulması.
 2. R4 dışındaki özel/karma operandların (özellikle FCONV, bit-field ve system komutları) kesin encoding'i.
 3. Flag register mı predicate register mı kullanılacağı.
-4. Integer MUL/DIV'nin ALU içi veya ayrı pipeline olması.
+4. Integer MUL/DIV'nin Logic Unit içi veya ayrı pipeline olması.
 5. FP rounding mode, exception ve NaN davranışları.
 6. 512-bit ME operand eşleme (2×MA / paired register / özel format).
 7. Matrix shape, tile ve accumulation precision.
@@ -1023,7 +1048,7 @@ Bu örnek sadece 512-bit operand/result register eşlemesini gösterir; matris s
 - Her çekirdekte bir ME512 bulunur; aynı anda bir ME512 komutu yürütür (ilk mikro-mimari hedef).
 - Komut issue edildiğinde kaynak ve hedef MA pair'leri operand/result boyunca kilitlenir.
 - Aynı pair'e scalar/vector write yapılması hazard çözülene kadar bekletilir.
-- ME512 ile ALU/FPU komutları bağımsız register ve kaynaklar kullanıyorsa paralel ilerleyebilir.
+- ME512 ile Logic Unit/FPU komutları bağımsız register ve kaynaklar kullanıyorsa paralel ilerleyebilir.
 - ME512'nin iç tile/accumulator kapasitesi 512-bit dış operand yolundan ayrı bir mikro-mimari konudur.
 
 ## 15. Register bank portları ve paralel issue
@@ -1032,20 +1057,20 @@ Bu örnek sadece 512-bit operand/result register eşlemesini gösterir; matris s
 
 | Register bank | Read port hedefi | Write port hedefi | Açıklama |
 |---|---:|---:|---|
-| RA (32 × 64-bit) | 4 × 64-bit | 2 × 64-bit | Integer ALU operandları ve scalar/adres state |
+| RA (32 × 64-bit) | 4 × 64-bit | 2 × 64-bit | Integer Logic Unit operandları ve scalar/adres state |
 | FA (32 × 64-bit) | 4 × 64-bit (eski geçici hedef) | 2 × 64-bit (eski geçici hedef) | 6 FP + 4 FMA eşzamanlı beslemesi için doğrulanmamıştır |
 | DA (32 × 64-bit) | 4 × 64-bit | 2 × 64-bit | Load/store ve açık data staging |
 | MA (32 × 256-bit) | 4 × 256-bit | 2 × 256-bit | ME512 pair ve vector data |
 | SPM0 | 2 × 64-bit | 1 × 64-bit | 64-bit temel kayıt erişimi; 8–512-bit geniş erişimler çok kayıtlı olabilir |
 | SPM1–SPM7 | 2 variable-width | 1 variable-width | 8–512-bit byte/field access; bank implementation TBD |
 
-RA ve FA ayrı fiziksel banklardır; FP64 ve FMA operandları FA'dan, ALU operandları RA'dan beslenir. FA için tabloda yazan 4 read / 2 write port değeri eski başlangıç hedefidir; altı FP64 lane ile dört dedicated FMA biriminin birlikte beslenmesi için yeterli kabul edilmez. FA portlarının artırılması, banklara bölünmesi veya çoğaltılması henüz kararlaştırılmamıştır. Scheduler operand sayısı, pair erişimi, bypass ve hedef çakışmalarına göre komut seçer.
+RA ve FA ayrı fiziksel banklardır; FP64 ve FMA operandları FA'dan, Logic Unit operandları RA'dan beslenir. FA için tabloda yazan 4 read / 2 write port değeri eski başlangıç hedefidir; altı FP64 lane ile dört dedicated FMA biriminin birlikte beslenmesi için yeterli kabul edilmez. FA portlarının artırılması, banklara bölünmesi veya çoğaltılması henüz kararlaştırılmamıştır. Scheduler operand sayısı, pair erişimi, bypass ve hedef çakışmalarına göre komut seçer.
 
 MA'nın 4 read portu, 512-bit pair okumasında iki 256-bit register dilimini birlikte besleme hedefidir. Pair için 2 read port tüketimi varsayılır; iki pair operandı aynı anda okunduğunda 4 port kullanılır. ME512 sonucu pair'e yazarken iki 256-bit write portu tüketir.
 
 ## 16. İlk issue modeli (taslak)
 
-- **Integer issue:** 2 komut/çevrim temel (ALU0 + ALU1); 3-ALU çekirdekte 3 komut/çevrim üst hedef.
+- **Integer issue:** 2 komut/çevrim temel (ALU0 + Logic Unit1); 3-ALU çekirdekte 3 komut/çevrim üst hedef.
 - **FP/FMA issue:** 6 FP64 lane ve 4 dedicated FMA birimi ayrı kaynak havuzlarıdır. Her havuzun kabul kapasitesi kendi lane/unit sayısıyla sınırlıdır; gerçekleşen issue global issue genişliği ve FA port/operand kısıtlarıyla belirlenir. 6+4 işlemin her çevrim garanti edildiği anlamına gelmez.
 - **Matrix issue:** 1 ME512 komut/çevrim; latency çok çevrimli olabilir, pipeline throughput ayrıca belirlenir.
 - **Mixed issue:** Integer, FP64, FMA ve Matrix komutları birbirinden bağımsızsa aynı çevrimde issue edilebilir; global issue genişliği, register portları ve diğer ortak kaynaklar toplam sayıyı sınırlar.
@@ -1117,7 +1142,7 @@ Bu örnekler little-endian memory byte sıralamasını değil, register bit dili
 - Aynı RA hücresinin birden fazla komutta okunması, fiziksel read-port implementasyonu destekliyorsa broadcast/reuse ile tek porttan karşılanabilir; bu optimizasyon garanti değildir.
 - Scalar destination write, RA bankında bir write slotu tüketir. RB/RC/RD write da aynı slotu tüketir ve maskeli güncelleme gerektirir.
 - Aynı cycle içinde aynı RA hücresine iki destination yazılamaz.
-- 6 read / 3 write ilk port hedefi sabit issue genişliği garantisi değildir. Scheduler; ALU/FPU komutlarını port sayısı, operand reuse, immediate, bypass ve hedef register çakışmasına göre seçer.
+- 6 read / 3 write ilk port hedefi sabit issue genişliği garantisi değildir. Scheduler; Logic Unit/FPU komutlarını port sayısı, operand reuse, immediate, bypass ve hedef register çakışmasına göre seçer.
 - Register bank replication, operand queue veya ek portlar ileride throughput artırımı için değerlendirilebilir; ISA'nın görünür RA semantiğini değiştirmez.
 
 
@@ -1144,7 +1169,7 @@ SPM0 ve SPM1–SPM7, RA/DA/MA register banklarından ayrı erişim kaynaklarıd�
 
 ### Scheduler kuralları
 
-1. SPM read/write port sayısı ve bank conflict, SPM komutlarını sınırlayabilir; ALU/FPU issue'dan bağımsız değildir.
+1. SPM read/write port sayısı ve bank conflict, SPM komutlarını sınırlayabilir; Logic Unit/FPU issue'dan bağımsız değildir.
 2. SPM read sonucunun aynı cycle'da kullanılması, doğrudan combinational path garantisi değildir; latency/load-use kuralı mikro-mimariyle belirlenecektir.
 3. SPM COPY/field işlemleri çok cycle veya transfer engine üzerinden yürüyebilir; tek cycle varsayılmaz.
 4. SPM0/SPM1–SPM7 bank sayısı ve interleave/hash adresleme henüz kesin değildir. Mantıksal kayıt/byte adresleri fiziksel bank sayısıyla aynı kavram kabul edilmez.
@@ -1297,7 +1322,7 @@ Bu değerler ilk mimari hedeflerdir; nihai silikon kapasitesi değildir. Her bas
 - Bu işlem çekirdekler arası zero-copy zone paylaşımından farklıdır: aynı zone adresini paylaşmak kopya gerektirmez; farklı Lx domain'ine taşımak ise gerçek bir CPU kontrollü veri aktarımıdır.
 - `XFER`, CPU'nun başlattığı çok çevrimli bir aktarım işlemidir. Aktarım donanımın seçtiği sınırlı beat'ler halinde ilerler; tek çevrimde tüm aralığın taşınması gerekmez. ISA sabit küçük bir maksimum uzunluk koymaz; LRA unsigned 64-bit byte uzunluğudur ve geçerli domain/aralık sınırlarıyla kısıtlanır.
 - CPU, aktarım beat'lerini kaynak domain'den okuyup hedef domain'e yazar. Ayrı ve bağımsız bir DMA motoru varsayılmaz.
-- Aktarım devam ederken kaynakları çakışmayan ALU/FPU/ME işlemleri yürütülebilir. Bellek portu, register veya bağımlılık çakışması varsa ilgili işlem bekler.
+- Aktarım devam ederken kaynakları çakışmayan Logic Unit/FPU/ME işlemleri yürütülebilir. Bellek portu, register veya bağımlılık çakışması varsa ilgili işlem bekler.
 - Büyük/asenkron aktarım için `XFER.START` bir token üretir; `XFER.WAIT token` ilgili aktarım tamamlanana kadar bekler. Bağımlı kod, aktarım tamamlanmadan hedef veriyi kullanmamalıdır.
 
 Örnek taslak:
