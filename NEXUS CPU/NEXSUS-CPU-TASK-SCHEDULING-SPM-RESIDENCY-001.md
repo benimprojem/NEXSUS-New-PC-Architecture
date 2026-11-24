@@ -155,14 +155,14 @@ The following remain OS/simulator policy or implementation choices rather than a
 - resident-slot replacement heuristic;
 - task ID/generation width;
 - task control block binary layout;
-- whether WS save/restore uses full-image copy or proven dirty-range optimization;
+- whether WS protection-domain clearing uses a dedicated clear path or controlled bank writes; explicit persistence remains an application/OS operation.
 - exact migration acceptance handshake and timeout recovery;
 - treatment of non-migratable device/core-local handles.
 
 
 ## 13. workspace access-control reference
 
-The scheduler must enforce the privilege and ownership boundaries in `NEXSUS-CPU-workspace-ACCESS-PROTECTION-001.md`. In particular, it must not expose CP0–CP3 context slots to PL0, must grant WS only to the authorized PL0 application execution epoch, and must not repurpose XW for scheduling or ordinary OS work. WS ownership and the incoming task's memory permissions must be valid before returning to PL0.
+The scheduler must enforce the privilege and access-epoch boundaries in `NEXSUS-CPU-SPM-ACCESS-PROTECTION-001.md`. In particular, it must not expose CP0–CP3 context slots to PL0, must grant WS only during an authorized PL0 application execution epoch, and must not repurpose XW for scheduling or ordinary OS work. WS must be cleared/initialized or explicitly restored before granting the new application access.
 
 
 ## 14. Memory protection reference
@@ -188,7 +188,7 @@ A task is switch-eligible only if its state can be preserved at a safe architect
 
 ### 15.2 Context pool capacity (preserved baseline)
 
-The existing fast resident context capacity remains **16 slots per core × 2 KiB each = 32 KiB total**. These are the CP0–CP3 resident task-context slots, four slots per workspace. WS remains the 8 KiB user workspace and is not part of this context pool. P0–P7 are App/code pages and must not be confused with task-context slots.
+The existing fast resident context capacity remains **16 slots per core × 2 KiB each = 32 KiB total**. These are the CP0–CP3 resident task-context slots, four slots per context bank. WS remains a separate 8 KiB general-purpose application workspace; it is not task context and is not part of this pool. P0–P7 are App/code pages and must not be confused with task-context slots.
 
 This capacity permits quick context selection among resident tasks; it does not mean 16 tasks execute simultaneously or that task count is limited to 16. Nonresident task contexts remain in protected Data RAM under the established residency policy.
 
@@ -197,8 +197,8 @@ This capacity permits quick context selection among resident tasks; it does not 
 1. Detect a modeled stall and identify its cause and expected wake condition.
 2. Evaluate the stall against switch-cost/benefit criteria.
 3. Select a compatible READY task whose dependencies and required resources are currently satisfied.
-4. Preserve the outgoing task's architectural context and live WS image according to the existing context-save ABI and ownership rules.
-5. Restore the candidate context and its WS image; refill P0 from the candidate's App RAM code at the saved PC.
+4. Preserve the outgoing task's architectural context. WS is not task state; if its contents must survive, explicitly export them to protected Data RAM, otherwise clear/reinitialize WS before another protection domain receives access.
+5. Restore the candidate architectural context and establish its WS access epoch only after WS is cleared/initialized or explicitly restored through Data RAM LOAD→DA→WSTORE; refill the candidate's code from App RAM at the saved PC.
 6. Resume the candidate only when its required state, permissions, mappings, and instruction availability are valid.
 7. Keep the waiting task associated with its wake condition; when that condition completes, make it READY using the established wake-up protocol.
 
@@ -245,7 +245,7 @@ These layers should exchange metadata and scheduling outcomes, but task switchin
 | Repeated stall/switch pattern | No scheduler thrashing; fairness maintained |
 | Task wake during switch | No lost wake-up; generation/sequence validation succeeds |
 | Context save incomplete | Slot is not released/reused; candidate cannot resume prematurely |
-| Live WS | Save before reassignment and restore before user execution |
+| WS access epoch | Revoke and clear/reinitialize before a new protection domain receives access; explicit persistence is optional |
 | Task-aware AppRAM page metadata | Task/PC/code-domain information is validated; incorrect metadata cannot dispatch code |
 | P0 refill overlap | Context restore and P0 refill may overlap only when independent; resume waits for both required dependencies |
 | TLP + ILP combined workload | Task switching and cross-bank grouping preserve correctness and resource limits |
