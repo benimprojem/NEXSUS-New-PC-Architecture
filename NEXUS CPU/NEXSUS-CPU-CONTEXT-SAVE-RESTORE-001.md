@@ -122,7 +122,7 @@ TW is a general-purpose task-local working file. A program may use it as stack-l
 - WLOAD.OW and WSTORE.OW are available only to authorized PL1/PL2 OS code.
 - Register-bank save/restore uses explicit MOV.DA.RA / MOV.RA.DA, MOV.DA.FA / MOV.FA.DA, and MOV.DA.MA / MOV.MA.DA operations with WSTORE/WLOAD. MOV and WLOAD/WSTORE DA operands consume the shared RAC 32R+32W register-access budget; wide DA groups reserve all touched entries atomically.
 - DA staging clobbers must be included in the save plan. If DA values are live, preserve them before using DA as staging and restore them last.
-- XFER.WS.MEM copies a selected OW/TW byte range directly to or from an L1–L4 Data RAM domain. A full 8 KiB TW image can be persisted or restored in one transfer.
+- XFER.WS.MEM exports a selected OW/TW byte range only to an L1–L4 Data RAM domain. A full 8 KiB TW image can be persisted in one transfer. Restore is CPU-mediated: privileged code LOADs Data RAM into DA staging and WSTOREs into the local TW; no Data RAM/Fabric/DMA agent writes TW directly.
 - XFER.WS.START uses the existing asynchronous token model; XFER.WAIT is the completion boundary.
 - A workspace transfer does not implicitly transfer task ownership or grant access to another task/core.
 
@@ -145,7 +145,7 @@ A complete register payload is 1,792 bytes. The remaining space in a 2 KiB slot 
 3. If the outgoing TW image is live, use XFER.WS.MEM or XFER.WS.START/XFER.WAIT to persist its complete 8 KiB image to the task's protected Data RAM backing.
 4. Validate the incoming task's identity, generation, memory permissions, shared grants, context image, and TW backing.
 5. Restore incoming register state from CP or Data RAM.
-6. Restore the incoming task's TW image into the local TW using the reverse workspace transfer.
+6. Restore the incoming task's TW image into the local TW using privileged CPU LOAD→DA→WSTORE operations, with bounds and ownership checks.
 7. Establish the incoming task as the TW owner and activate its memory permission state.
 8. Refill instruction code through the App RAM → C0 → CS0–CS7 → CST → EB path.
 9. Resume PL0 only after register state, TW contents, and ownership/permission state are valid.
@@ -211,7 +211,7 @@ If the compiler cannot prove a register untouched, it must preserve it. Correctn
 - KESP and persistent exception/task frames in protected Data RAM.
 - OW and TW each 8 KiB, directly byte-addressable.
 - WLOAD/WSTORE for DA-staged workspace access.
-- XFER.WS.MEM / XFER.WS.START for workspace↔Data RAM block transfer.
+- XFER.WS.MEM / XFER.WS.START for one-way workspace→Data RAM persistence; reverse restore is CPU-mediated.
 - CP0–CP3 as OS-protected resident context pool.
 
 **Open**
