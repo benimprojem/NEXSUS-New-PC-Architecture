@@ -92,7 +92,8 @@ FMT alanı için ilk öneri:
 | 1011 | MEMXUPD | Indexed load/store with base-register pre/post increment/decrement |
 | 1100 | ATOM | Atomic scalar memory operations (load/store/CAS/RMW) |
 | 1101 | MEMXFER | L1–L4 domain'leri arası CPU kontrollü transfer |
-| 1110–1111 | Reserved | Gelecek formatlar |
+| 1110 | WSMEM | OW/TW byte-addressed workspace LOAD/STORE |
+| 1111 | Reserved | Gelecek formatlar |
 
 FMT kodları taslak değerlerdir; opcode tablosu dondurulurken sabitlenecektir.
 
@@ -255,6 +256,44 @@ DA kayıtları 64-bit olduğundan erişim genişliğine göre gereken kayıt say
 - Erişim izni yoksa `MEMORY_PERMISSION_FAULT`; eşleme/erişim hedefi mevcut değilse `MEMORY_ACCESS_FAULT` oluşur. Hata, komutu başlatan çekirdeğe senkron olarak raporlanır.
 - LOAD fault durumunda hedef DA kayıtlarının hiçbiri mimari olarak güncellenmez. STORE için tüm aralık, izin ve sınır kontrolleri yazma commit'inden önce tamamlanır; bu kontrollerden biri başarısızsa hiçbir byte yazılmaz.
 - Başarılı 128/256/512-bit LOAD/STORE tek bir mimari komuttur; mikro-mimari bunu birden fazla beat'e bölebilir. Bu, başka çekirdeklerin aynı aralığa eşzamanlı erişimine karşı kendiliğinden atomicity garantisi vermez. Gerekli eşzamanlama/atomic davranış ayrı komutlarla sağlanır.
+
+### 4.6A WSMEM — OW/TW doğrudan workspace erişimi
+
+WSMEM, OW/TW içindeki byte-addressed alanlara DA staging bankı üzerinden erişir. WSMEM, Data RAM MEM formatından ayrıdır; AM alanı L1–L4 domain'lerini değil workspace seçimini ve adresleme modunu belirler.
+
+```text
+63       56 55    52 51   47 46   42 41  39 38  36 35             4 3   0
++----------+--------+-------+-------+------+-------+---------------+-----+
+| OP (8)   |FMT (4) | D (5) | BASE(5)| W(3) | WSAM(3)| DISP (32)    | R(4)|
++----------+--------+-------+-------+------+-------+---------------+-----+
+```
+
+- FMT=1110 (WSMEM).
+- D: DA destination selector for WLOAD; DA source selector for WSTORE.
+- BASE: RA base selector. BASE=0 is required for absolute-offset mode.
+- W: same width codes as MEM (8/16/32/64/128/256/512 bits).
+- WSAM[2:1]: 00=OW, 01=TW; 10/11 are reserved.
+- WSAM[0]: 0=RA[BASE]+signed DISP32; 1=absolute workspace offset DISP32. Absolute mode requires BASE=0 and DISP32 in 0–8191.
+- DISP is a signed byte displacement in base-relative mode. The computed effective offset and complete W/8-byte range must fit in 0–8191; arithmetic does not wrap.
+- R[3:0] must be zero.
+- Access must be naturally aligned to W/8 bytes. DA selector range follows MEM: W128/256/512 uses 2/4/8 consecutive DA registers and may not exceed DA31.
+- WLOAD writes the selected data into DA only after all checks pass. For W<64, unused upper bits of the destination DA register are zeroed. WSTORE changes only the selected W bits.
+- A faulting WLOAD leaves all destination DA entries unchanged. A validation-faulting WSTORE changes no workspace byte.
+- Workspace selector is not an access grant. PL0 may select TW only when it owns the active task; OW is PL1/PL2 only. The access-control policy remains authoritative.
+
+| OP | Mnemonic | Format | İşlev |
+|---:|---|---|---|
+| 0x89 | WLOAD | WSMEM | OW/TW → DA |
+| 0x8A | WSTORE | WSMEM | DA → OW/TW |
+
+Assembly examples:
+
+```asm
+WLOAD.TW.W64  DA0, [0x120]
+WSTORE.TW.W64 [0x120], DA0
+WLOAD.TW.W128 DA4:DA5, [RA3 + 0x20]
+WSTORE.OW.W256 [RA7 + 0x100], DA8:DA11
+```
 
 ### 4.7 MEMX — İndeksli bellek erişimi
 
@@ -708,7 +747,7 @@ Bu eşleme, FENCE SCOPE alanındaki L1–L4 sıralamasının iki bitlik karşıl
 | 0x87 | XFER.START | Asynchronous transfer başlatır; token üretir | DD, DRA, SD, SRA, LRA, TRA | RESERVED |
 | 0x88 | XFER.WAIT | Daha önce üretilmiş token'ın tamamlanmasını bekler | TRA | DD, DRA, SD, SRA, LRA, RESERVED |
 
-- Üç opcode da FMT=1101 (MEMXFER) kullanır. FMT uyumsuzluğu veya zorunlu sıfır alanlarının sıfır olmaması illegal encoding'dir.
+- XFER.MEM, XFER.START, XFER.WAIT, XFER.WS.MEM ve XFER.WS.START FMT=1101 (MEMXFER) kullanır. FMT uyumsuzluğu veya zorunlu alanların geçersiz olması illegal encoding'dir.
 - DRA ve SRA, byte adresi tutan 64-bit RA kayıtlarını seçer. LRA, unsigned byte uzunluğunu tutan 64-bit RA kaydını seçer.
 - XFER.START, başlatılan aktarımın çekirdek-yerel, opak 64-bit token değerini TRA'nın seçtiği RA'ya yazar. XFER.WAIT aynı selector alanıyla token değerini okur. Token başka çekirdekte kullanılamaz. Token'ın iç gösterimi implementation-defined'dır; slot yeniden kullanıldığında generation/sequence koruması eski token kopyalarının yeni bir aktarımı yanlışlıkla tanımasını engellemelidir.
 - **Sıfır uzunluk:** LRA'nın gösterdiği uzunluk 0 ise XFER.MEM bellek erişimi yapmadan başarılı no-op olarak tamamlanır. XFER.START da bellek erişimi başlatmadan tamamlanmış bir token üretir; takip eden XFER.WAIT hemen tamamlanır. Bu durumda adres aralıklarına yönelik bellek erişim/permission kontrolleri yapılmaz; komut biçimi, domain selector ve RA selector geçerliliği yine denetlenir.
@@ -717,8 +756,23 @@ Bu eşleme, FENCE SCOPE alanındaki L1–L4 sıralamasının iki bitlik karşıl
 - XFER.MEM tamamlanana kadar komut akışını bekletir; hem başlangıç doğrulama fault'u hem de aktarım sırasında oluşan runtime fault doğrudan XFER.MEM komutunda raporlanır. XFER.START kabul edildiğinde komut akışına devam eder; hedef veri ancak ilgili XFER.WAIT başarılı olduktan sonra tüketilebilir. START'ın başlangıç doğrulaması başarısızsa token üretilmez ve TRA değiştirilmez.
 - **Asenkron hata:** Transferin runtime aşamasında hata ile tamamlanması halinde XFER.WAIT ilgili transfer fault'unu senkron olarak üretir. Hatalı transfer token'ı donanım tarafından terminal olarak tüketilir; faulting WAIT'ın RA yazımı precise-exception kuralı gereği commit edilmez, dolayısıyla TRA eski token değerini korur. Exception handler bu stale değeri normal RA işlemleriyle temizlemeli/üzerine yazmalıdır; aynı token artık geçerli değildir. Hatalı hedef aralık geçerli veri sayılmaz.
 - OP zaten synchronous/start/wait ayrımını yaptığı için payload içinde ikinci bir MODE alanı yoktur.
-- RESERVED alanı ileride genişletme için korunur; v1 decoder bu bitlerden herhangi biri 1 ise komutu reddeder.
+- XFER.MEM / XFER.START / XFER.WAIT için RESERVED[27:0] sıfır olmalıdır. XFER.WS.MEM / XFER.WS.START için RESERVED[27]=DST_WS, [26]=SRC_WS, [25]=WS_ID (0=OW, 1=TW), [24:0]=0 kullanılır. DST_WS ve SRC_WS tam olarak birer biti 1 olmalıdır; ikisi birden 1 veya ikisi de 0 ise illegal encoding'dir. Workspace endpoint'in DD/SD domain alanı 00 olmalıdır; diğer endpoint'in domain alanı L1–L4 kodunu taşır. DRA/SRA, workspace endpoint için workspace byte offset'ini; diğer uç için Data RAM byte adresini gösteren RA selector'ıdır. XFER.WS.MEM için TRA=0; XFER.WS.START için TRA token hedefidir. XFER.WAIT, her iki transfer türünün token'ını tüketebilir.
 - MEMXFER'ın **mimari davranış sözleşmesi bu sürüm için tanımlanmıştır**. Alan bitleri ve opcode atamaları, bütün ISA opcode/format tablosunun son çakışma ve reserved-alan denetimi tamamlanana kadar aday statüsündedir; bu durum aşağıdaki davranış kararlarının açık kaldığı anlamına gelmez. MEMXFER uzunluğu unsigned 64-bit byte sayısıdır; ISA küçük ve sabit bir maksimum tanımlamaz, büyük istekler donanım içinde çoklu beat'lere bölünebilir. Token kapasitesi sonlu ve implementation-defined'dır; platform/OS capability bilgisiyle bildirilir. Token kaydı yoksa START, MEMORY_ACCESS_FAULT / TRANSFER_RESOURCE_UNAVAILABLE ile aktarımı kabul etmeden ve TRA'yı değiştirmeden fault verir; bu kaynak hatasında START bekletilmez. Transfer tamamlandığında aktif transaction/beat kaynakları serbest bırakılabilir, fakat token kaydı WAIT token'ı tüketene kadar tutulur. Runtime fault'ta fiziksel kısmi yazma geri alınmak zorunda değildir; hedef aralığın tamamı mantıksal olarak invalid/unpublished kalır ve tüm aralık başarıyla yeniden yazılmadan yayımlanamaz.
+
+### 4.15.1 Workspace endpoint extension
+
+XFER.WS.MEM (OP=0x8B) and XFER.WS.START (OP=0x8C) reuse the MEMXFER payload and token lifecycle. Their endpoint flags occupy the former RESERVED field:
+
+| Field | Bits | Meaning |
+|---|---:|---|
+| DST_WS | [27] | Destination endpoint is a workspace |
+| SRC_WS | [26] | Source endpoint is a workspace |
+| WS_ID | [25] | 0=OW, 1=TW; applies to the endpoint selected by DST_WS/SRC_WS |
+| RESERVED | [24:0] | Must be zero |
+
+Exactly one of DST_WS and SRC_WS must be set. If DST_WS=1, DD must be 00 and DRA selects the workspace byte offset; SD selects the L1–L4 source domain and SRA its Data RAM byte address. If SRC_WS=1, SD must be 00 and SRA selects the workspace byte offset; DD selects the L1–L4 destination domain and DRA its Data RAM byte address. LRA contains the unsigned byte length. XFER.WS.MEM requires TRA=0; XFER.WS.START writes its token to TRA. XFER.WAIT (0x88) consumes either MEMXFER token type.
+
+Workspace offsets and complete ranges must fit in 0–8191. Block transfer is byte-granular and does not require natural alignment. The source workspace range is read-reserved and cannot be modified during transfer. A destination workspace range is write-reserved and cannot be accessed by CPU until completion. Data RAM destination reservation and unpublished-range behavior follow the existing MEMXFER rules. A full 8 KiB workspace can be copied in one request. RAC register access slots and DA staging entries are not consumed by this block path.
 
 **Completion, visibility ve ordering**
 - XFER.MEM başarıyla döndüğünde hedef aralığın tamamı hedef domain'in NDC kuralları içinde kullanılabilir olur; komut issuing core için hedef domain'e acquire-completion etkisi sağlar.
@@ -988,7 +1042,7 @@ OP alanı 8-bit olduğundan 256 primary opcode değeri sunar. İlk aşamada opco
 | 0x40–0x4F | Load/store / atomic memory | 0x40–0x4F atandı; 0x84 atomic XOR tamamlayıcısı |
 | 0x50–0x5F | Floating point / conversion | 0x50–0x5B atandı; 0x5C–0x5F ayrıldı |
 | 0x60–0x83 | Vector / Matrix / ME512 | Alt aile aralığı ayrıldı; aşağıda 0x60–0x82 atandı |
-| 0x84–0x93 | Atomic extension / register and memory transfer | 0x84 ATOM.FETCH_XOR; 0x85 XFER; 0x86–0x88 MEMXFER; 0x89–0x93 reserved |
+| 0x84–0x93 | Atomic extension / register and memory transfer | 0x84 ATOM.FETCH_XOR; 0x85 XFER; 0x86–0x88 MEMXFER; 0x89–0x8A WSMEM; 0x8B–0x8C workspace MEMXFER; 0x8D–0x93 reserved |
 | 0x94–0xA3 | System / IRQ / synchronization | 0x94–0x9B atandı; 0x9C–0xA3 reserved |
 | 0xA4–0xC3 | System / synchronization | Aile aralığı ayrıldı; bireysel atamalar açık |
 | 0xC4–0xEF | Reserved / future extensions | Ayrılmış |
@@ -1192,6 +1246,8 @@ Bellek komutları tek bir opcode'a sıkıştırılmayacaktır: normal LOAD/STORE
 | 0x86 | XFER.MEM | MEMXFER | Synchronous Lx-domain transfer |
 | 0x87 | XFER.START | MEMXFER | Asynchronous transfer start/token |
 | 0x88 | XFER.WAIT | MEMXFER | Transfer token completion wait |
+| 0x8B | XFER.WS.MEM | MEMXFER | Synchronous OW/TW ↔ L1–L4 Data RAM block transfer |
+| 0x8C | XFER.WS.START | MEMXFER | Asynchronous OW/TW ↔ L1–L4 Data RAM block transfer start |
 
 **Opcode/format doğrulamaları**
 - LOAD/STORE opcode'ları yalnızca MEM; LOADX/STOREX yalnızca MEMX; LOADUPD/STOREUPD yalnızca MEMUPD; LOADXUPD/STOREXUPD yalnızca MEMXUPD kullanır.
@@ -1208,7 +1264,7 @@ Bellek komutları tek bir opcode'a sıkıştırılmayacaktır: normal LOAD/STORE
 
 - XFER M alanı BIT_COPY, SIGN_EXTEND ve ZERO_EXTEND alt türlerini seçer; ayrıntılar §4.11'de tanımlıdır.
 - FCONV, sayısal dönüşüm için 0x5B primary opcode'sunu ve XFER alan yerleşimini kullanır; XFER ile aynı opcode değildir.
-- 0x86–0x88, register-bank XFER uzantısı değildir; MEMXFER formatındaki L1–L4 bellek-domain transfer komutlarıdır. 0x89–0x93 register-transfer genişletmeleri için reserved'dır.
+- 0x86–0x88, L1–L4 Data RAM domain'leri arasındaki MEMXFER işlemleridir. 0x89–0x8A, WSMEM workspace erişimidir; 0x8B–0x8C, workspace↔Data RAM MEMXFER işlemleridir. 0x8D–0x93 ilerideki transfer uzantıları için reserved'dır.
 
 ### 8.4 Floating-point primary opcode atamaları
 
