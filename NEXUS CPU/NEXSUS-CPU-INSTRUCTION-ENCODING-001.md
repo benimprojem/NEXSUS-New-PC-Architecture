@@ -761,18 +761,18 @@ Bu eşleme, FENCE SCOPE alanındaki L1–L4 sıralamasının iki bitlik karşıl
 
 ### 4.15.1 Workspace endpoint extension
 
-XFER.WS.MEM (OP=0x8B) and XFER.WS.START (OP=0x8C) reuse the MEMXFER payload and token lifecycle. Their endpoint flags occupy the former RESERVED field:
+XFER.WS.MEM (OP=0x8B) and XFER.WS.START (OP=0x8C) reuse the MEMXFER payload and token lifecycle, but only for workspace→Data RAM export. Their source flag occupies the former RESERVED field:
 
 | Field | Bits | Meaning |
 |---|---:|---|
-| DST_WS | [27] | Destination endpoint is a workspace |
-| SRC_WS | [26] | Source endpoint is a workspace |
-| WS_ID | [25] | 0=OW, 1=TW; applies to the endpoint selected by DST_WS/SRC_WS |
+| DST_WS | [27] | Must be 0; workspace destination is forbidden |
+| SRC_WS | [26] | Must be 1; source endpoint is OW/TW |
+| WS_ID | [25] | 0=OW, 1=TW |
 | RESERVED | [24:0] | Must be zero |
 
-Exactly one of DST_WS and SRC_WS must be set. If DST_WS=1, DD must be 00 and DRA selects the workspace byte offset; SD selects the L1–L4 source domain and SRA its Data RAM byte address. If SRC_WS=1, SD must be 00 and SRA selects the workspace byte offset; DD selects the L1–L4 destination domain and DRA its Data RAM byte address. LRA contains the unsigned byte length. XFER.WS.MEM requires TRA=0; XFER.WS.START writes its token to TRA. XFER.WAIT (0x88) consumes either MEMXFER token type.
+DST_WS=0 and SRC_WS=1 are mandatory. SD must be 00 and SRA selects the OW/TW source byte offset; DD selects the L1–L4 Data RAM destination domain and DRA its Data RAM byte address. LRA contains the unsigned byte length. Any DST_WS=1 or SRC_WS=0 encoding is illegal and must not start a transfer. XFER.WS.MEM requires TRA=0; XFER.WS.START writes its token to TRA. XFER.WAIT (0x88) consumes either MEMXFER token type.
 
-Workspace offsets and complete ranges must fit in 0–8191. Block transfer is byte-granular and does not require natural alignment. The source workspace range is read-reserved and cannot be modified during transfer. A destination workspace range is write-reserved and cannot be accessed by CPU until completion. Data RAM destination reservation and unpublished-range behavior follow the existing MEMXFER rules. A full 8 KiB workspace can be copied in one request. RAC register access slots and DA staging entries are not consumed by this block path.
+Workspace offsets and complete ranges must fit in 0–8191. Block transfer is byte-granular and does not require natural alignment. The source workspace range is read-reserved and cannot be modified during transfer. Workspace is never a destination. Data RAM destination reservation and unpublished-range behavior follow the existing MEMXFER rules. Data RAM→workspace and App RAM→workspace transfer requests are not representable as valid workspace MEMXFER instructions. A full 8 KiB workspace can be copied in one request. RAC register access slots and DA staging entries are not consumed by this block path.
 
 **Completion, visibility ve ordering**
 - XFER.MEM başarıyla döndüğünde hedef aralığın tamamı hedef domain'in NDC kuralları içinde kullanılabilir olur; komut issuing core için hedef domain'e acquire-completion etkisi sağlar.
@@ -1248,8 +1248,8 @@ Bellek komutları tek bir opcode'a sıkıştırılmayacaktır: normal LOAD/STORE
 | 0x86 | XFER.MEM | MEMXFER | Synchronous Lx-domain transfer |
 | 0x87 | XFER.START | MEMXFER | Asynchronous transfer start/token |
 | 0x88 | XFER.WAIT | MEMXFER | Transfer token completion wait |
-| 0x8B | XFER.WS.MEM | MEMXFER | Synchronous OW/TW ↔ L1–L4 Data RAM block transfer |
-| 0x8C | XFER.WS.START | MEMXFER | Asynchronous OW/TW ↔ L1–L4 Data RAM block transfer start |
+| 0x8B | XFER.WS.MEM | MEMXFER | Synchronous OW/TW → L1–L4 Data RAM block export |
+| 0x8C | XFER.WS.START | MEMXFER | Asynchronous OW/TW → L1–L4 Data RAM block export start |
 
 **Opcode/format doğrulamaları**
 - LOAD/STORE opcode'ları yalnızca MEM; LOADX/STOREX yalnızca MEMX; LOADUPD/STOREUPD yalnızca MEMUPD; LOADXUPD/STOREXUPD yalnızca MEMXUPD kullanır.
@@ -1266,7 +1266,7 @@ Bellek komutları tek bir opcode'a sıkıştırılmayacaktır: normal LOAD/STORE
 
 - XFER M alanı BIT_COPY, SIGN_EXTEND ve ZERO_EXTEND alt türlerini seçer; ayrıntılar §4.11'de tanımlıdır.
 - FCONV, sayısal dönüşüm için 0x5B primary opcode'sunu ve XFER alan yerleşimini kullanır; XFER ile aynı opcode değildir.
-- 0x86–0x88, L1–L4 Data RAM domain'leri arasındaki MEMXFER işlemleridir. 0x89–0x8A, WSMEM workspace erişimidir; 0x8B–0x8C, workspace↔Data RAM MEMXFER işlemleridir. 0x8D–0x93 ilerideki transfer uzantıları için reserved'dır.
+- 0x86–0x88, L1–L4 Data RAM domain'leri arasındaki MEMXFER işlemleridir. 0x89–0x8A, WSMEM workspace erişimidir; 0x8B–0x8C, tek yönlü OW/TW→Data RAM MEMXFER işlemleridir. 0x8D–0x93 ilerideki transfer uzantıları için reserved'dır.
 
 ### 8.4 Floating-point primary opcode atamaları
 
