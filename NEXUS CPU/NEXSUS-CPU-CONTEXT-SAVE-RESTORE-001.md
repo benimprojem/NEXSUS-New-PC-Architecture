@@ -10,8 +10,8 @@
 - Exception Context Stack (ECS) stores protected hardware exception/return metadata.
 - Exception Workspace (XW) is an 8 KiB hardware-owned resource divided into eight 1 KiB depth slices. Software cannot use XW as ordinary scratch or persistent storage.
 - Kernel Exception Stack (KESP) and persistent interrupt/task context frames reside in protected Data RAM.
-- Operating-System Workspace (OW) is 8 KiB and remains OS-owned.
-- Task Workspace (TW) is 8 KiB and belongs to the currently executing task on that core. TW is directly byte-addressable and is not required to be a LIFO stack.
+- OS Space (OSSpace) is 8 KiB and remains OS-owned.
+- Work Space (WS) is 8 KiB and belongs to the current application execution context on that core. WS is directly byte-addressable and is not required to be a LIFO stack.
 - Context Pool (CP0–CP3) is four protected 8 KiB banks. The OS context manager may use them as resident task-context storage; PL0 cannot access them.
 - Execution Buffer (EB) is instruction-fetch-only and is never part of a software data/context save.
 - App RAM instruction fetch and Data RAM data/context traffic remain separate paths.
@@ -109,35 +109,35 @@ Baseline full context includes:
 - Required FP status/control and other task-visible execution state.
 - PC and STATUS/privilege through the controlled scheduler context-switch path.
 - Memory-domain permissions, ownership/handle state, and relevant address-space configuration.
-- The task's TW ownership and, when live, the complete 8 KiB TW image.
+- WS is not architectural task state and is not automatically included in a task context image.
 - Task-local runtime/ABI metadata required for safe resumption.
 
-OW is not task-owned and is not swapped with the task. EB is refillable instruction-fetch state, not architectural task data. XW is exception-hardware state and is not task-owned. CP0–CP3 may hold protected resident register-context images under OS control.
+OSSpace is not not task-owned and is not swapped with the task. EB is refillable instruction-fetch state, not architectural task data. XW is exception-hardware state and is not not task-owned. CP0–CP3 may hold protected resident register-context images under OS control.
 
-## 8. OW/TW workspace save and restore
+## 8. OSSpace/WS workspace save and restore
 
-TW is a general-purpose task-local working file. A program may use it as stack-like frames, fixed-offset records, arrays, tables, or temporary data. It is not implicitly cleared or treated as a LIFO stack.
+WS is a general-purpose application working working file. A program may use it as stack-like frames, fixed-offset records, arrays, tables, or temporary data. It is not implicitly cleared or treated as a LIFO stack.
 
-- WLOAD.TW and WSTORE.TW provide byte-offset access to the current task's TW through DA staging.
-- WLOAD.OW and WSTORE.OW are available only to authorized PL1/PL2 OS code.
+- WLOAD.WS and WSTORE.WS provide byte-offset access to the current application's WS through DA staging.
+- WLOAD.OSSpace and WSTORE.OSSpace are available only to authorized PL1/PL2 OS code.
 - Register-bank save/restore uses explicit MOV.DA.RA / MOV.RA.DA, MOV.DA.FA / MOV.FA.DA, and MOV.DA.MA / MOV.MA.DA operations with WSTORE/WLOAD. MOV and WLOAD/WSTORE DA operands consume the shared RAC 32R+32W register-access budget; wide DA groups reserve all touched entries atomically.
 - DA staging clobbers must be included in the save plan. If DA values are live, preserve them before using DA as staging and restore them last.
-- XFER.WS.MEM exports a selected OW/TW byte range only to an L1–L4 Data RAM domain. A full 8 KiB TW image can be persisted in one transfer. Restore is CPU-mediated: privileged code LOADs Data RAM into DA staging and WSTOREs into the local TW; no Data RAM/Fabric/DMA agent writes TW directly.
+- XFER.WS.MEM exports a selected OSSpace/WS byte range only to an L1–L4 Data RAM domain. A full 8 KiB WS image can be persisted in one transfer. Restore is CPU-mediated: privileged code LOADs Data RAM into DA staging and WSTOREs into the local WS; no Data RAM/Fabric/DMA agent writes WS directly.
 - XFER.WS.START uses the existing asynchronous token model; XFER.WAIT is the completion boundary.
 - A workspace transfer does not implicitly transfer task ownership or grant access to another task/core.
 
 ## 8.1 OS/task exchange window
 
-The OS may define a request/response shadow window as paired bounded ranges in OW and the active task's TW. These ranges are copies, not a shared alias.
+The OS may define a request/response shadow window as paired bounded ranges in OSSpace and the active application execution's WS. These ranges are copies, not a shared alias.
 
-- On syscall entry, the CPU/OS copies the request bytes from TW to OW using WLOAD.TW → DA → WSTORE.OW.
-- The OS validates and processes the request entirely in its own OW or protected Data RAM buffers.
-- Before returning to PL0, the OS copies response bytes from OW to the designated TW response range using WLOAD.OW → DA → WSTORE.TW.
+- On syscall entry, the CPU/OS copies the request bytes from WS to OSSpace using WLOAD.WS → DA → WSTORE.OSSpace.
+- The OS validates and processes the request entirely in its own OSSpace or protected Data RAM buffers.
+- Before returning to PL0, the OS copies response bytes from OSSpace to the designated WS response range using WLOAD.OSSpace → DA → WSTORE.WS.
 - These are privileged CPU-mediated accesses under the controlled context-management path. XFER.WS.MEM is not used for this exchange.
 - The OS ABI chooses the size, offsets, alignment, and payload schema. No fixed portion of the 8 KiB workspaces is reserved by the ISA baseline; an OS may choose a small fixed window or a configurable per-process layout.
-- Outside the syscall handoff, PL0 cannot read OW and unrelated OS code cannot arbitrarily modify TW.
+- Outside the syscall handoff, PL0 cannot read OSSpace and unrelated OS code cannot arbitrarily modify WS.
 
-OW itself remains the OS's 8 KiB core-local working file for kernel scratch, scheduler bookkeeping, syscall staging, I/O metadata, and temporary OS structures. Task switches do not turn OW into task-owned state; only explicitly defined OS context/interrupt paths preserve any OW values that must survive nested execution.
+OSSpace itself remains the OS's 8 KiB core-local working file for kernel scratch, scheduler bookkeeping, syscall staging, I/O metadata, and temporary OS structures. Task switches do not turn OSSpace into not task-owned state; only explicitly defined OS context/interrupt paths preserve any OSSpace values that must survive nested execution.
 
 ## 9. CP0–CP3 resident context pool
 
@@ -155,24 +155,24 @@ A complete register payload is 1,792 bytes. The remaining space in a 2 KiB slot 
 
 1. Stop dispatch to the outgoing task and reach the architectural context-switch boundary.
 2. Preserve outgoing architectural register state in an assigned CP slot or protected Data RAM frame.
-3. If the outgoing TW image is live, use XFER.WS.MEM or XFER.WS.START/XFER.WAIT to persist its complete 8 KiB image to the task's protected Data RAM backing.
-4. Validate the incoming task's identity, generation, memory permissions, shared grants, context image, and TW backing.
+3. If the outgoing WS image is live, use XFER.WS.MEM or XFER.WS.START/XFER.WAIT to persist its complete 8 KiB image to the application's protected Data RAM backing.
+4. Validate the incoming application's identity, generation, memory permissions, shared grants, context image, and WS backing.
 5. Restore incoming register state from CP or Data RAM.
-6. Restore the incoming task's TW image into the local TW using privileged CPU LOAD→DA→WSTORE operations, with bounds and ownership checks.
-7. Establish the incoming task as the TW owner and activate its memory permission state.
+6. Restore the incoming application's WS image into the local WS using privileged CPU LOAD→DA→WSTORE operations, with bounds and ownership checks.
+7. Establish the incoming task as the WS owner and activate its memory permission state.
 8. Refill instruction code through the App RAM → C0 → CS0–CS7 → CST → EB path.
-9. Resume PL0 only after register state, TW contents, and ownership/permission state are valid.
+9. Resume PL0 only after register state and the new WS access epoch/initialization state are valid.
 
-If the outgoing task has explicitly released TW or the compiler/runtime proves its contents dead, the scheduler may omit the TW image save. It must not infer that TW is disposable merely because the task is descheduled.
+WS is not automatically saved on deschedule. If its contents must survive, the application/OS explicitly exports them to protected Data RAM before the access epoch ends. If they are not preserved, the OS clears or reinitializes WS before another protection domain receives access.
 
 ## 11. Cross-core migration
 
-TW is core-local; its physical contents do not follow a task automatically.
+WS is core-local; its physical contents do not follow a task automatically.
 
-- Before migration, persist the live TW image to protected Data RAM.
-- Transfer the task's register/context image and permission/ownership metadata through protected Data RAM/Fabric paths.
-- On the destination core, restore the register context and TW image before returning to PL0.
-- The destination core establishes a new local TW ownership generation. Old-core workspace addresses do not authorize access to the destination TW.
+- If WS contents must survive migration, explicitly persist the required range to protected Data RAM before migration.
+- Transfer the application's register/context image and permission/ownership metadata through protected Data RAM/Fabric paths.
+- On the destination core, restore the register context; if required, restore WS through CPU-mediated LOAD→DA→WSTORE before granting application access.
+- The destination core establishes a new local WS access epoch. Old-core workspace addresses do not authorize access to the destination WS.
 - CP residency is core-local; a task migrating to another core cannot retain a physical CP slot from the source core.
 
 ## 12. Save/restore ordering when DA is the staging bank
@@ -191,7 +191,7 @@ DA is the staging bank for memory LOAD/STORE and explicit bank transfers. The ha
 3. Restore RA payloads: LOAD to DA staging, then MOV.RA.DA.
 4. Restore DA payloads last, so no later staging operation overwrites restored DA values.
 
-This ordering applies to protected Data RAM save frames. OW/TW save sequences use the same DA-clobber rule with WSTORE/WLOAD at the workspace edge.
+This ordering applies to protected Data RAM save frames. OSSpace/WS save sequences use the same DA-clobber rule with WSTORE/WLOAD at the workspace edge.
 
 ## 13. Frame capacity and overflow
 
@@ -210,7 +210,7 @@ Compiler/assembler support:
 - Nested-handler prologue/epilogue generation.
 - Full-context save/restore for scheduler code.
 - DA staging clobber tracking for every register-bank transfer.
-- TW liveness tracking so the scheduler can omit a TW save only when contents are proven dead or explicitly released.
+- WS lifecycle tracking so the OS can enforce explicit export, revoke, clear/reinitialize, and grant operations across protection-domain changes.
 
 If the compiler cannot prove a register untouched, it must preserve it. Correctness takes priority over frame-size optimization.
 
@@ -222,7 +222,7 @@ If the compiler cannot prove a register untouched, it must preserve it. Correctn
 - Four 32-bit interrupt save masks.
 - XW hardware-only for depth-selected exception entry.
 - KESP and persistent exception/task frames in protected Data RAM.
-- OW and TW each 8 KiB, directly byte-addressable.
+- OSSpace and WS each 8 KiB, directly byte-addressable.
 - WLOAD/WSTORE for DA-staged workspace access.
 - XFER.WS.MEM / XFER.WS.START for one-way workspace→Data RAM persistence; reverse restore is CPU-mediated.
 - CP0–CP3 as OS-protected resident context pool.
@@ -232,5 +232,5 @@ If the compiler cannot prove a register untouched, it must preserve it. Correctn
 - Exact interrupt-frame flag inventory and optional checksum.
 - CP slot header/metadata layout.
 - Workspace bank count, ports, arbitration, and latency.
-- Scheduler policy for eager versus liveness-based TW persistence.
+- OS policy for explicit WS persistence versus clear/reinitialize on access-epoch changes.
 - Precise exception/fault behavior for interrupted asynchronous workspace transfers.
