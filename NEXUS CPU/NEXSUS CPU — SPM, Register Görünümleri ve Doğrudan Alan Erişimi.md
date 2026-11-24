@@ -50,7 +50,7 @@ WSTORE.OW.W64 [RA5 + 0x40], DA2
 - Erişimler doğal hizalı olmalıdır; tam erişim aralığı 8 KiB sınırları içinde kalmalıdır.
 - WLOAD/WSTORE DA staging bankını kullanır. RA/FA/MA register banklarıyla veri alışverişi mevcut MOV.DA.RA / MOV.RA.DA, MOV.DA.FA / MOV.FA.DA ve MOV.DA.MA / MOV.MA.DA komutlarıyla açıkça yapılır.
 - OW/TW ile L1–L4 Data RAM arasında büyük aralık aktarımı XFER.WS.MEM veya XFER.WS.START ile yapılır; XFER.WAIT asenkron aktarımın tamamlanmasını bekler.
-- Workspace erişimi RAC'ın 32R+32W register erişim bütçesine dahil değildir. Workspace bank/port sayısı ve erişim bant genişliği ayrı mikro-mimari konudur.
+- Workspace SRAM portu RAC register portu değildir; ancak WLOAD hedef DA yazmaları ve WSTORE kaynak DA okumaları ortak RAC 32R+32W bütçesinden sayılır. XFER.WS.MEM doğrudan blok yolu DA staging ve RAC register slotlarını kullanmaz. Workspace bank/port sayısı ve erişim bant genişliği ayrı mikro-mimari konudur.
 
 Tam operand, fault, permission ve encoding kuralları [NEXSUS-CPU-WORKSPACE-ADDRESSING-AND-TRANSFER-001.md](NEXSUS-CPU-WORKSPACE-ADDRESSING-AND-TRANSFER-001.md) ve Instruction Encoding belgesinde tanımlıdır.
 
