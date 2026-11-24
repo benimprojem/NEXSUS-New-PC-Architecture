@@ -23,7 +23,7 @@ Bu bölüm geçerli çekirdek başına execution kaynaklarını tanımlar. Eski 
 
 FP64 lane ve FMA birimleri fiziksel execution kaynağı olarak ayrıdır. FMA komutları FP64 lane havuzundan slot tüketmez; normal FP komutları FMA birimlerini kullanmaz. İki kaynak sınıfı aynı çevrimde bağımsız hazır komutlar alabilir. Bu, FA register bankının sınırsız operand beslemesi sağladığı anlamına gelmez: FA read/write portları, bypass ve global issue/dispatch sınırları ayrı kısıtlardır; bunlar için doğrulanmamış ek kapasite varsayılmaz.
 
-Arithmetic Logic Unit, Logic Unit ve Compare Unit birbirinden bağımsız, ayrı execution resource pool'lardır. Bu üç sınıfın her biri için ayrı issue queue bulunur; aynı sınıftaki birimler kendi kuyruğundan beslenir. FP64, FMA, VEC, ME512, LOAD ve STORE için de ayrı sınıf kuyrukları kullanılır. Kuyruk derinlikleri ve fiziksel register port/replication sayıları henüz açık tasarım parametreleridir. Global dispatch/issue kapasitesi tüm kuyruklardan aynı çevrimde seçilebilecek toplam komut sayısını ayrıca sınırlar.\n\nBu tabloda verilen lane/unit sayıları geçerli NEXSUS çekirdek konfigürasyonudur. Eski FPU0/FPU1 minimum modeli ve onun iki-FP-issue çıkarımı geçersizdir.
+Arithmetic ALU, Logic Unit ve Compare Unit birbirinden bağımsız, ayrı execution resource pool'lardır. Bu üç sınıfın her biri için ayrı issue queue bulunur; aynı sınıftaki birimler kendi kuyruğundan beslenir. FP64, FMA, VEC, ME512, LOAD ve STORE için de ayrı sınıf kuyrukları kullanılır. Kuyruk derinlikleri ve fiziksel register port/replication sayıları henüz açık tasarım parametreleridir. Global dispatch/issue kapasitesi tüm kuyruklardan aynı çevrimde seçilebilecek toplam komut sayısını ayrıca sınırlar.\n\nBu tabloda verilen lane/unit sayıları geçerli NEXSUS çekirdek konfigürasyonudur. Eski FPU0/FPU1 minimum modeli ve onun iki-FP-issue çıkarımı geçersizdir.
 
 ## 1.1 Issue queue ve register operand talebi
 
@@ -83,12 +83,12 @@ Bu bölümdeki scalar/integer komutlarının kaynak ve hedef operandları RA0–
 | MOV | dst, src | Register kopyalama | Register path |
 | MOVI | dst, imm | Signed 36-bit immediate veya EXT ile tam 64-bit literal yükleme | Immediate / register path |
 | ADD | dst, src1, src2 | W genişliğinde modulo toplama | Arithmetic ALU |
-| ADDI | dst, src, imm | Signed 36-bit immediate ile toplama | Logic Unit / immediate path |
+| ADDI | dst, src, imm | Signed 36-bit immediate ile toplama | Arithmetic ALU / immediate path |
 | SUB | dst, src1, src2 | W genişliğinde modulo çıkarma | Arithmetic ALU |
-| SUBI | dst, src, imm | Signed 36-bit immediate çıkarma | Logic Unit / immediate path |
-| MUL | dst, src1, src2 | Integer çarpma | Logic Unit / multiply pipeline |
-| DIV.S / DIV.U | dst, src1, src2 | Signed / unsigned integer bölme | Logic Unit / divide pipeline |
-| MOD.S / MOD.U | dst, src1, src2 | Signed / unsigned kalan | Logic Unit / divide pipeline |
+| SUBI | dst, src, imm | Signed 36-bit immediate çıkarma | Arithmetic ALU / immediate path |
+| MUL | dst, src1, src2 | Integer çarpma | Arithmetic ALU / multiply pipeline |
+| DIV.S / DIV.U | dst, src1, src2 | Signed / unsigned integer bölme | Arithmetic ALU / divide pipeline |
+| MOD.S / MOD.U | dst, src1, src2 | Signed / unsigned kalan | Arithmetic ALU / divide pipeline |
 | NEG | dst, src | İki'nin tümleyeni işaret değiştirme | Arithmetic ALU |
 | INC | dst | +1 | Arithmetic ALU |
 | DEC | dst | -1 | Arithmetic ALU |
@@ -964,12 +964,14 @@ Bu örnek, producer ile transferi başlatan çekirdek arasındaki L3 synchroniza
 
 ## 11. Instruction dispatch ve paralellik
 
-- Integer/logic komutları Logic Unit0/ALU1 (ve konfigürasyonda Logic Unit2) üzerinde yürütülür.
+- Integer arithmetic komutları 8 Arithmetic ALU'ya yönlendirilir.
+- Scalar bitwise/boolean/shift/rotate/bit-mask komutları 8 Logic Unit'a yönlendirilir.
+- Scalar CMP komutları 8 Compare Unit'a yönlendirilir.
 - FP32/FP64 komutları altı FP64 lane üzerinde; FMA komutları ayrı dört dedicated FMA birimi üzerinde yürütülür.
-- Vector/matrix komutları ME512'ye yönlendirilir.
+- Vector komutları 2 VEC execution unit'a; 512-bit matrix/vector komutları 1 ME512'ye yönlendirilir.
 - LOAD/STORE ve SPM komutları ilgili memory/register path'ine gider.
-- Decoder/issue logic bağımsız komutları uygun kaynaklar müsaitse paralel dispatch edebilir.
-- Aynı registera yazma, operand dependency, port sayısı ve memory conflict paralelliği sınırlar.
+- Her execution sınıfının ayrı issue queue'su vardır. Global dispatch/issue seçimi bu kuyruklardan bağımsız hazır komutları seçer.
+- Aynı registera yazma, operand dependency, register-port bütçesi, global issue width ve memory conflict paralelliği sınırlar.
 
 ### 11.1 Dört register operandlı komutların encoding eşlemesi
 
