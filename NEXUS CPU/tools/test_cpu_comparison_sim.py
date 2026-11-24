@@ -1925,6 +1925,76 @@ class PerCoreCodeFlowTopologyTests(unittest.TestCase):
 
 
 class RACCycleIntegrationTests(unittest.TestCase):
+    def _physical_rac_profile(self):
+        p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        p.frontend = 4
+        p.dispatch = 4
+        p.issue = 4
+        p.rac_physical_read_ports = {"RA": 2, "FA": 1, "DA": 1, "MA": 1}
+        p.rac_physical_write_ports = {"RA": 1, "FA": 1, "DA": 1, "MA": 1}
+        return p
+
+    def test_physical_ports_allow_parallel_cross_bank_access(self):
+        p = self._physical_rac_profile()
+        ops = [
+            sim.Op(0, "INT", rac_reads=1, rac_writes=1,
+                   rac_read_accesses=(("RA", 0, 1),),
+                   rac_write_accesses=(("RA", 1, 1),)),
+            sim.Op(1, "FP", rac_reads=1, rac_writes=1,
+                   rac_read_accesses=(("FA", 0, 1),),
+                   rac_write_accesses=(("FA", 1, 1),)),
+            sim.Op(2, "LOAD", rac_reads=0, rac_writes=1,
+                   rac_read_accesses=(),
+                   rac_write_accesses=(("DA", 1, 1),)),
+            sim.Op(3, "VEC", exec_width_bits=256, rac_reads=4, rac_writes=4,
+                   rac_read_accesses=(("MA", 0, 4),),
+                   rac_write_accesses=(("MA", 1, 4),)),
+        ]
+        result = sim.simulate_stream(ops, p)
+        self.assertEqual(result["issue_peak_ops_per_cycle"], 4)
+        self.assertEqual(result["rac_peak_read_slots_per_cycle"], 7)
+        self.assertEqual(result["rac_peak_write_slots_per_cycle"], 7)
+        self.assertEqual(result["stall_counters"]["rac_physical_write_port_blocked_op_cycles"], 0)
+
+    def test_same_bank_read_port_conflict_retries_without_blocking_other_banks(self):
+        p = self._physical_rac_profile()
+        ops = [
+            sim.Op(0, "INT", rac_reads=1, rac_writes=1,
+                   rac_read_accesses=(("RA", 0, 1),),
+                   rac_write_accesses=(("RA", 2, 1),)),
+            sim.Op(1, "INT", rac_reads=1, rac_writes=1,
+                   rac_read_accesses=(("RA", 1, 1),),
+                   rac_write_accesses=(("RA", 3, 1),)),
+            sim.Op(2, "FP", rac_reads=1, rac_writes=1,
+                   rac_read_accesses=(("FA", 0, 1),),
+                   rac_write_accesses=(("FA", 2, 1),)),
+        ]
+        result = sim.simulate_stream(ops, p)
+        self.assertGreater(result["stall_counters"]["rac_physical_read_port_blocked_op_cycles"], 0)
+        self.assertEqual(result["issue_peak_ops_per_cycle"], 2)
+        self.assertEqual(result["ops"], 3)
+
+    def test_same_cycle_duplicate_destination_is_serialized(self):
+        p = self._physical_rac_profile()
+        ops = [
+            sim.Op(0, "INT", rac_reads=1, rac_writes=1,
+                   rac_read_accesses=(("RA", 0, 1),),
+                   rac_write_accesses=(("RA", 5, 1),)),
+            sim.Op(1, "LOGIC", rac_reads=1, rac_writes=1,
+                   rac_read_accesses=(("RA", 1, 1),),
+                   rac_write_accesses=(("RA", 5, 1),)),
+        ]
+        result = sim.simulate_stream(ops, p)
+        self.assertGreater(result["stall_counters"]["rac_destination_conflict_op_cycles"], 0)
+        self.assertEqual(result["issue_peak_ops_per_cycle"], 1)
+        self.assertEqual(result["ops"], 2)
+
+    def test_physical_port_mode_requires_explicit_register_identity(self):
+        p = self._physical_rac_profile()
+        ops = [sim.Op(0, "INT", rac_reads=1, rac_writes=1)]
+        with self.assertRaisesRegex(ValueError, "explicit RAC bank/index metadata"):
+            sim.simulate_stream(ops, p)
+
     def test_16_wide_backend_can_issue_sixteen_when_frontend_and_rac_allow(self):
         p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
         p.frontend = 16
