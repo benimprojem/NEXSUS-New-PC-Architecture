@@ -1495,7 +1495,7 @@ The interrupt/context save protocol is specified in **NEXSUS-CPU-CONTEXT-SAVE-RE
 - Context Pool (CP0–CP3) is protected storage managed only by privileged context-manager paths; it is not exposed through generic software workspace load/store instructions.
 - Exception Workspace (XW) is reserved to exception hardware for depth-selected entry state; persistent exception frames reside in protected Data RAM.
 - MOV.DA.RA / MOV.RA.DA, MOV.DA.FA / MOV.FA.DA, and MOV.DA.MA / MOV.MA.DA provide the existing architectural register-bank transfer paths.
-- LOAD/STORE move DA staging groups to/from the protected Data RAM software frame. OSSpace is used for OS bookkeeping and WS ownership is preserved across task switches.
+- LOAD/STORE move DA staging groups to/from the protected Data RAM software frame. OSSpace is used for OS bookkeeping; WS is not task-owned and its access epoch is revoked/reinitialized on protection-domain changes.
 - Since DA is the memory staging bank, the handler must save DA values before using DA to stage RA/FA/MA. Restore DA last, after all other banks have been restored.
 - Save masks are compiler/ABI metadata, not architectural registers or new opcodes.
 
