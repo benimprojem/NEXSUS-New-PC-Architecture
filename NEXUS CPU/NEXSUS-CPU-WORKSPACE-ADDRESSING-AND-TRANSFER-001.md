@@ -2,7 +2,7 @@
 
 **Document ID:** NEXSUS-CPU-WORKSPACE-ADDRESSING-AND-TRANSFER-001  
 **Status:** ISA/architecture baseline — WSMEM and workspace MEMXFER opcode/field assignments recorded; microarchitecture implementation open  
-**Scope:** Direct byte addressing, DA-staged register save/restore, and OW/TW↔Data RAM block movement
+**Scope:** Direct byte addressing, DA-staged register save/restore, and one-way OW/TW→Data RAM block export
 
 ## 1. Design intent
 
@@ -86,34 +86,31 @@ MOV.RA.DA     RA7, DA0
 
 This design lets OW/TW hold register snapshots, spill records, call frames, task-local structures, and temporary datasets without forcing a LIFO stack abstraction.
 
-## 5. OW/TW ↔ Data RAM block transfer
+## 5. OW/TW → Data RAM block export
 
-`XFER.WS.MEM` copies a selected byte range directly between OW or TW and an L1–L4 Data RAM domain. `XFER.WS.START` starts the same transfer asynchronously; the existing `XFER.WAIT` consumes its completion token.
+`XFER.WS.MEM` copies a selected byte range only from OW or TW into an L1–L4 Data RAM domain. `XFER.WS.START` starts the same one-way export asynchronously; `XFER.WAIT` consumes its completion token. The reverse direction is architecturally forbidden: Data RAM, App RAM, DMA, Fabric, and other cores cannot write OW/TW through this transfer path.
 
-- Source and destination are explicit: workspace selector, workspace offset, Data RAM domain, Data RAM byte address, length, and direction.
+- The source is OW or TW; the destination is an L1–L4 Data RAM domain. Workspace selector, workspace offset, Data RAM byte address, and length are explicit. There is no direction bit.
 - Length is an unsigned byte count. A complete 8 KiB workspace can be moved in one operation; partial ranges are also permitted.
 - This path uses the transfer engine/Fabric path, not DA staging. It does not consume RAC register-read or register-write slots. By contrast, WLOAD/WSTORE do consume RAC slots for their DA register operands.
 - It does consume transfer-engine bandwidth and the relevant Data RAM bank/controller bandwidth. Independent banks/domains may continue in parallel under existing arbitration rules.
-- The source workspace range is read-reserved for the transfer lifetime. A destination workspace range is write-reserved and inaccessible to CPU reads/writes until completion.
+- The source workspace range is read-reserved for the transfer lifetime. Workspace is never a destination.
 - Data RAM destination ranges use the existing XFER range-reservation and unpublished-destination rules. A destination becomes usable only after successful completion.
 - Validation is completed before acceptance. A validation fault starts no payload movement. A runtime multi-beat failure may leave physical destination bytes changed, but the destination range remains logically invalid/unpublished and must be fully overwritten before use.
 - Asynchronous transfer tokens retain the existing per-core generation/stale-token rules. XFER.WAIT is the terminal completion boundary.
 
-Assembly form uses the workspace offset in the RA selector and the Data RAM byte address in the other RA selector:
+Assembly form is deliberately source-first and has no reverse form:
 
 ```asm
 ; RA19 = 0, RA20 = Data RAM destination address, RA21 = 8192
 XFER.WS.MEM   TW[RA19], [L4:RA20], RA21
-
-; Reverse direction: Data RAM source → TW
-XFER.WS.MEM   [L4:RA20], TW[RA19], RA21
 
 ; Asynchronous full-workspace save; RA22 receives the token
 XFER.WS.START TW[RA19], [L4:RA20], RA21, RA22
 XFER.WAIT     RA22
 ```
 
-For the reverse asynchronous direction, the workspace is the destination endpoint and is write-reserved until WAIT completes. The transfer engine does not implicitly change task ownership or grant cross-core access. The Data RAM destination still requires the active task/OS permission and domain grant.
+Workspace restore is CPU-mediated, not a transfer-engine operation: privileged code LOADs Data RAM into DA staging and then WSTOREs the selected workspace bytes. App RAM is never a data-transfer endpoint; it feeds only the independent CodeFlow instruction-fetch path. Neither path grants another core or DMA agent workspace write authority.
 
 ## 6. Permission and fault model
 
@@ -132,7 +129,9 @@ The workspace selector is not an authorization token.
 - Microarchitectural implementation of the assigned WSMEM and MEMXFER workspace fields.
 - Whether indexed workspace addressing is needed in the first encoding revision; base+displacement and absolute offset are the baseline forms.
 - Workspace bank count, multi-read/write ports, arbitration, and transfer bandwidth.
-- Whether a full-workspace transfer receives a dedicated fast path or is serviced as a normal bounded block transfer.
+- Whether a full-workspace export receives a dedicated fast path or is serviced as a normal bounded block transfer.
+- CPU-mediated Data RAM→workspace restore throughput and whether a privileged copy assist is warranted; it must preserve the no-external-writer invariant.
+- OS/task exchange-window size and ABI layout. The window is a pair of reserved OW/TW ranges copied by privileged CPU instructions, not a shared alias or DMA destination.
 
 ## 8. Related specifications
 
