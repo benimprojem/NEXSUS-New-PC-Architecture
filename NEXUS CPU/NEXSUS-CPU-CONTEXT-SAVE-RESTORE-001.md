@@ -14,20 +14,20 @@ This specification reuses the existing NEXSUS register banks and memory system. 
 ## 2. Register bank sizes
 | Bank | Registers | Width each | Full bank size |
 |---|---:|---:|---:|
-| RA | 64 | 64-bit | 512 B |
-| FA | 64 | 64-bit | 512 B |
-| DA | 64 | 64-bit | 512 B |
-| MA | 64 | 256-bit | 2,048 B |
-| **Total** | **256** | — | **3,584 B** |
+| RA | 32 | 64-bit | 256 B |
+| FA | 32 | 64-bit | 256 B |
+| DA | 32 | 64-bit | 256 B |
+| MA | 32 | 256-bit | 1,024 B |
+| **Total** | **128** | — | **1,792 B** |
 
 MA is the dominant save cost; saving it on every interrupt without need is prohibited by the baseline ABI.
 
 ## 3. Interrupt handler preservation contract
 The interrupt ABI defines a 64-bit save mask for each bank. Bit N indicates whether register N must be preserved by this handler invocation:
-- RA_MASK[63:0]
-- FA_MASK[63:0]
-- DA_MASK[63:0]
-- MA_MASK[63:0]
+- RA_MASK[31:0]
+- FA_MASK[31:0]
+- DA_MASK[31:0]
+- MA_MASK[31:0]
 
 A set bit means the interrupted value must be restored before IRET. A clear bit means the handler and its save/restore prologue are guaranteed not to alter that register. Masks are generated from handler code, the complete call graph, and the prologue's own staging-register clobbers, or supplied by handwritten assembly. If analysis is unavailable or unknown code can be called, the conservative mask includes every register the call path may modify.
 
@@ -94,7 +94,7 @@ Each ECS depth selects its own 1 KiB SPM7 slice. Each nested handler gets a dist
 A task context differs from an interrupt frame. When scheduler switches execution, it preserves all architectural state the task owns and may later observe.
 
 Baseline full context includes:
-- RA0–RA63, FA0–FA63, DA0–DA63, MA0–MA63.
+- RA0–RA31, FA0–FA31, DA0–DA31, MA0–MA31.
 - Required FP status/control and other task-visible execution state.
 - PC and STATUS/privilege through controlled scheduler context-switch path.
 - Memory-domain permissions, ownership/handle state and relevant address-space configuration.
@@ -134,7 +134,7 @@ Compiler/assembler support:
 If the compiler cannot prove a register untouched, it must preserve it. Correctness takes priority over frame-size optimization.
 
 ## 11. Baseline decisions
-**Selected:** SPM7 for temporary exception workspace; privileged Data RAM for persistent software frames; four 64-bit bank masks; selective per-register save/restore; full 3,584-byte register payload for complete task context; P0 excluded; SPM0–SPM6 preserved only when live.
+**Selected:** SPM7 for temporary exception workspace; privileged Data RAM for persistent software frames; four 64-bit bank masks; selective per-register save/restore; full 1,792-byte register payload for complete task context; P0 excluded; SPM0–SPM6 preserved only when live.
 
 **Not introduced:** new memory type, new register bank, new transfer mechanism, or automatic cache-like SPM migration.
 
@@ -173,7 +173,7 @@ This ordering is mandatory for correctness. The compiler may optimize transfers 
 
 ## 13. Save-frame size and SPM7 capacity
 
-The full architectural RA/FA/DA/MA payload is 3,584 bytes. A selective interrupt frame is smaller according to its masks, plus a 64-byte header and alignment. SPM7 remains 8 KiB total, partitioned into eight 1 KiB depth slices for temporary entry state; it is not the storage capacity for all nested full-register frames. Persistent frames use the protected Data RAM region. If the Data RAM frame stack reaches KELIMIT, the CPU enters the defined double-fault path; it must never silently truncate a save frame.
+The full architectural RA/FA/DA/MA payload is 1,792 bytes. A selective interrupt frame is smaller according to its masks, plus a 64-byte header and alignment. SPM7 remains 8 KiB total, partitioned into eight 1 KiB depth slices for temporary entry state; it is not the storage capacity for all nested full-register frames. Persistent frames use the protected Data RAM region. If the Data RAM frame stack reaches KELIMIT, the CPU enters the defined double-fault path; it must never silently truncate a save frame.
 
 
 ## 14. SPM-resident task-context slots
