@@ -8,12 +8,12 @@
 
 This document evaluates the physical access structure for the two core-local workspaces:
 
-- **OS Space (OSSpace):** 8 KiB, OS-owned, PL1/PL2 access.
+- **OS workspace (OS):** 8 KiB, OS-owned, PL1/PL2 access.
 - **Work Space (WS):** 8 KiB, general-purpose application workspace, PL0 access during an authorized application execution epoch. WS is not task-ID-owned and is not automatically part of task context.
 
 The following decisions are already fixed:
 
-1. CPU-originated WLOAD/WSTORE accesses to WS and OSSpace participate in the same core-wide Resource Access Controller (RAC) budget as RA/FA/DA/MA.
+1. CPU-originated WLOAD/WSTORE accesses to WS and OS participate in the same core-wide Resource Access Controller (RAC) budget as RA/FA/DA/MA.
 2. The total budget is **32 logical 64-bit reads + 32 logical 64-bit writes per cycle** across all six endpoint groups. It is not 32R/32W per bank or per workspace.
 3. A 128/256/512-bit WLOAD/WSTORE consumes 2/4/8 logical 64-bit slots on both its source and destination sides.
 4. The complete source and destination footprints are reserved atomically. If either the RAC budget or required physical bank resources are unavailable, the instruction waits without partial access.
@@ -48,7 +48,7 @@ The aggregate logical workspace capacity is 16 KiB. This earlier comparison is r
 | A | 8 banks × 2 KiB | 4R + 4W | Lowest bank count; 32 accesses can be distributed across eight banks | Expensive multiported SRAM; high per-bank muxing and collision complexity |
 | B | 16 banks × 1 KiB | 2R + 2W | Balanced bank count and port count | True dual-read/dual-write implementation still costly |
 | **C — recommended** | **32 banks × 512 B** | **1R + 1W** | Matches the 32R/32W ceiling with simple per-bank ports; 64-bit interleave naturally spreads wide accesses | More bank decoders and crossbar/arbitration endpoints; same-bank requests still conflict |
-| D | Two independent 8 KiB arrays, each 32 banks × 256 B | 1R + 1W per bank | Strongest physical isolation between WS and OSSpace; no cross-workspace bank contention | 64 physical banks per core; more area, clock/power and control overhead than the shared 16 KiB array |
+| D | Two independent 8 KiB arrays, each 32 banks × 256 B | 1R + 1W per bank | Strongest physical isolation between WS and OS; no cross-workspace bank contention | 64 physical banks per core; more area, clock/power and control overhead than the shared 16 KiB array |
 
 ### 3.1 Historical candidate C — shared 16 KiB, 32-bank array (superseded)
 
@@ -69,7 +69,7 @@ Let:
 
 - `offset` be the byte offset within the selected workspace (0–8191).
 - `word = floor(offset / 8)`.
-- `region_id = 0` for OSSpace and `1` for WS.
+- `region_id = 0` for OS and `1` for WS.
 
 Proposed mapping:
 
@@ -78,12 +78,12 @@ bank = (word + 16 * region_id) mod 32
 row  = 32 * region_id + floor(word / 32)
 ```
 
-This maps each 8 KiB logical workspace evenly across all 32 banks. It also skews the two regions by 16 banks, so identical offsets in OSSpace and WS do not automatically collide in the same bank.
+This maps each 8 KiB logical workspace evenly across all 32 banks. It also skews the two regions by 16 banks, so identical offsets in OS and WS do not automatically collide in the same bank.
 
 Physical organization check:
 
 - 32 banks × 64 rows × 8 bytes = 16,384 bytes.
-- OSSpace occupies rows 0–31 across all banks.
+- OS occupies rows 0–31 across all banks.
 - WS occupies rows 32–63 across all banks.
 - Each logical workspace contributes 32 rows × 8 bytes = 256 bytes per bank.
 
@@ -129,7 +129,7 @@ XFER.WS.MEM/START bypass RAC logical access slots and DA staging, but the transf
 ## 7. Protection and lifecycle invariants
 
 - The workspace selector is not an authorization token.
-- OSSpace remains PL1/PL2-only; PL0 access is a protection fault.
+- OS remains PL1/PL2-only; PL0 access is a protection fault.
 - WS is accessible to PL0 only during an authorized application execution epoch. WS is not task-ID-owned.
 - Before WS is granted to a different protection domain, the OS revokes the previous access epoch and clears/reinitializes WS unless an explicitly authorized continuation preserves the same data domain.
 - External agents cannot write either workspace. XFER is a read-only source path.
@@ -146,7 +146,7 @@ XFER.WS.MEM/START bypass RAC logical access slots and DA staging, but the transf
 | One read + one write to one bank, different rows | Both may proceed |
 | Same-address read/write | Forwarding or serialization gives deterministic behavior |
 | Four 512-bit accesses in one direction | 32 lane banks are reserved atomically; all-or-none issue |
-| Mixed WS and OSSpace accesses at identical offsets | Proposed bank skew maps them to different bank groups |
+| Mixed WS and OS accesses at identical offsets | Proposed bank skew maps them to different bank groups |
 | WLOAD and WSTORE mixed with RA/FA/DA/MA operations | Shared 32R/32W budget is never exceeded |
 | XFER and WLOAD on same bank | Read-port arbitration is fair and forward-progressing |
 | XFER source reservation plus WSTORE | Writes into reserved bytes are blocked; unrelated writes may proceed |
