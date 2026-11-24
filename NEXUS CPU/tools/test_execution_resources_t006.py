@@ -15,7 +15,7 @@ class ExecutionResourceContractT006(unittest.TestCase):
         p = self.profile
         self.assertEqual(p["units"]["INT"], 8)
         self.assertEqual(p["units"]["FP"], 6)
-        self.assertEqual(p["execution_topology"]["FMA_LANES"], 4)
+        self.assertEqual(p["units"]["FMA"], 4)
         self.assertEqual(p["units"]["VEC"], 2)
         self.assertEqual(p["units"]["ME512"], 1)
         self.assertEqual(p["latency"]["INT"], 1)
@@ -25,8 +25,8 @@ class ExecutionResourceContractT006(unittest.TestCase):
 
     def test_fma_is_four_lane_subset_of_six_fp64_lanes(self):
         p = self.profile
-        self.assertLessEqual(p["execution_topology"]["FMA_LANES"], p["units"]["FP"])
-        self.assertEqual(sim.execution_resource_kind("FMA", "ME512"), "FP")
+        self.assertNotIn("FMA_LANES", p["execution_topology"])
+        self.assertEqual(sim.execution_resource_kind("FMA", "ME512"), "FMA")
         self.assertEqual(sim.execution_resource_kind("FP", "ME512"), "FP")
 
     def test_vector_opcodes_use_two_vector_slots_not_me512(self):
