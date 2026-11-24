@@ -254,7 +254,7 @@ This establishes the data-source and route principle, not yet the transfer proto
 - XW provides depth-selected exception-entry workspace.
 - Persistent privileged exception frames and full task contexts reside in protected Data RAM.
 - CP0–CP3 provide the current per-core resident context pool: 16 × 2 KiB slots/core, with spill to protected Data RAM.
-- Workspaces are not automatically coherent or migrated between cores; live task workspace is preserved/restored through the defined context/migration path.
+- Workspaces are core-local and are not automatically coherent or migrated between cores. WS is not task-owned; application data that must survive migration is explicitly exported to protected Data RAM and restored through CPU-mediated LOAD→DA→WSTORE.
 
 Detailed numeric CSR encodings, optional counters, exact permission-cache/translation implementation, and some IRQ controller encodings remain open where the detailed specifications say so.
 
