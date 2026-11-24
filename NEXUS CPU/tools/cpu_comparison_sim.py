@@ -1999,11 +1999,11 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
                              if subbank_mode else p.rac_physical_read_ports)
             if subbank_mode:
                 for bank, count in read_counts.items():
-                    limit = read_port_map.get(bank[0], 0)
-                    if count > limit:
+                    port_limit = read_port_map.get(bank[0], 0)
+                    if count > port_limit:
                         raise ValueError(
                             f"op {op.seq} requires {count} physical RAC reads from "
-                            f"{bank[0]} sub-bank {bank[1]}, configured limit is {limit}"
+                            f"{bank[0]} sub-bank {bank[1]}, configured limit is {port_limit}"
                         )
             if read_port_map is not None and any(
                 physical_reads_this_cycle.get(bank, 0) + count >
@@ -2016,11 +2016,11 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
                               if subbank_mode else p.rac_physical_write_ports)
             if subbank_mode:
                 for bank, count in write_counts.items():
-                    limit = write_port_map.get(bank[0], 0)
-                    if count > limit:
+                    port_limit = write_port_map.get(bank[0], 0)
+                    if count > port_limit:
                         raise ValueError(
                             f"op {op.seq} requires {count} physical RAC writes to "
-                            f"{bank[0]} sub-bank {bank[1]}, configured limit is {limit}"
+                            f"{bank[0]} sub-bank {bank[1]}, configured limit is {port_limit}"
                         )
             if write_port_map is not None and any(
                 physical_writes_this_cycle.get(bank, 0) + count >
@@ -2084,7 +2084,7 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
         issue_peak_ops_per_cycle = max(issue_peak_ops_per_cycle, issued_this_cycle)
         cycle += 1
     if retired != len(ops):
-        raise RuntimeError(f"simulation did not drain: retired {retired}/{len(ops)}, cycle={cycle}, issued={sum(issued)}, done={done}, ready_at={ready_at}, rob={list(rob)[:12]}, next_frontend={next_frontend}, scheduler={list(scheduler)[:12]}, issue_peak={issue_peak_ops_per_cycle}, stalls={stalls}")
+        raise RuntimeError(f"simulation did not drain: retired {retired}/{len(ops)}")
     return {
         "cycles": cycle, "ops": len(ops), "retired_ops": retired,
         "completed": retired == len(ops), "ipc": round(retired/max(1,cycle), 3),
