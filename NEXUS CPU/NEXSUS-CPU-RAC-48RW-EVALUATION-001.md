@@ -6,7 +6,7 @@
 
 ## 1. Decisions and proposals
 
-- **Workspace physical separation: selected direction.** OSSpace and WS are separate 8 KiB SRAM arrays. Each array has 16 banks × 512 B. They share no physical banks or ports.
+- **Workspace physical separation: selected direction.** OS and WS are separate 8 KiB SRAM arrays. Each array has 16 banks × 512 B. They share no physical banks or ports.
 - **RAC capacity: under evaluation.** Compare 32R/32W, 48R/48W and larger budgets. 48R/48W is the next candidate to test, not yet a frozen architectural limit.
 - RAC values count logical 64-bit lane accesses per cycle, not physical SRAM ports.
 - One shared dynamic allocator serves RA/FA/DA/MA and CPU-originated WLOAD/WSTORE workspace accesses. No fixed per-class partition is reserved.
@@ -17,7 +17,7 @@ Each workspace is its own 8 KiB array:
 
 | Workspace | Capacity | Banks | Bank size | Per-bank service | Aggregate array ceiling |
 |---|---:|---:|---:|---:|---:|
-| OSSpace | 8 KiB | 16 | 512 B | 1R + 1W / cycle | 16R + 16W / cycle |
+| OS | 8 KiB | 16 | 512 B | 1R + 1W / cycle | 16R + 16W / cycle |
 | WS | 8 KiB | 16 | 512 B | 1R + 1W / cycle | 16R + 16W / cycle |
 
 Each bank contains 64 × 64-bit words. The proposed mapping is independently applied within each array:
@@ -30,7 +30,7 @@ row  = floor(word / 16)
 
 This gives each workspace 16 banks × 64 rows × 8 bytes = 8192 bytes. A naturally aligned 128/256/512-bit access uses 2/4/8 consecutive banks. Each bank supports one 64-bit read and one 64-bit write per cycle. Same-bank multiple reads or multiple writes conflict; one read plus one write can proceed if the SRAM macro supports 1R+1W and the address hazard is resolved.
 
-The two arrays can operate simultaneously. For example, a WLOAD from WS and a WSTORE to OSSpace do not contend for the same physical bank. They still consume the shared RAC logical slots and DA register slots.
+The two arrays can operate simultaneously. For example, a WLOAD from WS and a WSTORE to OS do not contend for the same physical bank. They still consume the shared RAC logical slots and DA register slots.
 
 Per-workspace bandwidth ceiling is 16 × 8 = 128 bytes/cycle read and 128 bytes/cycle write. Combined array-side ceiling is 256 B/cycle read plus 256 B/cycle write across both arrays. This is not a guaranteed sustained rate; RAC, issue width, DA ports, bank conflicts and transfer arbitration may lower it.
 
@@ -47,7 +47,7 @@ The currently documented peak operand demand, before MA and workspace-transfer t
 | DA: 8 LOAD + 4 STORE | 4 | 8 | 4 STORE source reads + 8 LOAD result writes |
 | **Subtotal** | **76** | **42** | Excludes MA, WLOAD/WSTORE, XFER and any extra operand/update traffic |
 
-This is a theoretical all-units-active operand demand, not a claim that all these instructions can issue together. The global dispatch/issue width and same-cycle instruction mix are not yet fixed. MA demand is also not fully normalized because VEC and ME512 operand footprints must be expressed in 256-bit MA entries.
+This is a theoretical all-units-active operand demand, not a claim that all these instructions can issue together. Global issue width remains OPEN; evaluate 16, 24 and 32 instructions/cycle independently from RAC capacity. The known scalar/FP/FMA read envelopes are 36R/52R/68R at those widths, before VEC/ME512 and workspace operations. See `NEXSUS-CPU-ISSUE-WIDTH-RAC-DEMAND-001.md`. MA demand is also not fully normalized because VEC and ME512 operand footprints must be expressed in 256-bit MA entries.
 
 Consequences:
 
@@ -89,10 +89,10 @@ Age-based fairness is required, but a ready high-priority instruction may use id
 ## 6. Required experiments before freezing
 
 1. Sweep RAC budgets: 32/32, 48/48, 64/48, 80/48, 80/64.
-2. Sweep global issue width independently; do not change both dimensions in one test.
+2. Sweep global issue width at 16/24/32 independently; do not change both dimensions in one test. See `NEXSUS-CPU-ISSUE-WIDTH-RAC-DEMAND-001.md`.
 3. Run integer-only, FP-only, mixed integer+FP, memory-heavy, vector/matrix, and mixed all-class workloads.
 4. Record per-cycle requested versus granted reads/writes, issue stalls by reason, queue age, bank conflicts, DA conflicts, writeback conflicts, throughput and fairness.
-5. Add simultaneous WS+OSSpace tests to confirm the two independent arrays do not cross-contend.
+5. Add simultaneous WS+OS tests to confirm the two independent arrays do not cross-contend.
 6. Add XFER+WLOAD tests on the same workspace and on opposite workspaces.
 7. Test worst-case MA pair and 512-bit DA groups; normalize all MA opcode footprints before the final RAC decision.
 8. Compare area/power/timing estimates for the selected logical budget and physical register-file banking/replication. A logical 48R/48W budget does not require one monolithic 48-port SRAM.
@@ -101,4 +101,4 @@ Age-based fairness is required, but a ready high-priority instruction may use id
 
 The physical workspace direction is now **two independent 8 KiB arrays, each 16 banks × 512 B with 1R+1W per bank**.
 
-The RAC direction is **48R/48W as the next experiment**, not a final fixed value. The current operand table already shows a 76R/42W subtotal if RA, FA and DA resources all reach their documented peak concurrently, before MA and workspace-transfer traffic. Therefore the next decisive step is to determine the global issue width and realistic simultaneous instruction mix, then run the RAC budget sweep. Do not freeze 48/48 until those results are available.
+The global issue-width candidates are 16/24/32 instructions/cycle and remain OPEN. The RAC direction is **48R/48W as the next experiment**, not a final fixed value. The current operand table already shows a 76R/42W subtotal if RA, FA and DA resources all reach their documented peak concurrently, before MA and workspace-transfer traffic. Therefore the next decisive step is to determine the global issue width and realistic simultaneous instruction mix, then run the RAC budget sweep. Do not freeze 48/48 until those results are available.
