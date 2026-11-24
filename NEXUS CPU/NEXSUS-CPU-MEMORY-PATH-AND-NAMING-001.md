@@ -77,8 +77,8 @@ These are separate logical resource domains. The table does **not** claim that e
 
 | Expanded name | Canonical symbol | Capacity / placement | Purpose |
 |---|---|---|---|
-| Operating-System Workspace | OW | 8 KiB workspace | Privileged OS/kernel scratch and control data; not a task context |
-| Task Workspace | TW | 8 KiB workspace | Current task/user-local scratch data |
+| OS Space | OSSpace | 8 KiB workspace | Privileged OS/kernel scratch and control data; not a task context |
+| Work Space | WS | 8 KiB workspace | Current application/user scratch data |
 | Context Pool | CP0–CP3 | Four 8 KiB banks; 16 × 2 KiB context slots/core | Saved architectural register/context images; protected residency, with spill to protected Data RAM when required |
 | Exception Workspace | XW | 8 KiB; eight 1 KiB slices | Exception/interrupt entry scratch and handler workspace |
 | Kernel Exception Stack | KESP | Protected Data RAM | Privileged exception software stack |
@@ -88,16 +88,16 @@ These are separate logical resource domains. The table does **not** claim that e
 | Error Log Area | Error Log Area | Placement and capacity not frozen | Persistent diagnostic/error history |
 | General Data Memory | Data RAM | Separate memory system/controller/path from App RAM | Mutable program data, task data, shared data, and protected OS backing |
 
-## 5.1 OW/TW workspace addressing and persistence
+## 5.1 OSSpace/WS workspace addressing and persistence
 
-OW and TW are directly byte-addressable, core-local 8 KiB working files. TW is general-purpose task-local storage and is not required to follow LIFO stack order. OW remains OS-owned.
+OSSpace and WS are directly byte-addressable, core-local 8 KiB working files. WS is general-purpose application working storage and is not required to follow LIFO stack order. OSSpace remains OS-owned.
 
-- WLOAD (0x89) and WSTORE (0x8A), using WSMEM format, move 8/16/32/64/128/256/512-bit values between OW/TW and DA staging.
+- WLOAD (0x89) and WSTORE (0x8A), using WSMEM format, move 8/16/32/64/128/256/512-bit values between OSSpace/WS and DA staging.
 - Workspace offsets are byte addresses 0–8191. Addressing supports absolute workspace offset and RA base + signed byte displacement. Natural alignment and complete-range bounds checks apply.
 - Register banks are saved/restored explicitly through MOV.DA.RA / MOV.RA.DA, MOV.DA.FA / MOV.FA.DA, and MOV.DA.MA / MOV.MA.DA. DA staging clobbers remain visible to the ABI.
-- XFER.WS.MEM (0x8B) copies a selected OW/TW range only to an L1–L4 Data RAM domain. XFER.WS.START (0x8C) starts the asynchronous export; XFER.WAIT (0x88) consumes the token. The reverse direction is forbidden.
-- A full 8 KiB workspace may be exported as one block. This path uses the transfer engine and Data RAM controller, not DA staging or RAC register-access slots. Restore is CPU-mediated through Data RAM LOAD→DA→WSTORE; App RAM is never a workspace data source.
-- OW/TW permissions and source/destination reservation rules are defined in Workspace Addressing and Transfer and Workspace Access Protection.
+- XFER.WS.MEM (0x8B) copies a selected OSSpace/WS range only to an L1–L4 Data RAM domain. XFER.WS.START (0x8C) starts the asynchronous export; XFER.WAIT (0x88) consumes the token. The reverse direction is forbidden.
+- A full 8 KiB workspace may be exported as one block. This path uses the transfer engine and Data RAM controller, not DA staging or RAC logical access slots. CPU-originated WLOAD/WSTORE accesses to WS/OSSpace and their DA staging lanes share the global RAC budget of 32 logical 64-bit reads + 32 logical 64-bit writes per cycle with RA/FA/DA/MA. Restore is CPU-mediated through Data RAM LOAD→DA→WSTORE; App RAM is never a workspace data source.
+- OSSpace/WS permissions and source/destination reservation rules are defined in Workspace Addressing and Transfer and Workspace Access Protection.
 
 ## 6. Exception-storage separation — preserve existing decisions
 
@@ -118,8 +118,8 @@ The following are old names and must not be used as current names in new diagram
 | PX pages P0–P7 | Code Slots CS0–CS7 | Eight equal 2 KiB executable-code slots |
 | PX → SPM0 transfer | Code Stream Transfer (CST) | Transfer into the inactive EB bank |
 | Ping-Pong buffer / SPM0 | Execution Buffer (EB) | Same 4 KiB dual-bank execution workspace |
-| SPM1 | Operating-System Workspace (OW) | 8 KiB |
-| SPM2 | Task Workspace (TW) | 8 KiB |
+| SPM1 | OS Space (OSSpace) | 8 KiB |
+| SPM2 | Work Space (WS) | 8 KiB |
 | SPM3–SPM6 | Context Pool (CP0–CP3) | Four 8 KiB banks |
 | SPM7 | Exception Workspace (XW) | 8 KiB, eight 1 KiB slices |
 
@@ -129,7 +129,7 @@ Do not mix legacy and canonical names in the same current-state diagram. When a 
 
 The canonical names and logical roles above are fixed by this reference. The following implementation details remain open and must not be guessed:
 
-1. Physical address placement and address visibility for OW, TW, Task Area, and Error Log Area.
+1. Physical address placement and address visibility for OSSpace, WS, Task Area, and Error Log Area.
 2. Whether each workspace is implemented as a dedicated SRAM, a partition, or a protected region of a shared physical memory.
 3. Exact physical placement and access path for ECS and EDFR, preserving their existing CPU-local protected semantics.
 4. Capacity and retention policy for the Error Log Area.
@@ -139,4 +139,4 @@ App RAM and Data RAM remain independent memory systems with separate controllers
 
 ## 9. Related naming decision
 
-This document follows **NEXSUS-CPU-CODEFLOW-NAMING-001.md**, which is the canonical source for CodeFlow and workspace terminology. If an older document conflicts with this naming reference, use the canonical names and roles here, then update the older document through an explicit compatibility/migration edit.
+This document follows **NEXSUS-CPU-CODEFLOSSpace-NAMING-001.md**, which is the canonical source for CodeFlow and workspace terminology. If an older document conflicts with this naming reference, use the canonical names and roles here, then update the older document through an explicit compatibility/migration edit.
