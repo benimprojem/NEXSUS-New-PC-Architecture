@@ -1,7 +1,7 @@
 # NEXSUS CPU — Cross-Architecture Comparison Simulator
 
 **Document ID:** NEXSUS-CPU-COMPARISON-SIMULATOR-001  
-**Status:** Simulator v0.3.2-dev; canonical NEXSUS frontend is App RAM→C0→CS0–CS7→CST→EB; OW/TW semantics are specified but workspace timing/transfer simulation is pending  
+**Status:** Simulator v0.3.2-dev; canonical NEXSUS frontend is App RAM→C0→CS0–CS7→CST→EB; OSSpace/WS semantics are specified but workspace timing/transfer simulation is pending  
 **Purpose:** Compare one deterministic mixed workload across current AMD Zen 5, Intel Xeon Redwood Cove+, Apple ARM M6, and the selected NEXSUS architecture.
 
 ## 1. Comparison targets
@@ -90,7 +90,7 @@ Current architecture anchors (use the Architecture Decision Register as authorit
 - L1=1 MiB private per core; L2=2 MiB shared per core pair; L3=8 MiB shared per four-core group; L4=64 MiB+ shared per eight-core block.
 - App RAM and Data RAM are independent memory systems/controllers, each with a 64 B/cycle/core connection.
 - Canonical instruction path: App RAM → Code Cache (C0) → Code Slots (CS0–CS7) → Code Stream Transfer (CST) → Execution Buffer (EB).
-- Canonical workspaces: Operating-System Workspace (OW), Task Workspace (TW), Context Pool (CP0–CP3), and Exception Workspace (XW); EB is code-fetch-only.
+- Canonical workspaces: OS Space (OSSpace), Work Space (WS), Context Pool (CP0–CP3), and Exception Workspace (XW); EB is code-fetch-only.
 - Architectural register banks: RA0–RA31, FA0–FA31, DA0–DA31 (32 × 64-bit each), MA0–MA31 (32 × 256-bit).
 - Shared Register Access Controller budget: 32 logical reads + 32 logical writes per cycle across RA/FA/DA/MA.
 
@@ -154,20 +154,20 @@ The report now includes:
 
 These are diagnostic counters, not mutually exclusive wall-clock durations. Some count per-operation events and others count cycles; they must not be added together as elapsed time. The v0.2.4-dev model replaces the static per-core split with lockstep global bank arbitration. The shared controller models same-cycle DRAM miss contention; NEXSUS shared cache groups now model capacity and hit paths, while coherence and physical controller details remain approximations. The memory-latency exposure counter is descriptive latency accounting, not a count of cycles during which the pipeline was actually stalled. Shared memory arbitration must be implemented before treating 8L4S throughput as a realistic whole-chip prediction.
 
-## 7. CodeFlow frontend and OW/TW workspace model status
+## 7. CodeFlow frontend and OSSpace/WS workspace model status
 
 The canonical instruction-feed path is App RAM → C0 Code Cache → CS0–CS7 Code Slots → CST → EB. The active EB bank supplies instruction fetch while the inactive bank is eligible for refill. The selected stage rates and startup/steady-state accounting are defined in §15; old P0/P1 and SPM0/PX names are historical simulator terminology, not current architectural resource names.
 
-The simulator's earlier generic SPM2 task-local-access experiment is **not** the OW/TW architecture model and must not be used as its timing or permission contract. The current architectural workspace contract is:
+The simulator's earlier generic SPM2 application working-access experiment is **not** the OSSpace/WS architecture model and must not be used as its timing or permission contract. The current architectural workspace contract is:
 
-- OW: 8 KiB, OS-owned, directly byte-addressable by authorized PL1/PL2 code.
-- TW: 8 KiB, owned by the currently running task; PL0 accesses only its own active TW.
-- WLOAD/WSTORE access OW/TW through DA staging. WLOAD/WSTORE DA operands consume the shared RAC read/write budget; workspace SRAM ports are modeled separately.
-- XFER.WS.MEM / XFER.WS.START export OW/TW→L1–L4 Data RAM only. The transfer engine may read a workspace source but can never write a workspace destination.
-- Data RAM→TW/OW restore is CPU-mediated through Data RAM LOAD→DA→WSTORE. App RAM is not a workspace data source; it remains on the independent instruction-fetch path.
-- An optional OS/task exchange window consists of paired OW and TW ranges copied by privileged CPU WLOAD/WSTORE operations at syscall handoff. It is not a shared alias or DMA window.
+- OSSpace: 8 KiB, OS-owned, directly byte-addressable by authorized PL1/PL2 code.
+- WS: 8 KiB, owned by the application execution context; PL0 accesses only its own active WS.
+- WLOAD/WSTORE access OSSpace/WS through DA staging. Workspace endpoints and RA/FA/DA/MA register operands share the core-wide RAC budget of 32 logical 64-bit reads + 32 logical 64-bit writes per cycle; wide workspace operations reserve both endpoint footprints atomically. Physical workspace SRAM bank/port behavior remains separately modeled.
+- XFER.WS.MEM / XFER.WS.START export OSSpace/WS→L1–L4 Data RAM only. The transfer engine may read a workspace source but can never write a workspace destination.
+- Data RAM→WS/OSSpace restore is CPU-mediated through Data RAM LOAD→DA→WSTORE. App RAM is not a workspace data source; it remains on the independent instruction-fetch path.
+- An optional OS/application exchange window consists of paired OSSpace and WS ranges copied by privileged CPU WLOAD/WSTORE operations at syscall handoff. It is not a shared alias or DMA window.
 
-**Simulator implementation status:** OW/TW address decode, access permissions, multi-port/bank arbitration, one-way export timing, CPU-mediated restore cost, and syscall shadow-window copies are not yet represented as executable simulator resources. Do not report SPM2's former 2-cycle/one-port assumptions as OW/TW performance. The next workspace-model phase must add explicit OW/TW resource objects and tests for forbidden external writes, export source reservation, bounds/privilege faults, and CPU-mediated restore.
+**Simulator implementation status:** OSSpace/WS address decode, access permissions, shared RAC accounting, multi-port/bank arbitration, one-way export timing, CPU-mediated restore cost, and syscall shadow-window copies are not yet represented as executable simulator resources. Do not report SPM2's former 2-cycle/one-port assumptions as OSSpace/WS performance. The next workspace-model phase must add explicit OSSpace/WS resource objects and tests for forbidden external writes, export source reservation, bounds/privilege faults, and CPU-mediated restore.
 
 
 ## 7.1 Cross-architecture comparison fairness
@@ -209,7 +209,7 @@ The script is a research model, not a substitute for RTL simulation, gem5, vendo
 - AMD Ryzen 9 9950X specifications: https://www.amd.com/en/products/processors/desktops/ryzen/9000-series/amd-ryzen-9-9950x.html
 - AMD Zen 5 Hot Chips overview: https://hc2024.hotchips.org/assets/program/conference/day2/24_HC2024.AMD.Cohen.Subramony.final.pdf
 - Intel Core Ultra 9 285K specifications: https://www.intel.com/content/www/us/en/products/sku/241060/intel-core-ultra-9-processor-285k-36m-cache-up-to-5-70-ghz/specifications.html
-- Intel Lion Cove architecture presentation: https://cdrdv2-public.intel.com/824430/2024_Intel_Tech%20Tour_TW_Next%20Gen%20P-core%20The%20Lion%20Cove%20Architecture-4.pdf
+- Intel Lion Cove architecture presentation: https://cdrdv2-public.intel.com/824430/2024_Intel_Tech%20Tour_WS_Next%20Gen%20P-core%20The%20Lion%20Cove%20Architecture-4.pdf
 - Skymont analysis: https://chipsandcheese.com/p/skymont-intels-e-cores-reach-for-the-sky
 - Arrow Lake Lion Cove memory analysis: https://chipsandcheese.com/p/analyzing-lion-coves-memory-subsystem
 
@@ -309,7 +309,7 @@ Run:
 python run_cross_arch_codeflow_suite.py --scale 1 --pages 64 --tasks 4 --json
 ```
 
-CI validates operation-count parity across the four CPU models and page completion parity across CodeFlow beat profiles. See the Turkish counterpart in `Türkçe/NEXSUS-CPU-CROSS-ARCH-CODEFLOW-001.md`.
+CI validates operation-count parity across the four CPU models and page completion parity across CodeFlow beat profiles. See the Turkish counterpart in `Türkçe/NEXSUS-CPU-CROSS-ARCH-CODEFLOSSpace-001.md`.
 
 
 ## 15. CodeFlow startup vs steady-state accounting correction (2026-11-24)
