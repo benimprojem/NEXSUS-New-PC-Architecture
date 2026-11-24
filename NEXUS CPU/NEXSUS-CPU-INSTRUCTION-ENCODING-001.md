@@ -92,7 +92,7 @@ FMT alanı için ilk öneri:
 | 1011 | MEMXUPD | Indexed load/store with base-register pre/post increment/decrement |
 | 1100 | ATOM | Atomic scalar memory operations (load/store/CAS/RMW) |
 | 1101 | MEMXFER | L1–L4 domain'leri arası CPU kontrollü transfer |
-| 1110 | WSMEM | OW/TW byte-addressed workspace LOAD/STORE |
+| 1110 | WSMEM | OSSpace/WS byte-addressed workspace LOAD/STORE |
 | 1111 | Reserved | Gelecek formatlar |
 
 FMT kodları taslak değerlerdir; opcode tablosu dondurulurken sabitlenecektir.
@@ -226,7 +226,7 @@ BEXT ve BINS iki register ile iki küçük alan parametresi kullandığından R2
 | 10 | L3 | İlgili dört çekirdeklik grubun ortak domain'i |
 | 11 | L4 | İlgili sekizli veya daha geniş grubun ortak domain'i |
 
-AM[0]=0, base-register adreslemesidir. EXT kullanılmayan komutta geçerli domain kodları L1=000, L2=010, L3=100, L4=110 olur; bu biçimde EA, RA[BASE] ile signed DISP32 toplamıdır. EXT formunda DISP=0 zorunludur; literal RAW_LITERAL/COUNT=1 olmalıdır ve signed 64-bit byte displacement olarak yorumlanır: `EA = RA[BASE] + sign_extend(LITERAL64)`. Toplama 64-bit adres alanında taşma veya negatif yönde alt-taşma oluşturursa `ADDRESS_OVERFLOW_FAULT` oluşur.
+AM[0]=0, base-register adreslemesidir. EXT kullanılmayan komutta geçerli domain kodları L1=000, L2=010, L3=100, L4=110 olur; bu biçimde EA, RA[BASE] ile signed DISP32 toplamıdır. EXT formunda DISP=0 zorunludur; literal RAW_LITERAL/COUNT=1 olmalıdır ve signed 64-bit byte displacement olarak yorumlanır: `EA = RA[BASE] + sign_extend(LITERAL64)`. Toplama 64-bit adres alanında taşma veya negatif yönde alt-taşma oluşturursa `ADDRESS_OVERFLOSSpace_FAULT` oluşur.
 
 AM[0]=1, yalnızca EXT formunda kullanılabilen absolute domain address biçimidir. BASE=0 ve DISP=0 zorunludur; literal word unsigned 64-bit domain adresidir ve doğrudan EA olarak kullanılır. EXT olmadan AM[0]=1 illegal encoding'dir. Bu adres, seçilen L1/L2/L3/L4 domain'inin adres uzayında yorumlanır; fiziksel adres olduğu varsayılmaz.
 
@@ -252,14 +252,14 @@ DA kayıtları 64-bit olduğundan erişim genişliğine göre gereken kayıt say
 - LOAD/STORE ham bit aktarımı yapar. LOAD signed/unsigned yorumlama veya sign-extension yapmaz. Signed/unsigned yorum, DA'dan RA/FA'ya sonraki açık dönüşüm/transfer aşamasında yapılır.
 - **Doğal hizalama zorunludur.** EA, erişim boyutunun byte karşılığına (W/8) tam bölünmelidir. Örnek: W=16 için 2-byte, W=64 için 8-byte, W=512 için 64-byte hizalama gerekir. W=8 için her byte adresi geçerlidir.
 - İlk ISA sürümünde misaligned LOAD/STORE desteklenmez; hizalama ihlali `ALIGNMENT_FAULT` üretir. Donanım erişimi otomatik olarak birden fazla erişime bölmez. Gelecekte unaligned erişim gerekiyorsa ayrı opcode/mod ile açıkça tanımlanır.
-- Erişim aralığı `[EA, EA + W/8 - 1]` 64-bit adres uzayını taşırırsa `ADDRESS_OVERFLOW_FAULT` oluşur. Aralığın seçilen L1/L2/L3/L4 domain'inde tamamen geçerli olması gerekir; domain sınırını aşmak `MEMORY_BOUNDS_FAULT` üretir.
+- Erişim aralığı `[EA, EA + W/8 - 1]` 64-bit adres uzayını taşırırsa `ADDRESS_OVERFLOSSpace_FAULT` oluşur. Aralığın seçilen L1/L2/L3/L4 domain'inde tamamen geçerli olması gerekir; domain sınırını aşmak `MEMORY_BOUNDS_FAULT` üretir.
 - Erişim izni yoksa `MEMORY_PERMISSION_FAULT`; eşleme/erişim hedefi mevcut değilse `MEMORY_ACCESS_FAULT` oluşur. Hata, komutu başlatan çekirdeğe senkron olarak raporlanır.
 - LOAD fault durumunda hedef DA kayıtlarının hiçbiri mimari olarak güncellenmez. STORE için tüm aralık, izin ve sınır kontrolleri yazma commit'inden önce tamamlanır; bu kontrollerden biri başarısızsa hiçbir byte yazılmaz.
 - Başarılı 128/256/512-bit LOAD/STORE tek bir mimari komuttur; mikro-mimari bunu birden fazla beat'e bölebilir. Bu, başka çekirdeklerin aynı aralığa eşzamanlı erişimine karşı kendiliğinden atomicity garantisi vermez. Gerekli eşzamanlama/atomic davranış ayrı komutlarla sağlanır.
 
-### 4.6A WSMEM — OW/TW doğrudan workspace erişimi
+### 4.6A WSMEM — OSSpace/WS doğrudan workspace erişimi
 
-WSMEM, OW/TW içindeki byte-addressed alanlara DA staging bankı üzerinden erişir. WSMEM, Data RAM MEM formatından ayrıdır; AM alanı L1–L4 domain'lerini değil workspace seçimini ve adresleme modunu belirler.
+WSMEM, OSSpace/WS içindeki byte-addressed alanlara DA staging bankı üzerinden erişir. WSMEM, Data RAM MEM formatından ayrıdır; AM alanı L1–L4 domain'lerini değil workspace seçimini ve adresleme modunu belirler.
 
 ```text
 63       56 55    52 51   47 46   42 41  39 38  36 35             4 3   0
@@ -272,27 +272,27 @@ WSMEM, OW/TW içindeki byte-addressed alanlara DA staging bankı üzerinden eri�
 - D: DA destination selector for WLOAD; DA source selector for WSTORE.
 - BASE: RA base selector. BASE=0 is required for absolute-offset mode.
 - W: same width codes as MEM (8/16/32/64/128/256/512 bits).
-- WSAM[2:1]: 00=OW, 01=TW; 10/11 are reserved.
+- WSAM[2:1]: 00=OSSpace, 01=WS; 10/11 are reserved.
 - WSAM[0]: 0=RA[BASE]+signed DISP32; 1=absolute workspace offset DISP32. Absolute mode requires BASE=0 and DISP32 in 0–8191.
 - DISP is a signed byte displacement in base-relative mode. The computed effective offset and complete W/8-byte range must fit in 0–8191; arithmetic does not wrap.
 - R[3:0] must be zero.
 - Access must be naturally aligned to W/8 bytes. DA selector range follows MEM: W128/256/512 uses 2/4/8 consecutive DA registers and may not exceed DA31.
 - WLOAD writes the selected data into DA only after all checks pass. For W<64, unused upper bits of the destination DA register are zeroed. WSTORE changes only the selected W bits.
 - A faulting WLOAD leaves all destination DA entries unchanged. A validation-faulting WSTORE changes no workspace byte.
-- Workspace selector is not an access grant. PL0 may select TW only when it owns the active task; OW is PL1/PL2 only. The access-control policy remains authoritative.
+- Workspace selector is not an access grant. PL0 may select WS only when it owns the active application execution; OSSpace is PL1/PL2 only. The access-control policy remains authoritative.
 
 | OP | Mnemonic | Format | İşlev |
 |---:|---|---|---|
-| 0x89 | WLOAD | WSMEM | OW/TW → DA |
-| 0x8A | WSTORE | WSMEM | DA → OW/TW |
+| 0x89 | WLOAD | WSMEM | OSSpace/WS → DA |
+| 0x8A | WSTORE | WSMEM | DA → OSSpace/WS |
 
 Assembly examples:
 
 ```asm
-WLOAD.TW.W64  DA0, [0x120]
-WSTORE.TW.W64 [0x120], DA0
-WLOAD.TW.W128 DA4:DA5, [RA3 + 0x20]
-WSTORE.OW.W256 [RA7 + 0x100], DA8:DA11
+WLOAD.WS.W64  DA0, [0x120]
+WSTORE.WS.W64 [0x120], DA0
+WLOAD.WS.W128 DA4:DA5, [RA3 + 0x20]
+WSTORE.OSSpace.W256 [RA7 + 0x100], DA8:DA11
 ```
 
 ### 4.7 MEMX — İndeksli bellek erişimi
@@ -336,7 +336,7 @@ Normal MEMX formunda:
 - BASE ve INDEX birbirinden bağımsız RA selector'larıdır; aynı selector kullanılabilir.
 - INDEX, signed two's-complement 64-bit tamsayı olarak yorumlanır. Negatif indeksler desteklenir.
 - SCALE çarpanı yalnızca indeks terimine uygulanır; DISP byte cinsindendir ve ölçeklenmez.
-- Ara hesaplama taşması sessizce sarılmaz. Matematiksel sonuç 0…2^64−1 aralığının dışındaysa `ADDRESS_OVERFLOW_FAULT` oluşur.
+- Ara hesaplama taşması sessizce sarılmaz. Matematiksel sonuç 0…2^64−1 aralığının dışındaysa `ADDRESS_OVERFLOSSpace_FAULT` oluşur.
 - EXT formunda DISP28=0 zorunludur ve literal signed 64-bit byte displacement olarak kullanılır:
 
 `EA = RA[BASE] + (signed(RA[INDEX]) × SCALE) + signed(LITERAL64)`
@@ -392,7 +392,7 @@ Payload alanları toplam 52 bittir:
 - Normal biçimde EA, base_term + signed DISP34 olur. PRE modlarında base_term, eski BASE'in ± W/8 uygulanmış değeridir; POST modlarında eski BASE değeridir.
 - EXT biçiminde DISP34=0 zorunludur; literal signed 64-bit byte displacement olur.
 - BASE güncellemesi ve LOAD/STORE tek bir mimari komut olarak commit edilir. Adres taşması, alignment, bounds, permission veya access fault oluşursa BASE ve LOAD hedefi DA kayıtları değişmeden kalır; faulting STORE hiçbir byte yazmaz.
-- PRE modunda BASE ± W/8 işleminin kendisi 64-bit adres uzayını taşırırsa ADDRESS_OVERFLOW_FAULT oluşur. POST modunda erişim başarılı olsa bile yeni BASE değeri 0…2^64−1 aralığının dışına çıkacaksa komut commit edilmez ve aynı fault oluşur.
+- PRE modunda BASE ± W/8 işleminin kendisi 64-bit adres uzayını taşırırsa ADDRESS_OVERFLOSSpace_FAULT oluşur. POST modunda erişim başarılı olsa bile yeni BASE değeri 0…2^64−1 aralığının dışına çıkacaksa komut commit edilmez ve aynı fault oluşur.
 - Domain seçimi, doğal hizalama, DA selector sınırı, erişim izinleri ve fault kodları MEM ile aynıdır.
 
 ### 4.9 MEMXUPD — İndeksli ve otomatik taban güncellemeli bellek erişimi
@@ -454,7 +454,7 @@ Payload toplamı 52 bittir:
 - ORDER: memory ordering modeli.
 - DISP: normal biçimde signed 23-bit byte displacement. EXT biçiminde DISP=0 zorunludur ve literal signed 64-bit displacement olarak kullanılır.
 
-Effective address normal biçimde `RA[BASE] + sign_extend(DISP23)`; EXT biçiminde `RA[BASE] + signed(LITERAL64)` olarak hesaplanır. 64-bit adres aralığı dışına taşma `ADDRESS_OVERFLOW_FAULT` üretir. Absolute ve indexed adresleme bu ilk ATOM formatında yoktur; gerekirse önce LEA ile adres RA register'ında hazırlanır.
+Effective address normal biçimde `RA[BASE] + sign_extend(DISP23)`; EXT biçiminde `RA[BASE] + signed(LITERAL64)` olarak hesaplanır. 64-bit adres aralığı dışına taşma `ADDRESS_OVERFLOSSpace_FAULT` üretir. Absolute ve indexed adresleme bu ilk ATOM formatında yoktur; gerekirse önce LEA ile adres RA register'ında hazırlanır.
 
 **ORDER kodları**
 
@@ -756,7 +756,7 @@ Bu eşleme, FENCE SCOPE alanındaki L1–L4 sıralamasının iki bitlik karşıl
 - XFER.MEM tamamlanana kadar komut akışını bekletir; hem başlangıç doğrulama fault'u hem de aktarım sırasında oluşan runtime fault doğrudan XFER.MEM komutunda raporlanır. XFER.START kabul edildiğinde komut akışına devam eder; hedef veri ancak ilgili XFER.WAIT başarılı olduktan sonra tüketilebilir. START'ın başlangıç doğrulaması başarısızsa token üretilmez ve TRA değiştirilmez.
 - **Asenkron hata:** Transferin runtime aşamasında hata ile tamamlanması halinde XFER.WAIT ilgili transfer fault'unu senkron olarak üretir. Hatalı transfer token'ı donanım tarafından terminal olarak tüketilir; faulting WAIT'ın RA yazımı precise-exception kuralı gereği commit edilmez, dolayısıyla TRA eski token değerini korur. Exception handler bu stale değeri normal RA işlemleriyle temizlemeli/üzerine yazmalıdır; aynı token artık geçerli değildir. Hatalı hedef aralık geçerli veri sayılmaz.
 - OP zaten synchronous/start/wait ayrımını yaptığı için payload içinde ikinci bir MODE alanı yoktur.
-- XFER.MEM / XFER.START / XFER.WAIT için RESERVED[27:0] sıfır olmalıdır. XFER.WS.MEM / XFER.WS.START için RESERVED[27]=DST_WS=0, [26]=SRC_WS=1, [25]=WS_ID (0=OW, 1=TW), [24:0]=0 zorunludur. DST_WS=1 veya SRC_WS=0 illegal encoding'dir; workspace hedefi yasaktır. SD=00 ve SRA workspace byte offset'ini; DD L1–L4 hedef domain'ini ve DRA Data RAM hedef byte adresini gösterir. XFER.WS.MEM için TRA=0; XFER.WS.START için TRA token hedefidir. XFER.WAIT, her iki transfer türünün token'ını tüketebilir.
+- XFER.MEM / XFER.START / XFER.WAIT için RESERVED[27:0] sıfır olmalıdır. XFER.WS.MEM / XFER.WS.START için RESERVED[27]=DST_WS=0, [26]=SRC_WS=1, [25]=WS_ID (0=OSSpace, 1=WS), [24:0]=0 zorunludur. DST_WS=1 veya SRC_WS=0 illegal encoding'dir; workspace hedefi yasaktır. SD=00 ve SRA workspace byte offset'ini; DD L1–L4 hedef domain'ini ve DRA Data RAM hedef byte adresini gösterir. XFER.WS.MEM için TRA=0; XFER.WS.START için TRA token hedefidir. XFER.WAIT, her iki transfer türünün token'ını tüketebilir.
 - MEMXFER'ın **mimari davranış sözleşmesi bu sürüm için tanımlanmıştır**. Alan bitleri ve opcode atamaları, bütün ISA opcode/format tablosunun son çakışma ve reserved-alan denetimi tamamlanana kadar aday statüsündedir; bu durum aşağıdaki davranış kararlarının açık kaldığı anlamına gelmez. MEMXFER uzunluğu unsigned 64-bit byte sayısıdır; ISA küçük ve sabit bir maksimum tanımlamaz, büyük istekler donanım içinde çoklu beat'lere bölünebilir. Token kapasitesi sonlu ve implementation-defined'dır; platform/OS capability bilgisiyle bildirilir. Token kaydı yoksa START, MEMORY_ACCESS_FAULT / TRANSFER_RESOURCE_UNAVAILABLE ile aktarımı kabul etmeden ve TRA'yı değiştirmeden fault verir; bu kaynak hatasında START bekletilmez. Transfer tamamlandığında aktif transaction/beat kaynakları serbest bırakılabilir, fakat token kaydı WAIT token'ı tüketene kadar tutulur. Runtime fault'ta fiziksel kısmi yazma geri alınmak zorunda değildir; hedef aralığın tamamı mantıksal olarak invalid/unpublished kalır ve tüm aralık başarıyla yeniden yazılmadan yayımlanamaz.
 
 ### 4.15.1 Workspace endpoint extension
@@ -766,13 +766,13 @@ XFER.WS.MEM (OP=0x8B) and XFER.WS.START (OP=0x8C) reuse the MEMXFER payload and 
 | Field | Bits | Meaning |
 |---|---:|---|
 | DST_WS | [27] | Must be 0; workspace destination is forbidden |
-| SRC_WS | [26] | Must be 1; source endpoint is OW/TW |
-| WS_ID | [25] | 0=OW, 1=TW |
+| SRC_WS | [26] | Must be 1; source endpoint is OSSpace/WS |
+| WS_ID | [25] | 0=OSSpace, 1=WS |
 | RESERVED | [24:0] | Must be zero |
 
-DST_WS=0 and SRC_WS=1 are mandatory. SD must be 00 and SRA selects the OW/TW source byte offset; DD selects the L1–L4 Data RAM destination domain and DRA its Data RAM byte address. LRA contains the unsigned byte length. Any DST_WS=1 or SRC_WS=0 encoding is illegal and must not start a transfer. XFER.WS.MEM requires TRA=0; XFER.WS.START writes its token to TRA. XFER.WAIT (0x88) consumes either MEMXFER token type.
+DST_WS=0 and SRC_WS=1 are mandatory. SD must be 00 and SRA selects the OSSpace/WS source byte offset; DD selects the L1–L4 Data RAM destination domain and DRA its Data RAM byte address. LRA contains the unsigned byte length. Any DST_WS=1 or SRC_WS=0 encoding is illegal and must not start a transfer. XFER.WS.MEM requires TRA=0; XFER.WS.START writes its token to TRA. XFER.WAIT (0x88) consumes either MEMXFER token type.
 
-Workspace offsets and complete ranges must fit in 0–8191. Block transfer is byte-granular and does not require natural alignment. The source workspace range is read-reserved and cannot be modified during transfer. Workspace is never a destination. Data RAM destination reservation and unpublished-range behavior follow the existing MEMXFER rules. Data RAM→workspace and App RAM→workspace transfer requests are not representable as valid workspace MEMXFER instructions. A full 8 KiB workspace can be copied in one request. RAC register access slots and DA staging entries are not consumed by this block path.
+Workspace offsets and complete ranges must fit in 0–8191. Block transfer is byte-granular and does not require natural alignment. The source workspace range is read-reserved and cannot be modified during transfer. Workspace is never a destination. Data RAM destination reservation and unpublished-range behavior follow the existing MEMXFER rules. Data RAM→workspace and App RAM→workspace transfer requests are not representable as valid workspace MEMXFER instructions. A full 8 KiB workspace can be copied in one request. RAC shared access slots and DA staging entries are not consumed by this block path.
 
 **Completion, visibility ve ordering**
 - XFER.MEM başarıyla döndüğünde hedef aralığın tamamı hedef domain'in NDC kuralları içinde kullanılabilir olur; komut issuing core için hedef domain'e acquire-completion etkisi sağlar.
@@ -800,7 +800,7 @@ Workspace offsets and complete ranges must fit in 0–8191. Block transfer is by
 | Sync runtime failure | XFER.MEM fails during transfer | Fault reported at XFER.MEM; partial physical writes may remain, but the entire destination is invalid/unpublished |
 | Async runtime failure | Accepted START later fails | WAIT reports the underlying transfer fault; token is retired; TRA write does not commit; destination remains invalid/unpublished |
 | Token capacity exhausted | No free core-local token record at START | MEMORY_ACCESS_FAULT / TRANSFER_RESOURCE_UNAVAILABLE; no acceptance, no movement, TRA unchanged |
-| Range arithmetic overflow | Nonzero range's last byte exceeds UINT64_MAX | ADDRESS_OVERFLOW_FAULT before payload movement |
+| Range arithmetic overflow | Nonzero range's last byte exceeds UINT64_MAX | ADDRESS_OVERFLOSSpace_FAULT before payload movement |
 
 These are specification-level conformance expectations, not a claim that a hardware simulator or RTL test suite has already executed them.
 
@@ -926,9 +926,9 @@ MMAC.S.N8.W32 MA24, MA0, MA8, MA16
 
 ### 6.7 Matrix reduction encoding
 
-- `MREDUCE.S/U.ROWS/COLS.Nx.Wy` R2 kullanır: D çıktı register grubu başlangıcı, A kaynak matrix tile grubu başlangıcıdır.
+- `MREDUCE.S/U.ROSSpaceS/COLS.Nx.Wy` R2 kullanır: D çıktı register grubu başlangıcı, A kaynak matrix tile grubu başlangıcıdır.
 - W, kaynak matrix eleman genişliğini; M, N=2/4/8 tile şeklini seçer. M kodları MTRANS ile aynıdır: 000=2×2, 001=4×4, 010=8×8.
-- AUX[35] axis alanıdır: 0=ROWS, 1=COLS. AUX[34:0] sıfır olmalıdır. Signedness S/U opcode varyantıyla seçilir.
+- AUX[35] axis alanıdır: 0=ROSSpaceS, 1=COLS. AUX[34:0] sıfır olmalıdır. Signedness S/U opcode varyantıyla seçilir.
 - Kaynak A register sayısı `ceil(N × N × W / 256)`; hedef D register sayısı `ceil(N × (W + ceil(log2(N))) / 256)` olarak türetilir.
 - D ve A grupları kendi uzunluklarına göre hizalanır, MA31'i aşamaz ve birbirleriyle çakışamaz.
 - MREDUCE için W=8/16/32/64 geçerlidir; 8×8 için W=64 ayrılmıştır. AUX reserved bit ihlali, geçersiz M/W veya grup sınır/alignment ihlali illegal operand/encoding fault üretir.
@@ -1216,7 +1216,7 @@ Aşağıdaki değerler bu revizyonla atanmıştır. Her mnemonic varyantı ayrı
 
 - 0x83 Vector/Matrix ailesi için ayrılmış genişletme değeridir; ilk sürümde illegal/reserved kabul edilir.
 - Vector ve Matrix opcode'larında bank seçimi ayrıca kodlanmaz; operand alanları ISA tanımına göre MA register selector'larıdır.
-- MREDUCE için ROWS/COLS seçimi R2 AUX[35] bitindedir; MTRANS için AUX sıfırdır.
+- MREDUCE için ROSSpaceS/COLS seçimi R2 AUX[35] bitindedir; MTRANS için AUX sıfırdır.
 - Signed/unsigned varyantlar ayrı primary opcode olduğundan M alanı tile shape, W alanı eleman genişliği için kullanılmaya devam eder.
 - Numeric opcode tablosunda bulunmayan bir mnemonic alias yeni opcode oluşturmaz. Alias yalnızca aynı opcode ve operand alanlarına assembler düzeyinde çevrilebilir.
 - Bu tablo primary opcode atamasıdır; execution latency, issue portu veya ME512'nin çevrim başına tamamlayacağı iş miktarını belirlemez.
@@ -1244,13 +1244,13 @@ Bellek komutları tek bir opcode'a sıkıştırılmayacaktır: normal LOAD/STORE
 | 0x4E | FETCH_AND | ATOM | Atomic fetch-and |
 | 0x4F | FETCH_OR | ATOM | Atomic fetch-or |
 | 0x84 | FETCH_XOR | ATOM | Atomic fetch-xor; atomic aile tamamlayıcısı |
-| 0x89 | WLOAD | WSMEM | OW/TW workspace'den DA'ya okuma |
-| 0x8A | WSTORE | WSMEM | DA'dan OW/TW workspace'e yazma |
+| 0x89 | WLOAD | WSMEM | OSSpace/WS workspace'den DA'ya okuma |
+| 0x8A | WSTORE | WSMEM | DA'dan OSSpace/WS workspace'e yazma |
 | 0x86 | XFER.MEM | MEMXFER | Synchronous Lx-domain transfer |
 | 0x87 | XFER.START | MEMXFER | Asynchronous transfer start/token |
 | 0x88 | XFER.WAIT | MEMXFER | Transfer token completion wait |
-| 0x8B | XFER.WS.MEM | MEMXFER | Synchronous OW/TW → L1–L4 Data RAM block export |
-| 0x8C | XFER.WS.START | MEMXFER | Asynchronous OW/TW → L1–L4 Data RAM block export start |
+| 0x8B | XFER.WS.MEM | MEMXFER | Synchronous OSSpace/WS → L1–L4 Data RAM block export |
+| 0x8C | XFER.WS.START | MEMXFER | Asynchronous OSSpace/WS → L1–L4 Data RAM block export start |
 
 **Opcode/format doğrulamaları**
 - LOAD/STORE opcode'ları yalnızca MEM; LOADX/STOREX yalnızca MEMX; LOADUPD/STOREUPD yalnızca MEMUPD; LOADXUPD/STOREXUPD yalnızca MEMXUPD kullanır.
@@ -1267,7 +1267,7 @@ Bellek komutları tek bir opcode'a sıkıştırılmayacaktır: normal LOAD/STORE
 
 - XFER M alanı BIT_COPY, SIGN_EXTEND ve ZERO_EXTEND alt türlerini seçer; ayrıntılar §4.11'de tanımlıdır.
 - FCONV, sayısal dönüşüm için 0x5B primary opcode'sunu ve XFER alan yerleşimini kullanır; XFER ile aynı opcode değildir.
-- 0x86–0x88, L1–L4 Data RAM domain'leri arasındaki MEMXFER işlemleridir. 0x89–0x8A, WSMEM workspace erişimidir; 0x8B–0x8C, tek yönlü OW/TW→Data RAM MEMXFER işlemleridir. 0x8D–0x93 ilerideki transfer uzantıları için reserved'dır.
+- 0x86–0x88, L1–L4 Data RAM domain'leri arasındaki MEMXFER işlemleridir. 0x89–0x8A, WSMEM workspace erişimidir; 0x8B–0x8C, tek yönlü OSSpace/WS→Data RAM MEMXFER işlemleridir. 0x8D–0x93 ilerideki transfer uzantıları için reserved'dır.
 
 ### 8.4 Floating-point primary opcode atamaları
 
