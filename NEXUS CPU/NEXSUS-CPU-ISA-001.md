@@ -65,17 +65,27 @@ RAC, tüm register bankları için ortak **32R + 32W / cycle** erişim bütçesi
 | RBn | RAn alt 32-bit görünümü | 32-bit integer erişim |
 | RCn | RAn alt 16-bit görünümü | 16-bit integer erişim |
 | RDn | RAn alt 8-bit görünümü | 8-bit integer erişim |
-| Code Cache (C0) | 64 KiB | App RAM'den gelen executable-code staging/cache; yazılım register bankı değildir |
-| Code Slots (CS0–CS7) | 8 × 2 KiB | Doğrulanmış executable-code sayfalarının eşit havuzu |
-| Execution Buffer (EB) | 2 × 2 KiB | CPU'nun instruction-fetch için kullandığı çift banklı kod alanı; yazılım veri alanı değildir |
-| Operating-System Workspace (OW) | 8 KiB | PL1/PL2 OS-owned çalışma ve syscall/I/O exchange alanı |
-| Task Workspace (TW) | 8 KiB | Yalnızca o çekirdekte çalışan ve sahipliği atanmış PL0 task erişebilir |
-| Context Pool (CP0–CP3) | 4 × 8 KiB | Yalnızca OS context-manager yolları; task context image'ları |
-| Exception Workspace (XW) | 8 KiB; 8 × 1 KiB slice | Exception hardware'a özel; normal yazılım erişimi yok |
 
 RA/RB/RC/RD aynı RA fiziksel kaydının alt-bit görünümleridir; küçük görünüm yazmalarında etkilenmeyen üst bitler korunur. FA ayrı fiziksel banktır ve RA view alias'ı değildir. FA'nın FP128 işlemleri çift numaralı başlangıç kaydından başlayan iki kayıtlı pair kullanır. Register ayrıntıları [Register Views and Direct Workspaces](NEXSUS%20CPU%20%E2%80%94%20SPM,%20Register%20G%C3%B6r%C3%BCn%C3%BCmleri%20ve%20Do%C4%9Frudan%20Alan%20Eri%C5%9Fimi.md) belgesinde; workspace adları ve erişim sınırları [Memory Path and Naming](NEXSUS-CPU-MEMORY-PATH-AND-NAMING-001.md) ve [Workspace Access Protection](NEXSUS-CPU-SPM-ACCESS-PROTECTION-001.md) belgelerinde tanımlanır.
 
-### 2.1 Register bank ve operand kuralları
+### 2.1 CodeFlow ve workspace kaynakları (register bankı değildir)
+
+| Kaynak | Kapasite | Rol |
+|---|---:|---|
+| Application RAM (App RAM) | Ayrı bellek sistemi | Yürütülebilir komut baytlarının kaynak belleği |
+| Code Cache (C0) | 64 KiB | Task-aware code staging/cache; doğrudan yürütülmez |
+| Code Slots (CS0–CS7) | 8 × 2 KiB | Doğrulanmış kod sayfalarının eşit/dinamik havuzu |
+| Code Stream Transfer (CST) | Transfer path | Seçilmiş Code Slot'tan inactive EB bankasına aktarım |
+| Execution Buffer (EB) | 2 × 2 KiB | CPU instruction-fetch alanı; aktif ve refill bankaları |
+| CodeFlow Manager (CFM) | Manager/controller | Sayfa sahipliği, generation, izin, validity ve güvenli bank değişimini yönetir |
+| Operating-System Workspace (OW) | 8 KiB | PL1/PL2 OS çalışma ve syscall/I/O exchange alanı |
+| Task Workspace (TW) | 8 KiB | Yalnızca o çekirdekte sahipliği atanmış çalışan task'ın PL0 erişimi |
+| Context Pool (CP0–CP3) | 4 × 8 KiB | OS context-manager erişimi; korumalı task context image'ları |
+| Exception Workspace (XW) | 8 KiB; 8 × 1 KiB slice | Exception hardware'a özel; normal yazılım erişimi yok |
+
+Bu kaynaklar RA/FA/DA/MA register bankları değildir ve RAC'ın 32R/32W register erişim bütçesine dahil değildir. CodeFlow/EB erişim ve sahiplik kuralları §6 ve CodeFlow naming belgesinde; OW/TW/CP/XW izinleri §6 ve Workspace Access Protection belgesinde tanımlanır.
+
+### 2.2 Register bank ve operand kuralları
 
 - RA0–RA31: integer/scalar/address operandları; integer arithmetic, scalar logic ve compare komutlarının varsayılan bankı.
 - FA0–FA31: floating-point operandları; FP32/FP64 tek kayıt, FP128 çift kayıt.
