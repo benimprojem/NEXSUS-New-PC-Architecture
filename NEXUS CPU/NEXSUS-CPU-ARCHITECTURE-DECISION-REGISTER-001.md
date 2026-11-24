@@ -29,13 +29,21 @@ A specification is not proof of physical implementation. Simulator results are n
 
 | Resource | Per-core configuration | State |
 |---|---:|---|
-| Integer execution lanes (INT) | 8 | **FIXED** |
+| Arithmetic ALU | 8 | **FIXED** |
+| Logic Unit | 8 | **FIXED** |
+| Compare Unit | 8 | **FIXED** |
 | FP64 execution lanes | 6 | **FIXED** |
 | Dedicated FMA units | 4 | **FIXED** |
 | Vector execution units (VEC) | 2 | **FIXED for current design** |
 | ME512 execution unit | 1 | **FIXED** |
+| LOAD execution/admission resources | 8 | **FIXED** |
+| STORE execution/admission resources | 4 | **FIXED** |
+
+**Scalar integer execution is split into three independent pools:** Arithmetic ALU=8, Logic=8, Compare=8. Arithmetic ALU handles arithmetic only; Logic handles scalar bitwise/boolean/shift/rotate/bit-mask operations; Compare handles scalar signed/unsigned comparisons. This supersedes the older combined INT=8 lane model; do not add these three pools together as a replacement count for a single shared ALU.
 
 **FP64 + FMA is 6+4.** This is not an open 6/8 FP or 2/4 FMA selection. The latest explicit decision supersedes older generic ISA tables that describe only a minimum of two FP units.
+
+**Issue queues:** independent class queues are required for Arithmetic ALU, Logic, Compare, FP64, FMA, VEC, ME512, LOAD and STORE. Queue depths remain OPEN pending scheduler/ROB and workload analysis. A global dispatch/issue selector arbitrates across the queues and respects total issue capacity, dependencies, register-port availability and writeback conflicts.
 
 FMA issue throughput and FMA result/dependency latency are separate concepts and must be modeled separately. The latest latency regression attempt is not validated: workflow [43787870423](https://github.com/benimprojem/NEXSUS-New-PC-Architecture/actions/runs/43787870423) failed in regression tests before the latency sweep ran. This does not reopen 6+4.
 
@@ -60,9 +68,27 @@ The selected register organization is **32 entries per architectural bank**, wit
 - Context header: 64 bytes; complete context image: 1,856 bytes, fitting a 2 KiB resident context slot.
 - Register selector width: 5 bits.
 
-**OPEN / verification:** physical read/write port counts, register-file banking/replication, cross-unit connectivity, same-cycle conflict policy, forwarding and writeback arbitration.
+**Register connectivity and port-budget analysis (OPEN / verification)**
+
+Initial worst-case logical operand demand, before broadcast/replication:
+- RA: Arithmetic ALU 8×(2R+1W) + Logic 8×(2R+1W) + Compare 8×(2R+1W) = **48 read operands + 24 write results/cycle**.
+- FA: FP64 6×(2R+1W) + FMA 4×(3R+1W) = **24 read operands + 10 write results/cycle**. FP128 pair operations consume two 64-bit entries.
+- DA: up to **8 load-result writes + 4 store-source reads/cycle**, before transfer/XFER demand.
+- MA: VEC=2 and ME512=1 are included in the port budget; exact MA-entry reads/writes remain OPEN until every vector/matrix opcode's operand footprint is normalized to 256-bit MA entries.
+
+These are logical operand slots, not a frozen physical multiport register-file implementation. Physical port counts must be derived for all consumers together, including LOAD/STORE, XFER, conversions, bypass and writeback. Evaluate banked register files, read replication, operand broadcast/collectors and distributed writeback rather than assuming a single huge multiported array. Same-destination multiwrite remains prohibited.
+
+**Queue depths, physical read/write ports, bank/replica topology, cross-unit connectivity, same-cycle conflict policy, forwarding and writeback arbitration remain OPEN** until a full demand matrix and cycle-level contention tests are complete.
 
 The older SPM/register note contains conflicting 64-entry figures. Those are superseded by the 2026-11-13 architecture revision and must not be copied forward.
+
+---
+
+### 3.1 Issue queue organization
+
+One independently managed issue queue per execution class: Arithmetic ALU, Logic, Compare, FP64, FMA, VEC, ME512, LOAD and STORE. Each queue feeds the units in its class. Global dispatch/issue selection chooses ready instructions across these queues subject to the global issue limit, dependencies, operand availability, register-port budget and writeback constraints.
+
+Queue depth is intentionally **OPEN**. Do not infer queue depth from unit count or conflate issue queue capacity with ROB capacity.
 
 ---
 
@@ -316,5 +342,7 @@ Items already specified in architecture documents are not to be redesigned; they
 - The 2026-11-16 memory-path naming decision establishes C0, CS, CST, EB, OW, TW, CP, and XW as current terms. PX, P0–P7, Ping-Pong, SPM0, and L0I are legacy terms.
 - The latest explicit execution-resource decision fixes INT=8, FP64=6, FMA=4, VEC=2, ME512=1.
 - Cache sharing is already defined and simulator-tested: private L1, L2 shared per 2 cores, L3 per 4 cores, and L4 per 8-core group. The latest explicit capacity decision fixes these to L1=1 MiB/core, L2=2 MiB/2-core group, L3=8 MiB/4-core group, and L4=64 MiB+/8-core group.
+
+- 2026-11-24: replaced the former shared INT=8 execution pool with three independent fixed pools: Arithmetic ALU=8, Logic=8, Compare=8. Added class-specific issue queues; queue depths and physical register ports remain open pending aggregate demand analysis. Affected files: ISA-001 and this decision register.
 
 When a decision changes, append the date, old value, new value, reason, approving instruction, and affected specification/test files. Never silently overwrite history.
