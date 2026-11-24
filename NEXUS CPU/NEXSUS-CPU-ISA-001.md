@@ -321,6 +321,7 @@ OW ve TW, L1–L4 Data RAM domain'lerinden ayrı, çekirdek-yerel ve doğrudan b
 - Workspace erişimi, seçilen genişliğe göre doğal hizalı olmalıdır. `offset + W/8` değeri 8192'yi aşamaz. Negatif offset, 64-bit taşma veya sınır dışı erişim fault üretir; adres sarımı yapılmaz.
 - WLOAD tüm DA hedef dilimlerini doğrulama tamamlanmadan değiştirmez. WSTORE için tüm aralık ve izin kontrolleri yazma başlamadan tamamlanır; validation fault durumunda workspace'in hiçbir byte'ı değişmez.
 - Kısmi genişlikte WLOAD, DA hedefinin kullanılmayan üst bitlerini sıfırlar; WSTORE yalnızca seçilen W bitini yazar. Veri little-endian'dır.
+- WLOAD, seçilen DA hedef kayıtları için RAC üzerinden register write hakkı; WSTORE ise DA kaynakları için RAC üzerinden register read hakkı rezerve eder. Çoklu DA erişiminde bütün entry'ler atomik rezerve edilir; ortak 32R+32W bütçesi yetmiyorsa komut bekler. Workspace SRAM portları RAC register erişimi değildir.
 
 **Register banklarıyla veri alışverişi**
 - Register→workspace: mevcut `MOV.DA.RA`, `MOV.DA.FA` veya `MOV.DA.MA` komutları veriyi DA staging bankına alır; ardından `WSTORE.OW/TW` yazar.
