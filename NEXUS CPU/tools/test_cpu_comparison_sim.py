@@ -1153,11 +1153,13 @@ class TestNexusMemoryBandwidthRevision(unittest.TestCase):
 
 
 class MixedWidthExecutionTopologyTests(unittest.TestCase):
-    def test_nexus_profile_exposes_two_128_capable_int_pairs_and_six_fp64_lanes(self):
+    def test_nexus_profile_exposes_two_128_capable_arithmetic_pairs_and_six_fp64_lanes(self):
         profile = sim.PROFILES["nexus_balanced_128"]
-        self.assertEqual(profile["units"]["INT"], 8)
+        self.assertEqual(profile["units"]["ARITH"], 8)
+        self.assertEqual(profile["units"]["LOGIC"], 8)
+        self.assertEqual(profile["units"]["CMP"], 8)
         self.assertEqual(profile["units"]["FP"], 6)
-        self.assertEqual(profile["execution_topology"]["INT128_PAIRS"], [[0, 1], [2, 3]])
+        self.assertEqual(profile["execution_topology"]["ARITH128_PAIRS"], [[0, 1], [2, 3]])
 
     def test_partition_preserves_128_bit_operation_width(self):
         ops = [sim.Op(0, "INT", exec_width_bits=128)]
@@ -1166,8 +1168,8 @@ class MixedWidthExecutionTopologyTests(unittest.TestCase):
 
     def test_128_bit_int_reserves_two_64_bit_lanes(self):
         profile = dict(sim.PROFILES["nexus_balanced_128"])
-        profile["units"] = {**profile["units"], "INT": 2, "FP": 2}
-        profile["execution_topology"] = {"INT128_PAIRS": [[0, 1]]}
+        profile["units"] = {**profile["units"], "ARITH": 2, "FP": 2}
+        profile["execution_topology"] = {"ARITH128_PAIRS": [[0, 1]]}
         workloads = {
             "mixed": [
                 sim.Op(0, "INT", exec_width_bits=128),
