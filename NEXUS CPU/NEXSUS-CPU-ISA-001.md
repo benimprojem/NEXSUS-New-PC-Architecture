@@ -847,7 +847,7 @@ RELAXED fence yoktur; ek sıralama sağlamayan bir bariyer gereksizdir ve encodi
 
 **Sınırlar**
 
-- İlk sürümde FENCE yalnızca L1–L4 data LOAD/STORE ve ATOM işlemlerini kapsar. P0 instruction fetch, SPM0–SPM7, register transferleri ve MMIO/device erişimleri kapsam dışıdır.
+- İlk sürümde FENCE yalnızca L1–L4 data LOAD/STORE ve ATOM işlemlerini kapsar. App RAM → C0 → CS → EB instruction-fetch yolu, OW/TW/CP/XW workspace erişimleri, register transferleri ve MMIO/device erişimleri kapsam dışıdır.
 - FENCE veri taşımaz, Lx domain'leri arasında kopyalama yapmaz, zone ownership/lifetime yönetmez ve tek başına coherence oluşturmaz.
 - Scope, paylaşım kapsamını genişletmez veya erişim izni vermez. L1 başka çekirdeğe açılmaz; L2/L3/L4 visibility davranışı ilgili shared domain'in coherence/visibility protokolüyle sağlanmalıdır.
 - SEQ_CST total order yalnızca aynı seçilmiş scope içindeki SEQ_CST fence ve SEQ_CST atomic işlemleri kapsar. Farklı scope'lar arasında ortak total order garanti edilmez.
@@ -904,7 +904,7 @@ Bu örneklerde atomik publish nesnesi ile payload aynı synchronization protokol
 
 **5. L1 ve özel alanlar**
 - L1 private olduğu için başka çekirdeğin doğrudan L1 LOAD/STORE erişimi yoktur. L1 atomic ve FENCE işlemleri yerel çekirdek içi ordering içindir.
-- SPM0–SPM7 ve P0, bu NDC modelinin kapsamına dahil değildir. SPM ordering ve P0 instruction-fetch/self-modifying-code kuralları ayrı tanımlanır.
+- EB/C0/CS code-fetch kaynakları ve OW/TW/CP/XW workspace erişimleri bu NDC modelinin kapsamına dahil değildir. Code-stream validity ve workspace ownership kuralları kendi mimari belgelerinde tanımlanır.
 - MMIO/device erişimleri bu ilk NDC sürümünün dışındadır; device ordering için ayrı I/O fence/interface gerekir.
 
 **6. Uygun producer/consumer örneği**
@@ -1155,12 +1155,12 @@ Bu örnekler little-endian memory byte sıralamasını değil, register bit dili
 
 ## 20. Issue scheduler için RA erişim kuralı
 
-- Her scalar source operand, bir RA read slotu tüketir; immediate/constant operand RA portu tüketmez.
-- Aynı RA hücresinin birden fazla komutta okunması, fiziksel read-port implementasyonu destekliyorsa broadcast/reuse ile tek porttan karşılanabilir; bu optimizasyon garanti değildir.
-- Scalar destination write, RA bankında bir write slotu tüketir. RB/RC/RD write da aynı slotu tüketir ve maskeli güncelleme gerektirir.
-- Aynı cycle içinde aynı RA hücresine iki destination yazılamaz.
-- Eski 6 read / 3 write hedefi geçersizdir. RA talebi artık üç ayrı 8'li havuzun teorik toplamı olan 48 read / 24 write operand slotudur; fiziksel port mimarisi açık karardır. Scheduler, broadcast/reuse, immediate, bypass ve hedef çakışmalarına göre seçim yapar.
-- Register bank replication, operand queue veya ek portlar ileride throughput artırımı için değerlendirilebilir; ISA'nın görünür RA semantiğini değiştirmez.
+- Her scalar source operand RAC bütçesinden bir RA read slotu tüketir; immediate/constant operand register-read slotu tüketmez.
+- Aynı RA hücresinin birden fazla komutta okunması broadcast/collector ile fiziksel trafik azaltabilir; ancak mantıksal 32R erişim tavanı ve gerçek banka uygunluğu korunur.
+- Scalar destination write, RAC bütçesinden bir write slotu tüketir. RB/RC/RD write da aynı fiziksel RA hedefi için tek write slotudur ve maskeli güncelleme gerektirir.
+- Aynı çevrimde aynı RA hücresine iki destination yazılamaz.
+- Üç scalar havuzun teorik talebi 48R/24W olabilir; RAC tüm RA/FA/DA/MA bankları için ortak 32R/32W tavanı içinde hazır komutları dinamik seçer. Talep bütçeyi aşarsa komutun tüm operand/yazma rezervasyonu ertelenir.
+- Register bank replication, operand collector, bypass ve bank topolojisi fiziksel uygulama kararlarıdır; RAC erişim tavanını değiştirmez.
 
 
 ## 21. Workspace access, ownership and contention model
@@ -1207,8 +1207,8 @@ Burada RA10/RA20 ilgili bellek adresini tutan register'lardır; köşeli parante
 3. Bir domain'deki adres başka bir domain'de aynı içeriğin bulunduğu anlamına gelmez.
 4. Domain'ler arası kopyalama CPU tarafından yürütülen açık bir `XFER` işlemiyle yapılır.
 5. Paylaşılan domain'lerde senkronizasyon, erişim izni, sahiplik ve veri görünürlüğü kuralları ayrıca geçerlidir.
-6. Program komut belleği P0, veri belleklerinden ayrıdır; komut fetch yolu P0'a, normal veri LOAD/STORE yolları ise seçilen veri domain'ine yönelir.
-7. P0 ile L1–L4 arasında da otomatik kopyalama veya veri göçü yoktur. Kodun veri alanına veya verinin komut alanına taşınması gerekiyorsa açık CPU talimatlarıyla yapılır.
+6. Program komut yolu App RAM → Code Cache (C0) → Code Slots (CS0–CS7) → Code Stream Transfer (CST) → Execution Buffer (EB) şeklindedir ve Data RAM domain'lerinden ayrıdır.
+7. EB/C0/CS ile L1–L4 data domain'leri arasında otomatik kopyalama veya veri göçü yoktur. Kod ve veri yolları ayrı sahiplik/izin kurallarına tabidir; yazılım code-slot veya EB bank adresleyemez.
 
 ### 22.4 Area / Zone ile ilişki
 
@@ -1372,53 +1372,39 @@ XFER.WAIT RA6
 
 
 
-### 22.12 App RAM, L0I, PX ve sabit komut genişliği
+### 22.12 App RAM instruction path and canonical CodeFlow resources
 
-NEXSUS'un uygulama kodu yolu Data RAM yolundan ayrıdır:
+NEXSUS instruction fetch is independent from the Data RAM path. The canonical path is:
 
 ```text
-App RAM -> L0I (64 KiB) -> PX P0–P7 (8 x 2 KiB) -> SPM0 (4 KiB; 2 x 2 KiB)
+Application RAM (App RAM)
+  -> Code Cache (C0)
+  -> Code Slots (CS0–CS7)
+  -> Code Stream Transfer (CST)
+  -> Execution Buffer (EB)
+       -> Active Execution Page (selected 2 KiB EB bank)
+  -> Instruction Fetch / Decode / Execute
 ```
 
-- Her komut sözcüğü **64 bit (8 byte)** ve 8-byte hizalıdır.
-- App RAM -> L0I temel bağlantısı tek 64-bit veri yoludur; bir aktarım beat'i bir komut sözcüğü taşır. Beat/cycle oranı, outstanding istek sayısı ve gecikme ayrı mikro-mimari parametreleridir.
-- İlk tasarımda tekli okuma vardır. Dört paralel 64-bit hat (256-bit toplam) gelecekteki genişleme seçeneğidir; mevcut tasarımın özelliği olarak kabul edilmez.
-- L0I, çekirdek başına önerilen 64 KiB uygulama kodu ön belleği/staging alanıdır. App RAM'den OS'nin task ve kod bölgesi önceliklerine göre parça parça doldurulur; L0I'ın tamamının dolması beklenmez.
-- L0I -> PX aktarımı ardışık fiziksel adres taraması değildir. OS task ve mantıksal sayfa taleplerini seçer; farklı App RAM adreslerindeki kod 2 KiB mantıksal sayfalar halinde PX'e aktarılabilir.
-- PX P0–P7, her biri 2 KiB olan sekiz eşdeğer/dinamik fiziksel kod sayfası yuvasıdır; toplam kapasite 16 KiB/çekirdektir. Sayfalar sabit task yuvaları değildir.
-- PX Manager, sayfa sahipliğini, generation değerini, kaynak aralığını, valid_bytes bilgisini ve stream metadata'sını doğrular. Tam 2 KiB sayfa otomatik devam eder. Kısmi ara sayfa PX_NEXT, kısmi son sayfa PX_END metadata'sı taşır.
-- PX_NEXT ve PX_END CPU ISA komutları değildir; yalnızca PX Manager tarafından okunur. Komut baytı/slotu tüketmezler ve SPM0'a kopyalanmazlar.
-- L0I/PX yolu doğrudan yürütme bypass'ı değildir. CPU komutları SPM0'dan alır.
+| Resource | Capacity | Role / access |
+|---|---:|---|
+| Application RAM (App RAM) | Separate memory system | Backing source for executable instruction bytes; independent controller/path from Data RAM |
+| Code Cache (C0) | 64 KiB/core | Task-aware code staging/cache; not directly executable |
+| Code Slots (CS0–CS7) | 8 × 2 KiB = 16 KiB/core | Equal dynamic pool of validated executable pages; physical slot numbers are not task-visible code addresses |
+| Code Stream Transfer (CST) | Transfer path | Copies a selected valid Code Slot into the inactive EB bank |
+| Execution Buffer (EB) | 2 × 2 KiB = 4 KiB/core | CPU-visible instruction workspace; one active bank, one refill/next-ready bank |
+| CodeFlow Manager (CFM) | Manager/controller | Owns page lifecycle, allocation, task/generation/mapping/permission validation, CST orchestration and safe bank switching |
 
-### 22.13 PX ve SPM0 görev ayrımı
-
-PX ve SPM0 farklı aşamalara hizmet eder:
-
-| Bellek | İşlev | Kapasite |
-|---|---|---:|
-| L0I | App RAM'den parça parça beslenen task-aware kod ön belleği | 64 KiB / core |
-| PX P0–P7 | Mantıksal 2 KiB kod sayfalarının dinamik fiziksel havuzu | 8 × 2 KiB = 16 KiB / core |
-| SPM0-A | CPU'nun o anda yürüttüğü aktif kod bankası veya aktif bankanın rolü | 2 KiB |
-| SPM0-B | PX'in hazırladığı/sonraki aktif kod bankası; roller dönüşümlüdür | 2 KiB |
-| SPM0 toplam | Çift bankalı aktif kod çalışma alanı | 4 KiB |
-
-- SPM0 yalnızca aktif komut kodu çalışma alanıdır; register image, task data veya genel amaçlı ara veri deposu değildir.
-- PX Manager, CPU bir SPM0 bankasından kod okurken diğer bankayı doldurur. Güvenli sayfa sınırında roller atomik olarak değiştirilir.
-- Boşalan banka sonraki mantıksal kod sayfasıyla yeniden doldurulur. PX sayfası hazır değilse fetch bekler; yarım dolu banka yürütülemez.
-- Register bankları RA/FA/DA/MA PX tarafından beslenmez. Register context save/restore ayrı Context Manager/SPM/Data RAM yoludur.
-- SPM1–SPM7 veri/context/OS çalışma alanlarıdır; SPM0'ın kod göreviyle karıştırılmaz.
-- App RAM ve Data RAM fiziksel/mantıksal olarak ayrıdır. L1 bu tasarımda yalnızca Data RAM verilerini tutan L1D'dir; uygulama komutları L1D kapasitesini kullanmaz.
-
-### 22.14 App-code besleme genişliği ve task-aware prefetch
-
-- App RAM -> C0 Code Cache (legacy L0I) seçilmiş besleme oranı çekirdek başına 16 byte/çevrimdir.
-- C0 -> CS0–CS7 Code Slots (legacy PX) aktarım oranı 20 byte/çevrim; CS -> EB (legacy SPM0) oranı 20 byte/çevrimdir. EB tüketimi 16 byte/çevrimdir.
-- Bu oranlar seçilmiş mimari/simülasyon profilinin stage servis oranlarıdır; cold-start ilk dolum süresi ile steady-state pipeline beklemeleri ayrı raporlanır.
-- L0I App RAM'den task bazlı küçük parçalar halinde doldurulur. Farklı task'ların veya aynı task'ın farklı kod bölgelerinin kaynak adresleri ardışık olmak zorunda değildir.
-- OS hangi task'ın hangi mantıksal kod sayfasının ne zaman hazırlanacağını ve önceliğini belirler. Donanım istekleri doğrular, aktarımı yapar ve tamamlanmayı bildirir.
-- L0I -> PX sayfa aktarımı, OS'nin seçtiği mantıksal 2 KiB sayfaya göre yapılır; fiziksel App RAM adres sırasını takip etmek zorunda değildir.
-- App RAM -> C0, C0 -> CS ve CS -> inactive EB bank aşamalarının kuyrukları ayrıdır. Uygun veri hazır olduğunda aşamalar eşzamanlı ilerleyebilir; cold-start ilk dolum maliyeti yürütme başladıktan sonra sürekli EB tüketim cezası olarak tekrar eklenmez.
-- Çoklu komut okuma ilk sürümde yoktur. Dört adet 64-bit bağımsız okuma hattı gelecekteki 4'lü okuma genişletmesi olarak ayrıca test edilecektir.
+- Each instruction word is **64 bits (8 bytes)** and 8-byte aligned.
+- The selected operating point is App RAM→C0 **16 B/cycle**, C0→CS **20 B/cycle**, CST/CS→EB **20 B/cycle**, and EB consumption **16 B/cycle**. These are simulator operating points, not guaranteed silicon timing.
+- App RAM→C0, C0→CS, and CST→EB have independent queues and may overlap when data is ready and ownership/validity/backpressure checks permit.
+- Code Cache C0 is filled progressively from task-aware App RAM addresses; source addresses need not be contiguous.
+- Code Slots are equal pool resources, not permanently assigned to a task or execution position. A slot is usable only after content, owner, generation, mapping, permissions and valid-byte range are committed.
+- CST may refill only the inactive EB bank. The active/inactive roles switch only at a legal instruction boundary after the destination bank is fully READY and validated.
+- The consumed EB bank becomes eligible for refill only after instruction-fetch references have drained. A partially filled or invalid bank must never execute.
+- CodeFlow Continue (CF_NEXT) and CodeFlow End (CF_END) are manager-only continuation metadata, not CPU ISA instructions; they consume no instruction word and are not copied as executable payload.
+- CFM/CodeFlow resources do not supply RA/FA/DA/MA register operands. Task context save/restore is a separate protected workspace/Data RAM path.
+- App RAM and Data RAM remain separate memory systems. Code fetch does not consume Data RAM L1 capacity or Data RAM controller bandwidth.
 
 ### 22.15 EXT prefix ve genişletilmiş komut paketi
 
@@ -1456,9 +1442,10 @@ CSR IDs and privilege, exception, vector and IRQ state are defined in `NEXSUS-CP
 
 The interrupt/context save protocol is specified in **NEXSUS-CPU-CONTEXT-SAVE-RESTORE-001.md**. It uses existing instructions only; no dedicated SAVECTX/RESTORECTX opcode is introduced in the baseline.
 
-- SPM.RD/SPM.WR provide direct SPM↔RA/FA/DA/MA transfers and are used with the depth-selected SPM7 exception workspace.
-- MOV.DA.RA / MOV.RA.DA, MOV.DA.FA / MOV.FA.DA, and MOV.DA.MA / MOV.MA.DA provide the existing bank-transfer paths.
-- LOAD/STORE move DA staging groups to/from the protected Data RAM software frame.
+- Context Pool (CP0–CP3) is protected storage managed only by privileged context-manager paths; it is not exposed through generic SPM.RD/SPM.WR instructions.
+- Exception Workspace (XW) is reserved to exception hardware for depth-selected entry state; persistent exception frames reside in protected Data RAM.
+- MOV.DA.RA / MOV.RA.DA, MOV.DA.FA / MOV.FA.DA, and MOV.DA.MA / MOV.MA.DA provide the existing architectural register-bank transfer paths.
+- LOAD/STORE move DA staging groups to/from the protected Data RAM software frame. OW is used for OS bookkeeping and TW ownership is preserved across task switches.
 - Since DA is the memory staging bank, the handler must save DA values before using DA to stage RA/FA/MA. Restore DA last, after all other banks have been restored.
 - Save masks are compiler/ABI metadata, not architectural registers or new opcodes.
 
