@@ -1,7 +1,7 @@
 # NEXSUS CPU — Workspace Bank Topology and Port Budget
 
 **Document ID:** NEXSUS-CPU-WORKSPACE-BANK-TOPOLOGY-001  
-**Status:** Microarchitecture proposal — logical access budget fixed; physical bank topology not yet frozen  
+**Status:** Superseded topology proposal; see `NEXSUS-CPU-RAC-48RW-EVALUATION-001.md` for the selected separate-array direction and RAC sweep.  
 **Date:** 2026-11-24
 
 ## 1. Scope and fixed constraints
@@ -41,7 +41,7 @@ The table expresses the combined read/write slot demand, not a promise that the 
 
 ## 3. Physical topology candidates
 
-The aggregate logical workspace capacity is 16 KiB. Candidate organizations are:
+The aggregate logical workspace capacity is 16 KiB. This earlier comparison is retained as design history; the current direction is two physically independent arrays, each with 16 banks × 512 B.
 
 | Candidate | Physical organization | Per-bank porting | Advantages | Costs / risks |
 |---|---|---|---|---|
@@ -50,7 +50,7 @@ The aggregate logical workspace capacity is 16 KiB. Candidate organizations are:
 | **C — recommended** | **32 banks × 512 B** | **1R + 1W** | Matches the 32R/32W ceiling with simple per-bank ports; 64-bit interleave naturally spreads wide accesses | More bank decoders and crossbar/arbitration endpoints; same-bank requests still conflict |
 | D | Two independent 8 KiB arrays, each 32 banks × 256 B | 1R + 1W per bank | Strongest physical isolation between WS and OSSpace; no cross-workspace bank contention | 64 physical banks per core; more area, clock/power and control overhead than the shared 16 KiB array |
 
-### 3.1 Recommended candidate C — shared 16 KiB, 32-bank array
+### 3.1 Historical candidate C — shared 16 KiB, 32-bank array (superseded)
 
 Use one core-local 16 KiB physical SRAM array divided into 32 banks. The two logical 8 KiB workspaces remain separate protected address regions; sharing the physical array does **not** create a software-visible alias or relax access permissions.
 
@@ -162,4 +162,4 @@ XFER.WS.MEM/START bypass RAC logical access slots and DA staging, but the transf
 - XFER versus WLOAD read-port priority and service guarantees.
 - Whether a privileged clear/reinitialize operation uses a dedicated hardware clear path or ordinary bank writes.
 
-Until these items are validated, the **32R/32W logical RAC budget is fixed**, while the physical workspace topology remains a proposal.
+This document's shared-array recommendation and 32R/32W baseline are superseded by `NEXSUS-CPU-RAC-48RW-EVALUATION-001.md`. The current workspace direction is separate 8 KiB arrays, each 16 banks × 512 B; RAC is under evaluation.
