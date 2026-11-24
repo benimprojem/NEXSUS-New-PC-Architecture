@@ -43,7 +43,7 @@ A specification is not proof of physical implementation. Simulator results are n
 
 **FP64 + FMA is 6+4.** This is not an open 6/8 FP or 2/4 FMA selection. The latest explicit decision supersedes older generic ISA tables that describe only a minimum of two FP units.
 
-**Issue queues:** independent class queues are required for Arithmetic ALU, Logic, Compare, FP64, FMA, VEC, ME512, LOAD and STORE. Queue depths remain OPEN pending scheduler/ROB and workload analysis. A global dispatch/issue selector arbitrates across the queues and respects total issue capacity, dependencies, register-port availability and writeback conflicts.
+**Issue queues:** independent class queues are required for Arithmetic ALU, Logic, Compare, FP64, FMA, VEC, ME512, LOAD and STORE. Queue depths remain OPEN pending scheduler/ROB and workload analysis. Global dispatch/issue width is also OPEN; evaluate 16/24/32 instructions/cycle independently from RAC capacity. A global dispatch/issue selector arbitrates across the queues and respects total issue capacity, dependencies, register-port availability and writeback conflicts. See `NEXSUS-CPU-ISSUE-WIDTH-RAC-DEMAND-001.md`.
 
 FMA issue throughput and FMA result/dependency latency are separate concepts and must be modeled separately. The latest latency regression attempt is not validated: workflow [43787870423](https://github.com/benimprojem/NEXSUS-New-PC-Architecture/actions/runs/43787870423) failed in regression tests before the latency sweep ran. This does not reopen 6+4.
 
@@ -76,7 +76,7 @@ Initial worst-case logical operand demand, before broadcast/replication:
 - DA: up to **8 load-result writes + 4 store-source reads/cycle**, before transfer/XFER demand.
 - MA: VEC=2 and ME512=1 are included in the port budget; exact MA-entry reads/writes remain OPEN until every vector/matrix opcode's operand footprint is normalized to 256-bit MA entries.
 
-**RAC logical budget: UNDER EVALUATION.** The former 32R/32W value is no longer treated as fixed. The next experiment point is **48 logical 64-bit reads + 48 logical 64-bit writes per cycle**, followed by 64/48, 80/48 and 80/64 comparisons. The shared RAC serves RA/FA/DA/MA and CPU-originated WS/OSSpace WLOAD/WSTORE accesses. It dynamically allocates capacity using ready issue-queue demand, operand footprints, bank availability and queue age. It is work-conserving and starvation-resistant; it atomically reserves every source read and destination write for an instruction, otherwise that instruction does not issue. WLOAD reserves workspace reads plus DA writes; WSTORE reserves DA reads plus workspace writes. A 128/256/512-bit WLOAD/WSTORE consumes 2/4/8 logical 64-bit slots on each side. XFER.WS.MEM/START use the independent transfer engine and do not consume RAC logical slots. Idle capacity in one class is available to another. Pair operations count each physical register entry. Same-destination multiwrite remains prohibited. See `NEXSUS-CPU-RAC-48RW-EVALUATION-001.md`.
+**RAC logical budget: UNDER EVALUATION.** The former 32R/32W value is no longer treated as fixed. The next experiment point is **48 logical 64-bit reads + 48 logical 64-bit writes per cycle**, followed by 64/48, 80/48 and 80/64 comparisons. The shared RAC serves RA/FA/DA/MA and CPU-originated WS/OS WLOAD/WSTORE accesses. It dynamically allocates capacity using ready issue-queue demand, operand footprints, bank availability and queue age. It is work-conserving and starvation-resistant; it atomically reserves every source read and destination write for an instruction, otherwise that instruction does not issue. WLOAD reserves workspace reads plus DA writes; WSTORE reserves DA reads plus workspace writes. A 128/256/512-bit WLOAD/WSTORE consumes 2/4/8 logical 64-bit slots on each side. XFER.WS.MEM/START use the independent transfer engine and do not consume RAC logical slots. Idle capacity in one class is available to another. Pair operations count each physical register entry. Same-destination multiwrite remains prohibited. See `NEXSUS-CPU-RAC-48RW-EVALUATION-001.md`.
 
 These are logical access limits, not a commitment to one monolithic multiported array. Banking, replication, operand broadcast/collectors, bypass and distributed writeback remain implementation choices. Bank conflicts and the physical topology must be modeled separately; no class or workspace has a permanently reserved fixed share of the RAC pool.
 
@@ -90,7 +90,7 @@ The older SPM/register note contains conflicting 64-entry figures. Those are sup
 
 One independently managed issue queue per execution class: Arithmetic ALU, Logic, Compare, FP64, FMA, VEC, ME512, LOAD and STORE. Each queue feeds the units in its class. Global dispatch/issue selection chooses ready instructions across these queues subject to the global issue limit, dependencies, operand availability, register-port budget and writeback constraints.
 
-Queue depth is intentionally **OPEN**. Do not infer queue depth from unit count or conflate issue queue capacity with ROB capacity.
+Queue depth and global issue width are intentionally **OPEN**. Evaluate global widths 16/24/32 instructions/cycle; do not infer issue width or queue depth from unit count or conflate issue queue capacity with ROB capacity. See `NEXSUS-CPU-ISSUE-WIDTH-RAC-DEMAND-001.md`.
 
 ---
 
@@ -118,7 +118,7 @@ Application RAM (App RAM)
 | Code Slots (CS0–CS7) | 8 × 2 KiB = 16 KiB/core | **FIXED** |
 | Execution Buffer (EB) | 2 × 2 KiB = 4 KiB/core | **FIXED** |
 | Active Execution Page | One active 2 KiB EB bank | **FIXED role** |
-| OS Space (OSSpace) | 8 KiB | **FIXED** |
+| OS workspace (OS) | 8 KiB | **FIXED** |
 | Work Space (WS) | 8 KiB | **FIXED; not task-ID-owned** |
 | Context Pool (CP0–CP3) | 4 × 8 KiB; 16 × 2 KiB context slots/core | **FIXED** |
 | Exception Workspace (XW) | 8 KiB; 8 × 1 KiB slices | **FIXED** |
@@ -341,7 +341,7 @@ Items already specified in architecture documents are not to be redesigned; they
 
 - The 2026-11-17 explicit clarification establishes independent Data RAM connections of 64 B/cycle per core (512 B/cycle aggregate for eight cores); the older 64 B/cycle aggregate wording is superseded. The 2026-11-13 revision also confirms 32-entry RA/FA/DA/MA banks.
 - The 2026-11-16 App RAM connection correction establishes 64 B/cycle per core and 512 B/cycle aggregate for the eight-core block; System Fabric coordinates independent core-facing paths. Older 64-entry register tables are superseded.
-- The 2026-11-24 workspace naming decision establishes OS Space (OSSpace) and Work Space (WS) as the only current workspace symbols. Superseded workspace symbols must not appear in current architecture text. PX, P0–P7, Ping-Pong, SPM0, and L0I remain legacy terms.
+- The 2026-11-24 workspace naming decision establishes **OS** and **WS** as the only current workspace symbols. Superseded workspace symbols must not appear in current architecture text. PX, P0–P7, Ping-Pong, SPM0, and L0I remain legacy terms.
 - The latest explicit execution-resource decision fixes INT=8, FP64=6, FMA=4, VEC=2, ME512=1.
 - Cache sharing is already defined and simulator-tested: private L1, L2 shared per 2 cores, L3 per 4 cores, and L4 per 8-core group. The latest explicit capacity decision fixes these to L1=1 MiB/core, L2=2 MiB/2-core group, L3=8 MiB/4-core group, and L4=64 MiB+/8-core group.
 
