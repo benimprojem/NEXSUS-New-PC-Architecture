@@ -1811,7 +1811,9 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
                 continue
             kind = op.kind
             exec_kind = execution_resource_kind(kind, p.matrix_unit)
-            resource = exec_kind
+            # Reference CPU profiles without a dedicated FMA pool model FMA
+            # through their generic FP resource. NEXSUS has an explicit FMA pool.
+            resource = exec_kind if exec_kind in unit_busy else ("FP" if kind == "FMA" else exec_kind)
             slots = unit_busy.get(resource, [])
             selected_slots = None
             topology = getattr(p, "execution_topology", {}) or {}
@@ -2144,7 +2146,8 @@ def simulate_multicore_streams(shards: List[List[Op]], p: CoreProfile,
                     st["stalls"]["issue_width_blocked_op_cycles"] += 1
                     continue
                 exec_kind = execution_resource_kind(op.kind, p.matrix_unit)
-                resource = exec_kind
+                # Non-NEXSUS reference profiles may expose only a generic FP pool.
+                resource = exec_kind if exec_kind in st["unit_busy"] else ("FP" if op.kind == "FMA" else exec_kind)
                 slots = st["unit_busy"].get(resource, [])
                 topology = getattr(p, "execution_topology", {}) or {}
                 selected_slots = None
@@ -2951,7 +2954,7 @@ def main():
     ap.add_argument("--fetch-sweep", action="store_true", help="compare conventional I-cache and P0 refill latency sensitivity")
     ap.add_argument("--execution-sweep", action="store_true", help="compare baseline and mixed-width NEXSUS INT/FP resources")
     ap.add_argument("--resource-sweep", action="store_true", help="sweep per-core INT/FP unit counts with fixed workloads")
-    ap.add_argument("--fma-sweep", action="store_true", help="compare 2/4 FMA lanes with 6/8 total FP64 lanes")
+    ap.add_argument("--fma-sweep", action="store_true", help="sweep independent dedicated FMA units alongside FP64 lanes")
     ap.add_argument("--fma-latency-sweep", action="store_true", help="sweep FMA result latency with FP6/FMA4 held fixed")
     ap.add_argument("--mshr-sweep", action="store_true", help="sweep per-core Data RAM MSHR capacities 1/2/4/8/16/32")
     ap.add_argument("--vec-me512-isolation", action="store_true", help="compare normal VEC/ME512 workloads with instruction-fetch-bypassed backend isolation")
