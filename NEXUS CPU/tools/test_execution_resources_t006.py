@@ -13,12 +13,16 @@ class ExecutionResourceContractT006(unittest.TestCase):
 
     def test_registered_per_core_resource_counts_and_latencies(self):
         p = self.profile
-        self.assertEqual(p["units"]["INT"], 8)
+        self.assertEqual(p["units"]["ARITH"], 8)
+        self.assertEqual(p["units"]["LOGIC"], 8)
+        self.assertEqual(p["units"]["CMP"], 8)
         self.assertEqual(p["units"]["FP"], 6)
         self.assertEqual(p["units"]["FMA"], 4)
         self.assertEqual(p["units"]["VEC"], 2)
         self.assertEqual(p["units"]["ME512"], 1)
-        self.assertEqual(p["latency"]["INT"], 1)
+        self.assertEqual(p["latency"]["ARITH"], 1)
+        self.assertEqual(p["latency"]["LOGIC"], 1)
+        self.assertEqual(p["latency"]["CMP"], 1)
         self.assertEqual(p["latency"]["FP"], 3)
         self.assertEqual(p["latency"]["VEC"], 2)
         self.assertEqual(p["latency"]["ME512"], 4)
@@ -28,6 +32,18 @@ class ExecutionResourceContractT006(unittest.TestCase):
         self.assertNotIn("FMA_LANES", p["execution_topology"])
         self.assertEqual(sim.execution_resource_kind("FMA", "ME512"), "FMA")
         self.assertEqual(sim.execution_resource_kind("FP", "ME512"), "FP")
+
+    def test_arithmetic_logic_and_compare_have_independent_capacity(self):
+        workload = {"three_scalar_classes": (
+            [sim.Op(i, "INT") for i in range(8)]
+            + [sim.Op(8 + i, "LOGIC") for i in range(8)]
+            + [sim.Op(16 + i, "CMP") for i in range(8)]
+        )}
+        row = sim.simulate_cpu(
+            workload, self.profile, 1, {"execution_only": True}
+        )["kernels"]["three_scalar_classes"]
+        self.assertEqual(row["ops"], 24)
+        self.assertEqual(row["stall_counters"]["execution_unit_blocked_op_cycles"], 0)
 
     def test_vector_opcodes_use_two_vector_slots_not_me512(self):
         for opcode in ("VEC_ADD", "VEC_SUB", "VEC_MUL", "VEC_FMA", "VEC_PERMUTE", "VEC_REDUCE"):
@@ -80,8 +96,8 @@ class ExecutionResourceContractT006(unittest.TestCase):
             sim.Op(2, "INT", exec_width_bits=64),
         ]}
         p = dict(self.profile)
-        p["units"] = {**self.profile["units"], "INT": 2, "FP": 2}
-        p["execution_topology"] = {"INT128_PAIRS": [[0, 1]]}
+        p["units"] = {**self.profile["units"], "ARITH": 2, "FP": 2}
+        p["execution_topology"] = {"ARITH128_PAIRS": [[0, 1]]}
         row = sim.simulate_cpu(workload, p, 1, {"execution_only": True})["kernels"]["mixed_width"]
         self.assertEqual(row["ops"], 3)
         self.assertGreater(row["stall_counters"]["execution_unit_blocked_op_cycles"], 0)
