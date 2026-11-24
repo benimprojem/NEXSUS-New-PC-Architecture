@@ -1,10 +1,10 @@
 # NEXSUS CPU Task Scheduling and workspace Residency
-**Document ID:** NEXSUS-CPU-TASK-SCHEDULING-workspace-RESIDENCY-001  
+**Document ID:** NEXSUS-CPU-TASK-SCHEDULING-SPM-RESIDENCY-001  
 **Status:** Architecture baseline proposal
 
 ## 1. Scope and fixed memory roles
 
-This document defines same-core scheduling, task state transitions, resident workspace context selection, wake-up, priority changes, and cross-core migration. It reuses the fixed workspace map:
+This document defines same-core scheduling, task state transitions, resident context selection, wake-up, priority changes, and cross-core migration. It reuses the fixed workspace map:
 
 | workspace | Role |
 |---|---|
@@ -42,19 +42,18 @@ State transitions are OS policy. A notification or IRQ makes a condition observa
 
 The OS may choose any replacement policy (for example, recency plus priority), but correctness cannot depend on a particular policy.
 
-## 4. WS user-workspace lifecycle
+## 4. WS application-workspace lifecycle
 
-WS is a single 8 KiB user workspace per core, not sixteen private copies and not part of the register-context pool.
+WS is one 8 KiB general-purpose application workspace per core. It is not task-ID-owned, is not one of the resident context slots, and is not automatically included in a task's architectural context.
 
-- While a task runs, it owns the user-visible WS contents under the user workspace ABI.
-- Before switching WS to another task, the OS preserves the outgoing image if it is live. The baseline preservation destination is that task's protected Data RAM context backing.
-- The incoming task's saved WS image is restored before user instructions execute if its workspace is live.
-- A task may explicitly relinquish the workspace or declare its contents dead through the OS/runtime ABI; only then may the OS omit the save.
-- A task that never uses WS need not allocate an 8 KiB backing image.
-- The OS must not use WS as scratch while a user task's live image is the only preserved copy. OSSpace is the OS workspace.
-- On migration, a live WS image is first preserved to source-core accessible protected Data RAM or another explicitly shared transfer staging region; the destination core then loads its local WS. workspace contents are not coherent or automatically transferred between cores.
+- PL0 application code may use WS during its authorized application execution epoch.
+- A task switch does not automatically save or restore WS.
+- Before granting WS to a different protection domain, the OS must revoke the previous access epoch and clear or fully initialize the 8 KiB area, unless an explicitly authorized continuation preserves the same data domain.
+- If application data must survive an epoch change or core migration, the application/OS explicitly exports the required range to protected Data RAM and restores it through CPU-mediated Data RAM LOAD→DA→WSTORE.
+- OSSpace remains the privileged OS working area; the OS must not use WS as a substitute for OSSpace.
+- WS contents are core-local. No implicit cross-core coherence or migration is assumed.
 
-The implementation may optimize copying when it can prove a region unchanged or unused, but it must preserve byte-for-byte observable contents.
+The OS may optimize clearing or persistence only when it can prove that no prior protection-domain data can be exposed and that explicitly preserved bytes remain unchanged.
 
 ## 5. Same-core context switch sequence
 
@@ -63,12 +62,12 @@ For Task A to Task B:
 1. Enter the privileged scheduler path through the defined exception/context-switch mechanism. XW is used only for exception-entry temporary state; OSSpace is used for OS bookkeeping.
 2. Reach a defined architectural boundary and quiesce A so its state cannot change during save.
 3. Save A's complete RA/FA/DA/MA architectural context to its assigned CP0–CP3 slot, or protected Data RAM if it is not resident. Preserve DA before DA is used as staging; restore DA last, following the context-save/restore ABI.
-4. Preserve A's live WS user image to protected Data RAM before WS is reassigned.
+4. WS is not part of A's architectural context. If A needs its contents later, explicitly export the required range to protected Data RAM; otherwise revoke access and clear/reinitialize WS before another protection domain receives access.
 5. Update A's task control block and state (READY, BLOCKED, SLEEPING, etc.) only after its saved state is valid.
 6. Select B, validate its task identity/generation, PC, privilege state, address-space mapping, memory-domain permissions, and dependency state.
 7. Restore B's RA/FA/DA/MA context from its resident slot or Data RAM. Allocate/evict a slot only using the complete-save-before-release rule.
-8. Restore B's WS image if live.
-9. In parallel with context and WS transfers where independent paths permit, invalidate/replace and refill P0 from B's App RAM instruction stream at B's saved PC and code-domain identity.
+8. Establish B's WS access epoch only after WS is cleared/initialized or an explicitly authorized continuation has restored its data through CPU-mediated LOAD→DA→WSTORE.
+9. In parallel with independent context and code-refill work, invalidate/replace and refill the selected Code Slot from B's App RAM instruction stream at B's saved PC and code-domain identity.
 10. Install B's controlled PC/STATUS and required execution state. Resume only when register state, WS access epoch/initialization, permissions, and required first code slot/page are valid.
 11. Publish the handoff using the required release/acquire ordering.
 
@@ -92,7 +91,7 @@ Priority is scheduler metadata, not part of the register payload.
 - Changing a READY task's priority updates its queue/order metadata; it does not require rewriting RA/FA/DA/MA context.
 - Changing a RUNNING task's priority takes effect at the next defined scheduling point unless the OS explicitly requests preemption.
 - A BLOCKED task's priority is retained and used when it becomes READY.
-- Priority changes do not invalidate a resident workspace slot or move its contents.
+- Priority changes do not invalidate a resident context slot or move its contents.
 - If priority inheritance/ceiling is implemented, effective priority is tracked separately from base priority and restored when the dependency ends.
 - The policy for time slices, equal-priority fairness, and starvation prevention is OS-defined; hardware does not assume one universal policy.
 
@@ -107,7 +106,7 @@ When all sixteen resident slots are occupied:
 5. Load the newly selected task into the freed slot if beneficial; otherwise restore directly from Data RAM using the established path.
 6. If every resident context is in-flight or otherwise non-evictable, defer slot allocation and use Data RAM directly. Never overwrite a live slot.
 
-Task count is limited by OS resources, Data RAM capacity, identifiers, and policy—not by the sixteen workspace slots.
+Task count is limited by OS resources, Data RAM capacity, identifiers, and policy—not by the sixteen resident context slots.
 
 ## 9. Cross-core migration
 
@@ -116,10 +115,10 @@ Migration is an explicit OS operation, not an implicit side effect of a task bec
 1. Select a destination core and verify its execution capabilities, permissions, and available local resources.
 2. Stop the source task at a safe architectural boundary.
 3. Save its complete register context to protected Data RAM. A source-core resident slot may be used as a temporary source, but it is not a destination-core context.
-4. Preserve live WS user-workspace bytes to a memory region accessible to the destination.
-5. Record task PC/STATUS, address-space identity, memory-domain handles, synchronization state, and any workspace ownership metadata in the task control block.
+4. If WS contents must survive migration, explicitly export the required bytes to protected Data RAM or another memory region accessible to the destination.
+5. Record task PC/STATUS, address-space identity, memory-domain handles, synchronization state, and the OS-managed WS access-epoch state in the task control block.
 6. Transfer shared task data using the established Fabric/XFER mechanisms where their supported domains apply. Do not assume XFER directly addresses local workspace banks.
-7. On the destination core, restore register state through its local workspace/register transfer paths and load the WS image into that core's local WS.
+7. On the destination core, restore register state through its local context/register paths; if required, restore WS through Data RAM LOAD→DA→WSTORE before granting application access.
 8. Refill destination P0 from App RAM for the task's saved PC and code-domain identity.
 9. Publish the new core affinity/ownership only after all required state and mappings are valid. Use release/acquire ordering and the existing IPI notification path as appropriate.
 10. Release source-core local resources only after the destination has accepted the context and no source-side operation still references them.
