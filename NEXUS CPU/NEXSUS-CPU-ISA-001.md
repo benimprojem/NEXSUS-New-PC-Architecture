@@ -79,7 +79,7 @@ RA/RB/RC/RD aynı RA fiziksel kaydının alt-bit görünümleridir; küçük gö
 | Execution Buffer (EB) | 2 × 2 KiB | CPU instruction-fetch alanı; aktif ve refill bankaları |
 | CodeFlow Manager (CFM) | Manager/controller | Sayfa sahipliği, generation, izin, validity ve güvenli bank değişimini yönetir |
 | OS Space (OSSpace) | 8 KiB | PL1/PL2 OS çalışma ve syscall/I/O exchange alanı |
-| Work Space (WS) | 8 KiB | Yalnızca o çekirdekte sahipliği atanmış çalışan task'ın PL0 erişimi |
+| Work Space (WS) | 8 KiB | PL0 uygulama yürütmesi sırasında erişilebilir; task ID'sine bağlı değildir |
 | Context Pool (CP0–CP3) | 4 × 8 KiB | OS context-manager erişimi; korumalı task context image'ları |
 | Exception Workspace (XW) | 8 KiB; 8 × 1 KiB slice | Exception hardware'a özel; normal yazılım erişimi yok |
 
@@ -321,7 +321,7 @@ OSSpace ve WS, L1–L4 Data RAM domain'lerinden ayrı, çekirdek-yerel ve doğru
 - Workspace erişimi, seçilen genişliğe göre doğal hizalı olmalıdır. `offset + W/8` değeri 8192'yi aşamaz. Negatif offset, 64-bit taşma veya sınır dışı erişim fault üretir; adres sarımı yapılmaz.
 - WLOAD tüm DA hedef dilimlerini doğrulama tamamlanmadan değiştirmez. WSTORE için tüm aralık ve izin kontrolleri yazma başlamadan tamamlanır; validation fault durumunda workspace'in hiçbir byte'ı değişmez.
 - Kısmi genişlikte WLOAD, DA hedefinin kullanılmayan üst bitlerini sıfırlar; WSTORE yalnızca seçilen W bitini yazar. Veri little-endian'dır.
-- WLOAD, seçilen DA hedef kayıtları için RAC üzerinden register write hakkı; WSTORE ise DA kaynakları için RAC üzerinden register read hakkı rezerve eder. Çoklu DA erişiminde bütün entry'ler atomik rezerve edilir; ortak 32R+32W bütçesi yetmiyorsa komut bekler. Workspace SRAM portları RAC register erişimi değildir.
+- WLOAD ve WSTORE hem workspace uç noktasını hem DA staging uç noktasını RAC üzerinden rezerve eder. Ortak bütçe çevrim başına toplam 32 mantıksal 64-bit read + 32 mantıksal 64-bit write slotudur; 128/256/512-bit erişimler her iki tarafta 2/4/8 slot tüketir. Bütün kaynak ve hedef lane'leri atomik rezerve edilir; bütçe yetersizse komut bekler ve kısmi erişim yapmaz. Fiziksel SRAM bank/port çakışmaları ayrıca bekleme oluşturabilir.
 
 **Register banklarıyla veri alışverişi**
 - Register→workspace: mevcut `MOV.DA.RA`, `MOV.DA.FA` veya `MOV.DA.MA` komutları veriyi DA staging bankına alır; ardından `WSTORE.OSSpace/WS` yazar.
@@ -331,7 +331,7 @@ OSSpace ve WS, L1–L4 Data RAM domain'lerinden ayrı, çekirdek-yerel ve doğru
 
 **OSSpace/WS → Data RAM tek yönlü blok aktarımı**
 - `XFER.WS.MEM`, tek bir OSSpace veya WS byte aralığını seçilmiş L1–L4 Data RAM domain'indeki byte aralığına kopyalar. Yön yalnızca workspace→Data RAM'dir; ters yön kodlanamaz. Tam 8 KiB çalışma alanı tek işlemle dış belleğe kaydedilebilir.
-- Bu blok aktarımı DA registerlarını kullanmaz; transfer motoru/Fabric yolunu kullanır. Bu nedenle RAC register erişim bütçesini tüketmez, fakat Data RAM bank/controller ve transfer-engine kaynaklarını kullanır.
+- Bu blok aktarımı DA registerlarını kullanmaz; transfer motoru/Fabric yolunu kullanır. Bu nedenle RAC'ın 32R/32W mantıksal slotlarını tüketmez, fakat fiziksel workspace read bandwidth, Data RAM bank/controller ve transfer-engine kaynaklarını kullanır.
 - Kaynak aralığı transfer boyunca read-reserved; hedef aralık write-reserved ve unpublished olur. Başarılı tamamlanma hedef aralığı kullanılabilir kılar. Runtime transfer hatasında kısmi fiziksel yazma mümkün olsa da hedef aralık mantıksal olarak invalid/unpublished kalır; yazılım tam aralığı yeniden yazmadan yayımlayamaz.
 - `XFER.WS.START` kabul edildiğinde token, kaynak/hedef sahipliği ve rezervasyon tamamlanana veya hata kesinleşene kadar korunur. `XFER.WAIT` terminal sonucu tüketir. Var olan XFER token generation ve stale-token kuralları aynen geçerlidir.
 - OSSpace/WS kaynağı aktarım boyunca değiştirilemez. Workspace hedefi diye bir transfer durumu yoktur. Bu, kaynak snapshot tutarlılığını ve hedefin kısmi görünür olmamasını sağlar.
@@ -340,7 +340,7 @@ OSSpace ve WS, L1–L4 Data RAM domain'lerinden ayrı, çekirdek-yerel ve doğru
 
 **Data RAM'den workspace'e yükleme:** Harici bellekten OSSpace/WS'ye doğrudan DMA/Fabric aktarımı yoktur. Geri yükleme CPU tarafından yapılır: privileged LOAD Data RAM→DA ve ardından WSTORE DA→WS/OSSpace. App RAM bu veri yolunun parçası değildir; yalnızca CodeFlow instruction-fetch kaynağıdır.
 
-**OS/task gölge alanı:** OS, OSSpace içinde request/response staging alanı tutabilir. Syscall girişinde WS'deki belirlenmiş request aralığı WLOAD.WS→DA→WSTORE.OSSpace ile OSSpace'ye kopyalanır; dönüş öncesinde OSSpace'deki yanıt WLOAD.OSSpace→DA→WSTORE.WS ile task'ın belirlenmiş WS yanıt aralığına kopyalanır. Bu kontrollü CPU kopyasıdır; ortak alias veya DMA yazması değildir. Boyut ve offset'ler OS ABI tarafından belirlenir.
+**OS/application gölge alanı:** OS, OSSpace içinde request/response staging alanı tutabilir. Syscall girişinde WS'deki belirlenmiş request aralığı WLOAD.WS→DA→WSTORE.OSSpace ile OSSpace'ye kopyalanır; dönüş öncesinde OSSpace'deki yanıt WLOAD.OSSpace→DA→WSTORE.WS ile WS'nin belirlenmiş response aralığına kopyalanır. Bu kontrollü CPU kopyasıdır; ortak alias veya DMA yazması değildir. Boyut ve offset'ler OS ABI tarafından belirlenir.
 
 ### 5.3 Little-endian bellek ve register-grup sıralaması
 
@@ -561,7 +561,7 @@ Eski SPM0–SPM7 adları yeni mimari metinlerde kullanılmaz. Bunların güncel 
 |---|---:|---|---|---|---|
 | Execution Buffer (EB) | 2 × 2 KiB | No direct access | No direct access | No direct software access | CPU instruction-fetch hardware only; active bank is executable code, inactive bank may be refilled by CST |
 | OS Space (OSSpace) | 8 KiB | Denied | Allowed | Allowed | OS-owned; syscall/I/O exchange is mediated by OS; not a general user buffer |
-| Work Space (WS) | 8 KiB | Current task only | Controlled save/restore and management | Controlled management | Single per-core user workspace; ownership follows the currently running task |
+| Work Space (WS) | 8 KiB | Application execution | Controlled management/save/restore | Controlled management | General-purpose per-core application workspace; not task-ID-owned |
 | Context Pool (CP0–CP3) | 4 × 8 KiB | Denied | Context-manager paths only | Controlled maintenance/debug | Protected saved task contexts; ordinary application and unrelated OS code cannot access |
 | Exception Workspace (XW) | 8 KiB; 8 × 1 KiB depth slices | Denied | Denied by default | Denied to ordinary software | Exception hardware only; exceptional explicitly authorized read-only diagnostic inspection may be defined; software writes are never allowed |
 
@@ -1130,7 +1130,7 @@ RA ve FA rakamları 64-bit kayıt operandı sayısıdır; fiziksel byte/bit geni
 
 Fiziksel uygulama için tek bir 48-read/24-write RA register-file veya 24-read/10-write FA register-file zorunlu değildir. Bankalama, read replication, operand broadcast/collector, bypass ve sınıf bazlı writeback portları birlikte tasarlanabilir. Aynı fiziksel register'a aynı cycle birden fazla write yasaktır; farklı hedeflere paralel writeback ise bank/port ve global writeback kapasitesi izin verdiği ölçüde yapılır.
 
-**RAC erişim tavanı FIXED:** tüm RA/FA/DA/MA banklarının toplamı çevrim başına 32 mantıksal read + 32 mantıksal write'tır. RAC, hazır issue-queue komutlarının tam operand ayak izini atomik rezerve eder; kullanılmayan erişim kapasitesi başka sınıflara aktarılır. Bank içi fiziksel port/replica topolojisi, bank çakışmaları, bypass ve writeback uygulaması OPEN'dır. LOAD/STORE, XFER, FCONV, vector/matrix ve bütün register-bank transferleri talep matrisine dahil edilmelidir. OSSpace/WS/CP/XW bellek erişimleri RAC'ın ortak 32R/32W erişim bütçesinin dışındadır.
+**RAC erişim tavanı FIXED:** RA/FA/DA/MA register bankları ile CPU kaynaklı WS/OSSpace WLOAD/WSTORE uç noktalarının toplamı çevrim başına 32 mantıksal 64-bit read + 32 mantıksal 64-bit write slotudur. RAC, hazır issue-queue komutlarının tam operand ayak izini atomik rezerve eder; kullanılmayan erişim kapasitesi başka sınıflara aktarılır. WLOAD workspace read + DA write; WSTORE DA read + workspace write slotlarını birlikte rezerve eder. 128/256/512-bit workspace erişimleri 2/4/8 slot tüketir. XFER.WS.MEM/START ayrı transfer motorunu kullanır ve RAC mantıksal slotlarını tüketmez. CP0–CP3 ve XW özel korumalı/hardware uç noktalarıdır; bunlar bu bütçeye dahil değildir. Fiziksel bank/port/replica topolojisi, bank çakışmaları, bypass ve writeback uygulaması OPEN'dır.
 
 ## 16. Issue queue ve paralel issue modeli
 
@@ -1149,7 +1149,7 @@ Fiziksel uygulama için tek bir 48-read/24-write RA register-file veya 24-read/1
 2. Bir komutun yazacağı register, aynı çevrimde bağımlı komutun kaynak operandı olarak kullanılamaz; forwarding varsa bypass ile çözülür.
 3. RA/RB/RC/RD aynı fiziksel RA registerının görünümüdür; bir view'a yazma diğer view okumalarını günceller. FA ayrı banktır; FA pair işlemleri iki FA kaydına bağımlılık ve write-hazard oluşturur.
 4. MA pair kullanan ME512 komutu, pair'in iki fiziksel MA registerını komut tamamlanana veya pipeline'ın güvenli release noktasına kadar rezerve eder.
-5. OSSpace/WS/CP/XW erişimlerinde rol, sahiplik ve privilege kontrolü yapılır; EB/C0/CS kod yolu yazılım erişimine kapalıdır.
+5. OSSpace/WS/CP/XW erişimlerinde rol, erişim dönemi ve privilege kontrolü yapılır; EB/C0/CS kod yolu yazılım erişimine kapalıdır.
 6. Load-use, FP dependency, matrix dependency ve memory ordering kuralları pipeline/ISA ayrıntı belgesinde genişletilecektir.
 
 ## 18. Açık karar / sonraki tasarım konusu
@@ -1214,10 +1214,10 @@ Bu örnekler little-endian memory byte sıralamasını değil, register bit dili
 
 ## 21. Workspace access, ownership and contention model
 
-OSSpace, WS, CP0–CP3 and XW are separate role-governed workspaces, not one uniformly accessible SPM region. Their ownership and privilege policy is defined in Section 6 and the dedicated access-protection specification. A request must pass role, owner, privilege, bounds and lifetime checks before it can be admitted.
+OSSpace, WS, CP0–CP3 and XW are separate role-governed workspaces, not one uniformly accessible SPM region. Their ownership and privilege policy is defined in Section 6 and the dedicated access-protection specification. A request must pass role, access-epoch, privilege, bounds and lifetime checks before it can be admitted.
 
 - OSSpace is reserved for privileged OS work and mediated syscall/I/O exchange.
-- WS is directly accessible only to the task currently owning that core's user workspace; a live image must be preserved before reassignment.
+- WS is directly accessible during an authorized PL0 application execution epoch. It is not task-ID-owned or automatically saved as task context; before another protection domain receives access, the OS must clear/reinitialize WS or explicitly restore an authorized preserved range.
 - CP0–CP3 are protected context-residency banks. Only OS context-manager paths may allocate, validate, save, restore or evict context slots.
 - XW is exception-hardware-owned and depth-sliced. Normal software reads and writes are denied.
 - EB is a code-fetch workspace, not a software data memory. C0 and CS0–CS7 are managed by CFM/CST and are not general-purpose load/store targets.
