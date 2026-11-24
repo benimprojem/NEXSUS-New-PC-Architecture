@@ -8,17 +8,20 @@
 
 ## 1. Çekirdek Execution Unit konfigürasyonu
 
+Bu bölüm geçerli çekirdek başına execution kaynaklarını tanımlar. Eski “en az iki FPU” ve “iki FP komutu/çevrim” varsayımı kaldırılmıştır.
+
 | Birim | Çekirdek başına | İşlev |
 |---|---:|---|
-| ALU0 | 1 | Integer / logic |
-| ALU1 | 1 | Integer / logic |
-| ALU2 | Opsiyonel | 3-ALU çekirdek konfigürasyonu |
-| FPU0 | 1 | Floating point |
-| FPU1 | 1 | Floating point |
-| FPU ekleri | Opsiyonel | 2'den fazla FPU yapılandırması |
+| Integer ALU lane | 8 | 64-bit integer/logic; iki 128-bit eşli lane grubu |
+| FP64 execution lane | 6 | FP32/FP64 arithmetic ve ilgili FP komutları |
+| Dedicated FMA unit | 4 | Fused multiply-add; FP64 lane havuzundan bağımsız execution kaynağı |
 | ME512 | 1 | 512-bit Matrix/Vector execution |
+| LOAD | 8 | Load execution/admission kaynakları |
+| STORE | 4 | Store execution/admission kaynakları |
 
-2 ALU temel çekirdek; 3 ALU genişletilmiş çekirdek konfigürasyonudur. FPU sayısı minimum 2'dir. ME512 her çekirdekte bir adet hedeflenir.
+FP64 lane ve FMA birimleri fiziksel execution kaynağı olarak ayrıdır. FMA komutları FP64 lane havuzundan slot tüketmez; normal FP komutları FMA birimlerini kullanmaz. İki kaynak sınıfı aynı çevrimde bağımsız hazır komutlar alabilir. Bu, FA register bankının sınırsız operand beslemesi sağladığı anlamına gelmez: FA read/write portları, bypass ve global issue/dispatch sınırları ayrı kısıtlardır; bunlar için doğrulanmamış ek kapasite varsayılmaz.
+
+Bu tabloda verilen lane/unit sayıları geçerli NEXSUS çekirdek konfigürasyonudur. Eski FPU0/FPU1 minimum modeli ve onun iki-FP-issue çıkarımı geçersizdir.
 
 ## 2. Register sınıfları
 
@@ -488,18 +491,18 @@ Bu bölümdeki tüm FP kaynak ve hedef operandları FA0–FA63 bankındadır. FP
 
 | Mnemonic | Operand | İşlev | Unit |
 |---|---|---|---|
-| FADD | dst, a, b | FP toplama | FPU |
-| FSUB | dst, a, b | FP çıkarma | FPU |
-| FMUL | dst, a, b | FP çarpma | FPU |
-| FDIV | dst, a, b | FP bölme | FPU |
-| FMA | dst, a, b, c | Fused multiply-add: a × b + c | FPU |
-| FNEG | dst, src | FP işaret değiştirme | FPU |
-| FABS | dst, src | FP mutlak değer | FPU |
-| FSQRT | dst, src | Karekök | FPU |
-| FMIN | dst, a, b | FP minimum | FPU |
-| FMAX | dst, a, b | FP maksimum | FPU |
-| FCMP | dst, a, b | FP karşılaştırma; RA hedefe 0/1 | FPU |
-| FCONV | dst, src, src_type, dst_type | RA ↔ FA arasında sayısal integer/floating dönüşümü | FPU / conversion path |
+| FADD | dst, a, b | FP toplama | FP64 lane |
+| FSUB | dst, a, b | FP çıkarma | FP64 lane |
+| FMUL | dst, a, b | FP çarpma | FP64 lane |
+| FDIV | dst, a, b | FP bölme | FP64 lane |
+| FMA | dst, a, b, c | Fused multiply-add: a × b + c | Dedicated FMA |
+| FNEG | dst, src | FP işaret değiştirme | FP execution path |
+| FABS | dst, src | FP mutlak değer | FP execution path |
+| FSQRT | dst, src | Karekök | FP64 lane |
+| FMIN | dst, a, b | FP minimum | FP64 lane |
+| FMAX | dst, a, b | FP maksimum | FP64 lane |
+| FCMP | dst, a, b | FP karşılaştırma; RA hedefe 0/1 | FP64 lane |
+| FCONV | dst, src, src_type, dst_type | RA ↔ FA arasında sayısal integer/floating dönüşümü | Conversion path |
 
 FP aritmetik komutlarında bütün kaynaklar komut başlangıcında okunmuş kabul edilir; hedef yazımı kaynak okumalarından sonra commit edilir. Bu nedenle hedefin kaynaklardan biriyle aynı FA register'ı olması, işlem sonucunu değiştirmez. FP128 komutlarında hedef ve ilgili kaynak pair'leri çift indisli başlangıç kullanmalıdır; pair FA31'i aşamaz.
 
@@ -566,13 +569,15 @@ FCONV, RA'daki integer değeri FA formatına veya FA'daki floating-point değeri
 - FCONV NaN/infinity kaynakları, integer hedefe taşma, saturating ve trap flag'lerinin kesin sonuçları henüz tam tanımlı değildir; encoding belgesindeki açık karar maddesi olarak kalır.
 - Encoding alanları, tür kodları, rounding ve conversion flags NEXSUS-CPU-INSTRUCTION-ENCODING-001.md içindeki FCONV alt bölümünde tanımlanır. FP128 kullanıldığında FA pair başlangıcı çift indisli olmalıdır.
 
-### 7.7 FPU issue ve uygulama sınırları
+### 7.7 FP64 ve FMA execution kaynakları
 
-- İlk çekirdek hedefinde en az iki FPU bulunur; uygun bağımsız operand ve hedef register'larla teorik olarak iki FP komutu aynı çevrimde issue edilebilir.
-- İki FPU bulunması, her komutun tek çevrim latency veya her FP biçiminin aynı throughput'a sahip olduğu anlamına gelmez.
-- FP128 işlemleri iki FA register'ı tüketir; pair portları, bypass, pipeline derinliği ve FPU kaynak paylaşımı issue sayısını azaltabilir.
+- FP32/FP64 komutları çekirdek başına altı bağımsız FP64 execution lane havuzuna yönlendirilir.
+- FMA komutları çekirdek başına dört dedicated FMA birimine yönlendirilir. Bu birimler FP64 lane havuzunun alt kümesi değildir ve FP64 lane slotlarını işgal etmez.
+- Bağımsız FP komutları ile bağımsız FMA komutları aynı çevrimde issue edilebilir; gerçekleşen eşzamanlılık global issue/dispatch kapasitesi, FA register portları, operand hazır olma, bypass ve hedef çakışmalarıyla sınırlanır.
+- FA bankının geçerli port hedefi 6 FP + 4 FMA eşzamanlı operand talebini karşılayacak şekilde doğrulanmamıştır. Bu nedenle 10 işlemin her koşulda aynı çevrimde issue edileceği iddia edilmez.
+- FP128 işlemleri iki FA register'ı tüketir; pair portları, bypass ve pipeline derinliği issue sayısını azaltabilir.
 - FDIV ve FSQRT gibi işlemlerin latency/throughput değerleri mikro-mimari performans belgesinde tanımlanacaktır.
-- FPU0/FPU1 arasında bit-identical mimari sonuç zorunludur; fiziksel uygulama farklı olsa bile bu bölümde tanımlanan yuvarlama ve özel değer kuralları değiştirilemez.
+- FP ve FMA birimleri fiziksel uygulamaları farklı olsa bile bu bölümde tanımlanan IEEE 754 mimari sonuçlarını üretmelidir.
 
 
 ## 8. Vector ve Matrix komutları
@@ -935,7 +940,7 @@ Bu örnek, producer ile transferi başlatan çekirdek arasındaki L3 synchroniza
 ## 11. Instruction dispatch ve paralellik
 
 - Integer/logic komutları ALU0/ALU1 (ve konfigürasyonda ALU2) üzerinde yürütülür.
-- FP komutları FPU0/FPU1 (ve ek FPU'lar) üzerinde yürütülür.
+- FP32/FP64 komutları altı FP64 lane üzerinde; FMA komutları ayrı dört dedicated FMA birimi üzerinde yürütülür.
 - Vector/matrix komutları ME512'ye yönlendirilir.
 - LOAD/STORE ve SPM komutları ilgili memory/register path'ine gider.
 - Decoder/issue logic bağımsız komutları uygun kaynaklar müsaitse paralel dispatch edebilir.
@@ -1028,22 +1033,22 @@ Bu örnek sadece 512-bit operand/result register eşlemesini gösterir; matris s
 | Register bank | Read port hedefi | Write port hedefi | Açıklama |
 |---|---:|---:|---|
 | RA (64 × 64-bit) | 4 × 64-bit | 2 × 64-bit | Integer ALU operandları ve scalar/adres state |
-| FA (64 × 64-bit) | 4 × 64-bit | 2 × 64-bit | İki FPU için FP operandları; FP128 pair iki kayıt dilimi tüketir |
+| FA (64 × 64-bit) | 4 × 64-bit (eski geçici hedef) | 2 × 64-bit (eski geçici hedef) | 6 FP + 4 FMA eşzamanlı beslemesi için doğrulanmamıştır |
 | DA (64 × 64-bit) | 4 × 64-bit | 2 × 64-bit | Load/store ve açık data staging |
 | MA (64 × 256-bit) | 4 × 256-bit | 2 × 256-bit | ME512 pair ve vector data |
 | SPM0 | 2 × 64-bit | 1 × 64-bit | 64-bit temel kayıt erişimi; 8–512-bit geniş erişimler çok kayıtlı olabilir |
 | SPM1–SPM7 | 2 variable-width | 1 variable-width | 8–512-bit byte/field access; bank implementation TBD |
 
-RA ve FA artık ayrı fiziksel banklardır; FPU operandları FA'dan, ALU operandları RA'dan beslenir. Her bank için 4 read / 2 write portu ilk planlama hedefidir; bu değer sabit issue garantisi değildir. Scheduler operand sayısı, pair erişimi, bypass ve hedef çakışmalarına göre komut seçer. Fiziksel bank çoğaltma/rename henüz kararlaştırılmadı.
+RA ve FA ayrı fiziksel banklardır; FP64 ve FMA operandları FA'dan, ALU operandları RA'dan beslenir. FA için tabloda yazan 4 read / 2 write port değeri eski başlangıç hedefidir; altı FP64 lane ile dört dedicated FMA biriminin birlikte beslenmesi için yeterli kabul edilmez. FA portlarının artırılması, banklara bölünmesi veya çoğaltılması henüz kararlaştırılmamıştır. Scheduler operand sayısı, pair erişimi, bypass ve hedef çakışmalarına göre komut seçer.
 
 MA'nın 4 read portu, 512-bit pair okumasında iki 256-bit register dilimini birlikte besleme hedefidir. Pair için 2 read port tüketimi varsayılır; iki pair operandı aynı anda okunduğunda 4 port kullanılır. ME512 sonucu pair'e yazarken iki 256-bit write portu tüketir.
 
 ## 16. İlk issue modeli (taslak)
 
 - **Integer issue:** 2 komut/çevrim temel (ALU0 + ALU1); 3-ALU çekirdekte 3 komut/çevrim üst hedef.
-- **FP issue:** 2 komut/çevrim hedef (FPU0 + FPU1); operand ve port çakışmaları halinde daha az.
+- **FP/FMA issue:** 6 FP64 lane ve 4 dedicated FMA birimi ayrı kaynak havuzlarıdır. Her havuzun kabul kapasitesi kendi lane/unit sayısıyla sınırlıdır; gerçekleşen issue global issue genişliği ve FA port/operand kısıtlarıyla belirlenir. 6+4 işlemin her çevrim garanti edildiği anlamına gelmez.
 - **Matrix issue:** 1 ME512 komut/çevrim; latency çok çevrimli olabilir, pipeline throughput ayrıca belirlenir.
-- **Mixed issue:** Integer, FP ve Matrix komutları birbirinden bağımsızsa aynı çevrimde issue edilebilir.
+- **Mixed issue:** Integer, FP64, FMA ve Matrix komutları birbirinden bağımsızsa aynı çevrimde issue edilebilir; global issue genişliği, register portları ve diğer ortak kaynaklar toplam sayıyı sınırlar.
 - **Load/store ve SPM:** execution issue'dan bağımsız kaynak sınıfıdır; ancak register portları, address generation ve memory bank çatışmaları toplam throughput'u sınırlar.
 - Issue sayıları komut bağımsızlığı, kaynak hazır olma, dependency ve port uygunluğu koşuluna bağlıdır; garanti edilen her-program throughput'u değildir.
 
@@ -1382,12 +1387,13 @@ PX ve SPM0 farklı aşamalara hizmet eder:
 
 ### 22.14 App-code besleme genişliği ve task-aware prefetch
 
-- App RAM -> L0I temel bağlantısı 64-bit (8-byte), tekli okuma hattıdır.
-- Bir 64-bit transfer beat'i tek komut sözcüğü taşır. Bu, otomatik olarak her çevrimde bir beat garantisi vermez; timing ve servis oranı simülasyon/RTL ile belirlenecektir.
+- App RAM -> C0 Code Cache (legacy L0I) seçilmiş besleme oranı çekirdek başına 16 byte/çevrimdir.
+- C0 -> CS0–CS7 Code Slots (legacy PX) aktarım oranı 20 byte/çevrim; CS -> EB (legacy SPM0) oranı 20 byte/çevrimdir. EB tüketimi 16 byte/çevrimdir.
+- Bu oranlar seçilmiş mimari/simülasyon profilinin stage servis oranlarıdır; cold-start ilk dolum süresi ile steady-state pipeline beklemeleri ayrı raporlanır.
 - L0I App RAM'den task bazlı küçük parçalar halinde doldurulur. Farklı task'ların veya aynı task'ın farklı kod bölgelerinin kaynak adresleri ardışık olmak zorunda değildir.
 - OS hangi task'ın hangi mantıksal kod sayfasının ne zaman hazırlanacağını ve önceliğini belirler. Donanım istekleri doğrular, aktarımı yapar ve tamamlanmayı bildirir.
 - L0I -> PX sayfa aktarımı, OS'nin seçtiği mantıksal 2 KiB sayfaya göre yapılır; fiziksel App RAM adres sırasını takip etmek zorunda değildir.
-- App RAM -> L0I, L0I -> PX ve PX -> inactive SPM0 bank aşamalarının kuyrukları ayrıdır. Uygun veri hazır olduğunda aşamalar eşzamanlı ilerleyebilir.
+- App RAM -> C0, C0 -> CS ve CS -> inactive EB bank aşamalarının kuyrukları ayrıdır. Uygun veri hazır olduğunda aşamalar eşzamanlı ilerleyebilir; cold-start ilk dolum maliyeti yürütme başladıktan sonra sürekli EB tüketim cezası olarak tekrar eklenmez.
 - Çoklu komut okuma ilk sürümde yoktur. Dört adet 64-bit bağımsız okuma hattı gelecekteki 4'lü okuma genişletmesi olarak ayrıca test edilecektir.
 
 ### 22.15 EXT prefix ve genişletilmiş komut paketi
