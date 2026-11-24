@@ -28,9 +28,9 @@ NEXSUS CPU, doğrudan byte-adreslenebilir iki genel amaçlı çalışma alanı s
 | Alan | Kapasite | Sahiplik | Kullanım |
 |---|---:|---|---|
 | OS Space (OSSpace) | 8 KiB | OS | Kernel scratch, syscall/I/O exchange, OS kayıtları |
-| Work Space (WS) | 8 KiB | Çalışan task | Task-local veri, register spill, geçici yapılar ve çalışma dosyaları |
+| Work Space (WS) | 8 KiB | PL0 uygulama yürütmesi | Genel amaçlı uygulama çalışma verileri, register spill, geçici yapılar ve çalışma dosyaları; task ID'sine bağlı değildir |
 
-OSSpace ve WS, register bankı değildir. Her biri kendi 0–8191 byte offset aralığına sahiptir. WS zorunlu LIFO stack değildir; yazılım isterse stack frame, ister sabit offset'li kayıt, dizi, tablo veya geçici buffer olarak kullanabilir.
+OSSpace ve WS, register bankı değildir. Her biri kendi 0–8191 byte offset aralığına sahiptir. WS task-owned değildir ve zorunlu LIFO stack değildir; yazılım isterse stack frame, ister sabit offset'li kayıt, dizi, tablo veya geçici buffer olarak kullanabilir. Farklı bir koruma alanına devredilmeden önce OS erişim epoch'unu kapatır ve alanı temizler/başlatır; korunması gereken içerik açıkça Data RAM'e aktarılır.
 
 EB, OSSpace/WS'den ayrıdır: EB 4 KiB çift bankalı instruction-fetch alanıdır ve yazılım tarafından adreslenemez. CP0–CP3 korumalı OS context pool; XW ise exception hardware'a özel alandır. Bu alanlar WLOAD/WSTORE ile genel amaçlı erişime açılmaz.
 
@@ -50,7 +50,7 @@ WSTORE.OSSpace.W64 [RA5 + 0x40], DA2
 - Erişimler doğal hizalı olmalıdır; tam erişim aralığı 8 KiB sınırları içinde kalmalıdır.
 - WLOAD/WSTORE DA staging bankını kullanır. RA/FA/MA register banklarıyla veri alışverişi mevcut MOV.DA.RA / MOV.RA.DA, MOV.DA.FA / MOV.FA.DA ve MOV.DA.MA / MOV.MA.DA komutlarıyla açıkça yapılır.
 - OSSpace/WS ile L1–L4 Data RAM arasında büyük aralık aktarımı XFER.WS.MEM veya XFER.WS.START ile yapılır; XFER.WAIT asenkron aktarımın tamamlanmasını bekler.
-- Workspace SRAM portu RAC register portu değildir; ancak WLOAD hedef DA yazmaları ve WSTORE kaynak DA okumaları ortak RAC 32R+32W bütçesinden sayılır. XFER.WS.MEM doğrudan blok yolu DA staging ve RAC register slotlarını kullanmaz. Workspace bank/port sayısı ve erişim bant genişliği ayrı mikro-mimari konudur.
+- CPU kaynaklı WLOAD/WSTORE işlemleri hem workspace hem DA lane erişimlerini RA/FA/DA/MA ile ortak RAC 32R+32W bütçesinden sayar. XFER.WS.MEM doğrudan blok yolu DA staging ve RAC register slotlarını kullanmaz. Workspace bank/port sayısı ve erişim bant genişliği ayrı mikro-mimari konudur.
 
 Tam operand, fault, permission ve encoding kuralları [NEXSUS-CPU-WORKSPACE-ADDRESSING-AND-TRANSFER-001.md](NEXSUS-CPU-WORKSPACE-ADDRESSING-AND-TRANSFER-001.md) ve Instruction Encoding belgesinde tanımlıdır.
 
@@ -153,7 +153,7 @@ OSSpace ve WS'nin kullanım alanları şunlardır:
 
 - OSSpace: işletim sistemi çalışma verileri, syscall/I/O exchange ve kernel bookkeeping.
 - WS: application working geçici hesaplama sonuçları, register spill, küçük yapılandırılmış veri nesneleri ve doğrudan adreslenebilir çalışma dosyaları.
-- XFER.WS.MEM: OSSpace/WS verisini Data RAM'e kalıcılaştırma veya Data RAM'den CPU aracılı geri yükleme.
+- XFER.WS.MEM: OSSpace/WS verisini Data RAM'e tek yönlü dışa aktarma; geri yükleme CPU LOAD→DA→WSTORE zinciriyle yapılır.
 
 OSSpace/WS çekirdek-yerel kaynaklardır. GPU, FAPU ve diğer düğümlere otomatik olarak ortak workspace görünümü verilmez; bu birimler kendi bellek erişim mekanizmalarını kullanır.
 
