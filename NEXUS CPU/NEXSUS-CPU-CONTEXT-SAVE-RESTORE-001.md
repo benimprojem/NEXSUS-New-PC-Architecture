@@ -383,3 +383,53 @@ SPM privilege and ownership rules are specified in `NEXSUS-CPU-SPM-ACCESS-PROTEC
 ## 20. Memory protection domains reference
 
 App RAM/Data RAM ownership, task-private ranges, protected OS context storage, explicit shared-memory grants, and Fabric-agent authorization are specified in `NEXSUS-CPU-MEMORY-PROTECTION-DOMAINS-001.md`. Context frames remain in privileged Data RAM and are never placed in user-controlled memory. Task permissions must be validated before PL0 resumes.
+
+
+## 21. Current canonical register and workspace model — authoritative update
+
+This section supersedes conflicting SPM-era workspace assumptions and earlier register-count tables in this document.
+
+### 21.1 Register-bank sizes
+
+| Bank | Registers | Width each | Full bank size |
+|---|---:|---:|---:|
+| RA | 32 | 64-bit | 256 B |
+| FA | 32 | 64-bit | 256 B |
+| DA | 32 | 64-bit | 256 B |
+| MA | 32 | 256-bit | 1,024 B |
+| **Total** | **128 physical registers** | — | **1,792 B** |
+
+Save masks are 32-bit per bank: RA_MASK[31:0], FA_MASK[31:0], DA_MASK[31:0], and MA_MASK[31:0]. Pair operations reserve all physical entries in the pair/group.
+
+### 21.2 Canonical workspace roles
+
+- **EB:** 4 KiB dual-bank instruction-fetch resource; CPU hardware only. It is never task data or register-save storage.
+- **OW:** 8 KiB OS-owned, directly byte-addressable workspace. PL1/PL2 may access it; PL0 is denied.
+- **TW:** 8 KiB task-owned, directly byte-addressable workspace. The current PL0 task may use it as general working storage. It is not a mandatory LIFO stack; stack-like frames, fixed-offset records, arrays, and scratch data are all valid.
+- **CP0–CP3:** four protected 8 KiB context-pool banks; OS context-manager paths only.
+- **XW:** 8 KiB exception-hardware workspace split into eight 1 KiB depth slices. Software does not use it as ordinary scratch or persistent save storage.
+- **Data RAM:** persistent task contexts, privileged exception frames, and cross-core/migration backing.
+
+### 21.3 Workspace addressing and register transfer
+
+OW/TW use byte offsets 0–8191. WLOAD.OW/WLOAD.TW read into DA staging registers; WSTORE.OW/WSTORE.TW write from DA staging registers. Supported widths are 8/16/32/64/128/256/512 bits, with natural alignment, DA range, permission, ownership, and workspace-bound checks.
+
+Register-bank save/restore reuses explicit existing bank-transfer operations:
+- RA: MOV.DA.RA / MOV.RA.DA
+- FA: MOV.DA.FA / MOV.FA.DA
+- MA: MOV.DA.MA / MOV.MA.DA
+- DA values used as staging must themselves be preserved when live.
+
+No implicit direct register↔workspace alias is introduced. A workspace transfer is a separate memory operation and does not change the architectural register bank unless the explicit DA/register transfer is executed.
+
+### 21.4 Workspace ↔ Data RAM persistence
+
+XFER.WS.MEM copies a selected OW/TW byte range directly to or from an L1–L4 Data RAM domain. A full 8 KiB workspace can be moved as one block. XFER.WS.START uses the existing XFER token model and XFER.WAIT completion boundary.
+
+This block path bypasses DA staging and does not consume RAC register read/write slots. It does consume transfer-engine and Data RAM controller bandwidth. Source ranges remain read-reserved; destination ranges remain write-reserved/unpublished until successful completion. Runtime partial writes never make a failed destination logically valid.
+
+### 21.5 Exception context separation
+
+Exception entry uses XW only for bounded hardware-owned temporary state. Persistent interrupt frames remain in protected Data RAM through KESP. EB is exclusively instruction fetch. OW may hold OS bookkeeping; TW remains owned by the interrupted task and must not be silently reassigned during exception handling.
+
+The detailed address forms, instruction semantics, permission rules, and open encoding items are specified in NEXSUS-CPU-WORKSPACE-ADDRESSING-AND-TRANSFER-001.md. Numeric opcodes and exact WS-MEM encoding remain open until reconciled with the instruction encoding map.
