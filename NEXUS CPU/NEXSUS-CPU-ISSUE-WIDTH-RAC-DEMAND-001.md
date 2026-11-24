@@ -29,7 +29,7 @@ Candidate global issue widths: **8, 12, 16, 24 and 32 instructions/cycle**. The 
 | STORE | 1 | 0 | DA source read; memory/cache write is not a RAC register write |
 | WLOAD | width-dependent | width-dependent | Workspace source reads + DA destination writes |
 | WSTORE | width-dependent | width-dependent | DA source reads + workspace destination writes |
-| VEC | 8R / 4W per standard R3 op | 4R / 4W for VSUM; 12R / 4W for VMACC | Each 256-bit MA entry = 4 logical 64-bit RAC slots; see ISA §15 |
+| VEC | 8R standard R3; 12R VMACC; 4R VSUM | 4W per vector result | Each 256-bit MA entry = 4 logical 64-bit RAC slots; see ISA §15 |
 | ME512 | Tile-dependent | Tile-dependent | Count each 256-bit MA entry as 4 logical 64-bit RAC slots; tile groups scale by their full MA-entry count; see ISA §15 |
 | XFER.WS.MEM/START | 0 RAC | 0 RAC | Independent transfer engine; consumes selected workspace physical read bandwidth |
 
@@ -120,4 +120,4 @@ RAC admission must remain atomic: reserve every source and destination footprint
 
 **Register organization: domain-separated physical banks (RA, FA, DA, MA) under one shared dynamic RAC allocator.** The allocator is work-conserving and age-fair, with atomic instruction reservations and no permanent class quotas. Multiple independent banks may accept writes in parallel; same-destination multiwrite conflicts are prohibited and resolved before issue/commit.
 
-These are the selected starting architecture/simulator baselines, not silicon-validated limits. The VEC/ME512 MA-footprint normalization and full cycle-level contention/power/area/timing tests remain required. Re-evaluate only from measured evidence.
+These are the selected starting architecture/simulator baselines, not silicon-validated limits. VEC/ME512 MA footprints are now normalized in ISA §15 and formula-tested in NEX-T007; full cycle-level RAC contention, fairness, bank-conflict, power/area/timing validation remains required. Re-evaluate only from measured evidence.
