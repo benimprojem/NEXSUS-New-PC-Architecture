@@ -44,11 +44,17 @@ OW and TW are each 8 KiB, core-local, byte-addressable workspaces. Their offset 
 - Both workspaces support byte offsets and direct offset or RA-base-plus-byte-displacement addressing.
 - WLOAD reads from the selected workspace into DA staging registers; WSTORE writes DA staging registers to the selected workspace. Supported widths are 8/16/32/64/128/256/512 bits, subject to natural alignment, DA range, and the 8 KiB workspace boundary.
 - Register-bank save/restore uses the already-defined explicit transfer instructions: MOV.DA.RA / MOV.RA.DA, MOV.DA.FA / MOV.FA.DA, and MOV.DA.MA / MOV.MA.DA, with WSTORE/WLOAD as the workspace edge. No implicit register-bank alias is created.
-- XFER.WS.MEM and XFER.WS.START transfer a selected byte range between OW/TW and an L1–L4 Data RAM domain. The transfer engine moves the block directly and does not consume DA staging entries or RAC register-access slots.
-- During a workspace→Data RAM transfer, the source range is read-reserved. During Data RAM→workspace transfer, the destination workspace range is write-reserved and unavailable to CPU reads/writes until completion. Data RAM target ranges follow the existing transfer reservation and unpublished-destination rules.
+- XFER.WS.MEM and XFER.WS.START transfer a selected byte range only from OW/TW to an L1–L4 Data RAM domain. The transfer engine exports the workspace contents directly and does not consume DA staging entries or RAC register-access slots. Data RAM, App RAM, DMA, Fabric, peripherals, and other cores cannot use this path to write a workspace.
+- During a workspace→Data RAM transfer, the source range is read-reserved. Workspace is never a transfer destination. Data RAM target ranges follow the existing transfer reservation and unpublished-destination rules.
 - The full 8 KiB workspace may be transferred as one block. Partial transfers are permitted only when the complete source and destination ranges fit their respective bounds.
-- Every access validates privilege, active task ownership, direction, range, alignment, and mapping before acceptance. Validation faults cause no partial architectural update or write. Runtime multi-beat transfer failure may leave physical destination bytes changed, but the destination range remains logically invalid/unpublished until fully overwritten successfully.
+- Every CPU workspace access validates privilege, active task ownership, range, alignment, and mapping before acceptance. Export validates workspace read authority and Data RAM destination grant. Validation faults cause no partial architectural update or write. Runtime multi-beat transfer failure may leave physical destination bytes changed, but the destination range remains logically invalid/unpublished until fully overwritten successfully.
 - The instruction mnemonics and architectural behavior are specified in ISA §5.6. Numeric opcode allocation and exact WS-MEM encoding remain open; no existing opcode assignment is changed by this policy section.
+
+## 3.2 OS/task exchange window (paired shadow ranges)
+
+An OS/task exchange window may be reserved as a bounded pair of ranges: one in OW and one in TW. They are not a shared physical alias and are never writable by an external memory agent. On syscall entry, the CPU/OS copies the task's designated TW request range into OW using controlled WLOAD.TW→DA→WSTORE.OW operations. Before returning to PL0, the OS prepares a response in OW and the CPU/OS copies it into the designated TW response range using WLOAD.OW→DA→WSTORE.TW. The copy is performed by privileged CPU instructions under the context-management permission path, not by DMA or XFER.WS.MEM. The exact size, offsets, alignment, and ABI schema are OS policy and remain configurable; the initial architecture does not reserve a fixed number of bytes.
+
+This gives the application a predictable request/response shadow area while OW remains OS-private and TW remains task-owned. Outside the controlled handoff, PL0 cannot access OW and OS subsystems cannot arbitrarily mutate the task's TW.
 
 ## 4. TW — active user workspace
 
@@ -88,7 +94,7 @@ EB belongs exclusively to the CPU's internal execution machinery. No software at
 - The fault reports the workspace and access operation through the existing exception cause/information path; BADADDR/EXCINFO validity follows the CSR exception rules.
 - A protection fault must not partially modify the denied bank.
 - Permission and ownership checks apply to CPU-originated Workspace accesses and any future agent path that can address workspace.
-- No Node, peripheral, DMA, or Fabric agent receives implicit Workspace access. Any future such access requires an explicit, separately specified grant.
+- No Node, peripheral, DMA, Data RAM controller, App RAM controller, or Fabric agent receives workspace write access. The one-way workspace export engine may read OW/TW but cannot write them. Any future exception to this invariant requires a separate architecture decision and explicit capability.
 - Task switch must establish incoming TW ownership and the relevant protected-context access state before returning to PL0.
 - The exact enforcement circuitry and encoding of workspace protection controls remain implementation work; this policy does not assume a particular MMU, TLB, or new instruction.
 
