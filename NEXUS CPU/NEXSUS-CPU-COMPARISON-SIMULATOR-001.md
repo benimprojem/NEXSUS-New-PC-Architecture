@@ -364,24 +364,33 @@ For a full 64-KiB C0 cold fill at the current modeled 16 B/cycle stage rate, the
 The standalone pipeline's 8-byte App-RAM beat setting is a different configurable abstraction. It is not the selected comparison operating point and must not be used to replace the rates in the decision register without an explicit architecture/model update.
 
 
-## 16. FMA latency/throughput sweep checkpoint — resource-model audit
+## 16. Dedicated FP64/FMA resource model correction (2026-11-24)
 
-The next experiment is the FMA result-latency vs throughput sweep, following the 6 FP64 lanes + 4 dedicated FMA units decision. Before interpreting a sweep, the current implementation has been audited:
+The simulator and regression contracts now represent the selected NEXSUS execution topology as two independent physical resource pools:
 
-- FMA operations are currently mapped to the generic `FP` issue resource by `execution_resource_kind()`.
-- FMA is limited to the first four slots of the six-slot FP resource array through `FMA_LANES=4`.
-- Ordinary FP operations may select from all six FP slots, including those first four shared slot indices.
-- Therefore the present model represents FMA as a constrained subset of FP slots, **not as a separately modeled four-unit FMA resource**.
+- FP64: 6 execution lanes per core.
+- FMA: 4 dedicated execution units per core.
+- FMA opcodes map to the independent `FMA` availability array; they do not reserve FP64 lane slots.
+- FP opcodes map to the `FP` availability array; they cannot consume FMA slots.
+- The reference Intel/AMD/Apple profiles, which do not yet declare a dedicated FMA pool in this simulator, route FMA through their generic FP resource. This is a simulator comparison abstraction, not a claim about the vendors' physical FMA topology.
 
-This may not correctly represent the fixed architectural description of six FP64 lanes plus four dedicated FMA units. No physical unit-count change is implied. Before the next latency sweep is accepted, the model must explicitly define whether FMA units are independent execution resources, share some FP issue/read/write constraints, or have a hybrid topology. Register-file port conflicts and operand/result connectivity remain separate constraints and must not be invented.
+The old `FMA_LANES` subset model and the test asserting that FMA count must be no greater than FP lane count have been removed. The sweep now permits independent counts, including FMA count greater than FP count.
 
-### 16.1 Required next experiment
+### 16.1 Constraints deliberately kept separate
 
-1. Preserve FP64 lanes = 6 and dedicated FMA units = 4.
-2. Audit and correct resource scheduling so independent FMA throughput and dependent-chain latency are measured separately, with the intended dedicated-unit semantics represented.
-3. Add a mixed FP64 + FMA test that demonstrates the modeled concurrency and any documented shared constraints.
-4. Re-run regression and confirm the FMA-only throughput, dependent FMA chain, mixed FP/FMA, and ordinary FP64 tests.
-5. Only then sweep FMA result latency 3/4/5/6 cycles; keep unit counts and all other parameters fixed.
-6. Keep CodeFlow cold-start and steady-state instruction-fetch accounting separated in comparison outputs; do not let fetch startup accounting silently distort the arithmetic-latency result.
+- Global issue width remains a shared admission limit.
+- FA register read/write ports, operand delivery, bypass and result writeback may constrain simultaneous FP64 + FMA execution.
+- The existing 4-read/2-write FA port figure is retained only as an unverified early target; it is not treated as sufficient for 6 FP64 + 4 FMA.
+- No result such as “10 operations per cycle” is accepted until FA port topology and global issue limits are modeled and validated.
 
-The earlier FMA-latency sweep is not considered a validated result because the previous CI attempt failed before the sweep ran. The resource-mapping audit is an additional prerequisite for meaningful next results.
+### 16.2 Required validation
+
+1. Confirm FP-only throughput with FP6.
+2. Confirm FMA-only throughput with FMA4.
+3. Confirm independent FP and FMA streams can use separate execution pools, bounded by global issue.
+4. Confirm mixed FP64 + FMA workload operation-count parity and report any remaining shared-resource stalls.
+5. Sweep dependent FMA result latency at 3/4/5/6 cycles while keeping FP6/FMA4 fixed.
+6. Re-run all architecture contract tests and regression tests.
+7. Only after successful validation, rerun CodeFlow-integrated comparisons with cold-start fill and steady-state EB occupancy reported separately.
+
+The resource-model correction has been committed, but the latest CI run is still in progress. Previous failing runs are not considered validation. No FMA throughput or latency result is accepted until the updated contract and regression suite pass.
