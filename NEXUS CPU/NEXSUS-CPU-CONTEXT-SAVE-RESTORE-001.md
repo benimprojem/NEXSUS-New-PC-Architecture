@@ -11,7 +11,7 @@
 - Exception Workspace (XW) is an 8 KiB hardware-owned resource divided into eight 1 KiB depth slices. Software cannot use XW as ordinary scratch or persistent storage.
 - Kernel Exception Stack (KESP) and persistent interrupt/task context frames reside in protected Data RAM.
 - OS Space (OSSpace) is 8 KiB and remains OS-owned.
-- Work Space (WS) is 8 KiB and belongs to the current application execution context on that core. WS is directly byte-addressable and is not required to be a LIFO stack.
+- Work Space (WS) is an 8 KiB core-local general-purpose application workspace. It is directly byte-addressable, is not task-ID-owned, and is not required to be a LIFO stack.
 - Context Pool (CP0–CP3) is four protected 8 KiB banks. The OS context manager may use them as resident task-context storage; PL0 cannot access them.
 - Execution Buffer (EB) is instruction-fetch-only and is never part of a software data/context save.
 - App RAM instruction fetch and Data RAM data/context traffic remain separate paths.
@@ -112,21 +112,21 @@ Baseline full context includes:
 - WS is not architectural task state and is not automatically included in a task context image.
 - Task-local runtime/ABI metadata required for safe resumption.
 
-OSSpace is not not task-owned and is not swapped with the task. EB is refillable instruction-fetch state, not architectural task data. XW is exception-hardware state and is not not task-owned. CP0–CP3 may hold protected resident register-context images under OS control.
+OSSpace remains OS-owned and is not swapped with an application task. EB is refillable instruction-fetch state, not architectural task data. XW is exception-hardware state and is not task-owned. CP0–CP3 may hold protected resident register-context images under OS control.
 
 ## 8. OSSpace/WS workspace save and restore
 
-WS is a general-purpose application working working file. A program may use it as stack-like frames, fixed-offset records, arrays, tables, or temporary data. It is not implicitly cleared or treated as a LIFO stack.
+WS is a general-purpose application working file. A program may use it as stack-like frames, fixed-offset records, arrays, tables, or temporary data. It is not implicitly cleared or treated as a LIFO stack.
 
 - WLOAD.WS and WSTORE.WS provide byte-offset access to the current application's WS through DA staging.
 - WLOAD.OSSpace and WSTORE.OSSpace are available only to authorized PL1/PL2 OS code.
-- Register-bank save/restore uses explicit MOV.DA.RA / MOV.RA.DA, MOV.DA.FA / MOV.FA.DA, and MOV.DA.MA / MOV.MA.DA operations with WSTORE/WLOAD. MOV and WLOAD/WSTORE DA operands consume the shared RAC 32R+32W register-access budget; wide DA groups reserve all touched entries atomically.
+- Register-bank save/restore uses explicit MOV.DA.RA / MOV.RA.DA, MOV.DA.FA / MOV.FA.DA, and MOV.DA.MA / MOV.MA.DA operations with WSTORE/WLOAD. Register transfers and WLOAD/WSTORE consume the shared RAC budget of 32 logical 64-bit reads + 32 logical 64-bit writes per cycle across RA/FA/DA/MA/WS/OSSpace. WLOAD/WSTORE reserve workspace and DA footprints atomically; wide groups reserve every 64-bit lane.
 - DA staging clobbers must be included in the save plan. If DA values are live, preserve them before using DA as staging and restore them last.
 - XFER.WS.MEM exports a selected OSSpace/WS byte range only to an L1–L4 Data RAM domain. A full 8 KiB WS image can be persisted in one transfer. Restore is CPU-mediated: privileged code LOADs Data RAM into DA staging and WSTOREs into the local WS; no Data RAM/Fabric/DMA agent writes WS directly.
 - XFER.WS.START uses the existing asynchronous token model; XFER.WAIT is the completion boundary.
-- A workspace transfer does not implicitly transfer task ownership or grant access to another task/core.
+- A workspace export does not grant a new WS access epoch or authorize access from another core.
 
-## 8.1 OS/task exchange window
+## 8.1 OS/application exchange window
 
 The OS may define a request/response shadow window as paired bounded ranges in OSSpace and the active application execution's WS. These ranges are copies, not a shared alias.
 
@@ -134,10 +134,10 @@ The OS may define a request/response shadow window as paired bounded ranges in O
 - The OS validates and processes the request entirely in its own OSSpace or protected Data RAM buffers.
 - Before returning to PL0, the OS copies response bytes from OSSpace to the designated WS response range using WLOAD.OSSpace → DA → WSTORE.WS.
 - These are privileged CPU-mediated accesses under the controlled context-management path. XFER.WS.MEM is not used for this exchange.
-- The OS ABI chooses the size, offsets, alignment, and payload schema. No fixed portion of the 8 KiB workspaces is reserved by the ISA baseline; an OS may choose a small fixed window or a configurable per-process layout.
+- The OS ABI chooses the size, offsets, alignment, and payload schema. No fixed portion of the 8 KiB workspaces is reserved by the ISA baseline; an OS may choose a small fixed window or a configurable per-application protection-domain layout.
 - Outside the syscall handoff, PL0 cannot read OSSpace and unrelated OS code cannot arbitrarily modify WS.
 
-OSSpace itself remains the OS's 8 KiB core-local working file for kernel scratch, scheduler bookkeeping, syscall staging, I/O metadata, and temporary OS structures. Task switches do not turn OSSpace into not task-owned state; only explicitly defined OS context/interrupt paths preserve any OSSpace values that must survive nested execution.
+OSSpace itself remains the OS's 8 KiB core-local working file for kernel scratch, scheduler bookkeeping, syscall staging, I/O metadata, and temporary OS structures. It is not application state. OS context/interrupt paths preserve any OSSpace values that must survive nested execution.
 
 ## 9. CP0–CP3 resident context pool
 
@@ -155,11 +155,10 @@ A complete register payload is 1,792 bytes. The remaining space in a 2 KiB slot 
 
 1. Stop dispatch to the outgoing task and reach the architectural context-switch boundary.
 2. Preserve outgoing architectural register state in an assigned CP slot or protected Data RAM frame.
-3. If the outgoing WS image is live, use XFER.WS.MEM or XFER.WS.START/XFER.WAIT to persist its complete 8 KiB image to the application's protected Data RAM backing.
-4. Validate the incoming application's identity, generation, memory permissions, shared grants, context image, and WS backing.
+3. WS is not part of the outgoing task's architectural context. If its contents must survive, explicitly export the required range to protected Data RAM; otherwise revoke the old access epoch and clear or fully initialize WS before reuse.
+4. Validate the incoming application's identity, generation, memory permissions, shared grants, and context image.
 5. Restore incoming register state from CP or Data RAM.
-6. Restore the incoming application's WS image into the local WS using privileged CPU LOAD→DA→WSTORE operations, with bounds and ownership checks.
-7. Establish the incoming task as the WS owner and activate its memory permission state.
+6. Establish a new WS access epoch only after WS has been cleared/initialized or an explicitly authorized continuation has restored data through CPU-mediated LOAD→DA→WSTORE.
 8. Refill instruction code through the App RAM → C0 → CS0–CS7 → CST → EB path.
 9. Resume PL0 only after register state and the new WS access epoch/initialization state are valid.
 
@@ -167,10 +166,10 @@ WS is not automatically saved on deschedule. If its contents must survive, the a
 
 ## 11. Cross-core migration
 
-WS is core-local; its physical contents do not follow a task automatically.
+WS is core-local and is not task-owned; its physical contents do not follow a task automatically.
 
 - If WS contents must survive migration, explicitly persist the required range to protected Data RAM before migration.
-- Transfer the application's register/context image and permission/ownership metadata through protected Data RAM/Fabric paths.
+- Transfer the application's register/context image and permission metadata through protected Data RAM/Fabric paths.
 - On the destination core, restore the register context; if required, restore WS through CPU-mediated LOAD→DA→WSTORE before granting application access.
 - The destination core establishes a new local WS access epoch. Old-core workspace addresses do not authorize access to the destination WS.
 - CP residency is core-local; a task migrating to another core cannot retain a physical CP slot from the source core.
