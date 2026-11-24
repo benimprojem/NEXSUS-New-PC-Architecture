@@ -80,7 +80,7 @@ Initial worst-case logical operand demand, before broadcast/replication:
 
 These are logical access limits, not a commitment to one monolithic multiported array or 32 arbitrary conflict-free workspace ports. Banking, replication, operand broadcast/collectors, bypass and distributed writeback remain implementation choices. Bank conflicts and the physical topology must be modeled separately; no class or workspace has a permanently reserved fixed share of the 32R/32W pool.
 
-**Queue depths, physical read/write ports, bank/replica topology, cross-unit connectivity, same-cycle conflict policy, forwarding and writeback arbitration remain OPEN** until a full demand matrix and cycle-level contention tests are complete.
+**Queue depths, physical register-file ports, register bank/replica topology, cross-unit connectivity, same-cycle conflict policy, forwarding and writeback arbitration remain OPEN** until a full demand matrix and cycle-level contention tests are complete. Workspace physical bank topology remains OPEN under `NEXSUS-CPU-WORKSPACE-BANK-TOPOLOGY-001.md`; the logical 32R/32W RAC budget is FIXED.
 
 The older SPM/register note contains conflicting 64-entry figures. Those are superseded by the 2026-11-13 architecture revision and must not be copied forward.
 
