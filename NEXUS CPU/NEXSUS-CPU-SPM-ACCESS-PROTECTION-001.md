@@ -48,24 +48,24 @@ OSSpace and WS are each 8 KiB, core-local, byte-addressable workspaces. Their of
 - During a workspace→Data RAM transfer, the source range is read-reserved. Workspace is never a transfer destination. Data RAM target ranges follow the existing transfer reservation and unpublished-destination rules.
 - The full 8 KiB workspace may be transferred as one block. Partial transfers are permitted only when the complete source and destination ranges fit their respective bounds.
 - Every CPU workspace access validates privilege, active application-access epoch, range, alignment, and mapping before acceptance. Export validates workspace read authority and Data RAM destination grant. Validation faults cause no partial architectural update or write. Runtime multi-beat transfer failure may leave physical destination bytes changed, but the destination range remains logically invalid/unpublished until fully overwritten successfully.
-- The instruction mnemonics and architectural behavior are specified in ISA §5.6. Numeric opcode allocation and exact WS-MEM encoding remain open; no existing opcode assignment is changed by this policy section.
+- The instruction mnemonics, opcodes, and WSMEM fields are assigned in NEXSUS-CPU-INSTRUCTION-ENCODING-001.md. Physical bank/port implementation remains open.
 
-## 3.2 OS/task exchange window (paired shadow ranges)
+## 3.2 OS/application exchange window (paired shadow ranges)
 
-An OS/task exchange window may be reserved as a bounded pair of ranges: one in OSSpace and one in WS. They are not a shared physical alias and are never writable by an external memory agent. On syscall entry, the CPU/OS copies the application's designated WS request range into OSSpace using controlled WLOAD.WS→DA→WSTORE.OSSpace operations. Before returning to PL0, the OS prepares a response in OSSpace and the CPU/OS copies it into the designated WS response range using WLOAD.OSSpace→DA→WSTORE.WS. The copy is performed by privileged CPU instructions under the context-management permission path, not by DMA or XFER.WS.MEM. The exact size, offsets, alignment, and ABI schema are OS policy and remain configurable; the initial architecture does not reserve a fixed number of bytes.
+An OS/application exchange window may be reserved as a bounded pair of ranges: one in OSSpace and one in WS. They are copies, not a shared physical alias, and are never writable by an external memory agent. On syscall entry, the CPU/OS copies the application's designated WS request range into OSSpace using controlled WLOAD.WS→DA→WSTORE.OSSPACE operations. Before returning to PL0, the OS prepares a response in OSSpace and the CPU/OS copies it into the designated WS response range using WLOAD.OSSPACE→DA→WSTORE.WS. The copy is performed by privileged CPU instructions under the context-management permission path, not by DMA or XFER.WS.MEM. The exact size, offsets, alignment, and ABI schema are OS policy and remain configurable; the initial architecture does not reserve a fixed number of bytes.
 
-This gives the application a predictable request/response shadow area while OSSpace remains OS-private and WS remains not task-owned. Outside the controlled handoff, PL0 cannot access OSSpace and OS subsystems cannot arbitrarily mutate the application's WS.
+This gives the application a predictable request/response shadow area while OSSpace remains OS-private and WS remains a general-purpose application workspace. Outside the controlled handoff, PL0 cannot access OSSpace and OS subsystems cannot arbitrarily mutate WS.
 
-## 4. WS — active user workspace
+## 4. WS — application workspace
 
-WS is directly byte-addressable by PL0 application code through WLOAD.WS/WSTORE.WS during an authorized application execution epoch. It is general-purpose application working storage, not a mandatory LIFO stack; software may organize it as stack-like frames, fixed-offset records, tables, arrays, or scratch buffers. WS is not owned by a task ID and is not automatically part of a task context.
+WS is directly byte-addressable by PL0 application code through WLOAD.WS/WSTORE.WS during an authorized application execution epoch. It is general-purpose application working storage, not a mandatory LIFO stack; software may organize it as stack-like frames, fixed-offset records, tables, arrays, or scratch buffers. WS is not owned by a task ID and is not automatically part of task context.
 
-1. WS is the only workspace directly accessible to PL0.
-2. Access is limited to the task currently executing on that core. A task cannot address another application's WS image.
-3. During a task switch, if the outgoing application's WS contents are live, the OS saves the 8 KiB image to that application's protected Data RAM context backing before assigning WS to another task.
-4. The incoming application's saved image is restored before PL0 execution resumes.
-5. If the task/runtime explicitly releases WS or proves its contents dead, the OS may omit the save.
-6. Cross-core migration uses an explicit save to Data RAM and restore into the destination core's local WS. No implicit cross-core workspace coherence is assumed.
+1. WS is the only general-purpose workspace directly accessible to PL0.
+2. Access is controlled by the active application-access epoch, not by a task ID or task-indexed workspace image.
+3. A task switch does not automatically save or restore WS.
+4. Before WS is granted to a different protection domain, the OS revokes the prior access epoch and clears or fully initializes the 8 KiB area, unless an explicitly authorized continuation preserves the same data domain.
+5. If an application needs WS contents to survive a protection-domain change or core migration, it explicitly exports the required range to protected Data RAM. Restore is CPU-mediated through Data RAM LOAD→DA→WSTORE.
+6. No implicit cross-core workspace coherence or migration is assumed.
 
 ## 5. CP0–CP3 — protected task-context pool
 
