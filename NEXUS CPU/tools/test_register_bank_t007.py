@@ -3,6 +3,7 @@ import unittest
 from register_bank_model import (
     BANK_LAYOUT, RA_VIEWS, RAC_READ_BUDGET, RAC_WRITE_BUDGET,
     RegisterAccessError, RegisterFile, ma_opcode_rac_footprint,
+    ma_opcode_total_instruction_footprint,
     ma_reduction_output_entries, ma_tile_entries,
 )
 
@@ -125,13 +126,18 @@ class RegisterBankConnectivityT007(unittest.TestCase):
         # N8.W32 uses eight 256-bit MA entries per tile.
         self.assertEqual(ma_tile_entries(8, 32), 8)
         self.assertEqual(ma_opcode_rac_footprint("MMUL", n=8, element_width=32),
-                         (64, 32))
+                         (16, 8))
         self.assertEqual(ma_opcode_rac_footprint("MMAC", n=8, element_width=32),
-                         (96, 32))
+                         (24, 8))
         self.assertEqual(ma_opcode_rac_footprint("MTRANS", n=8, element_width=32),
-                         (32, 32))
+                         (8, 8))
         self.assertEqual(ma_opcode_rac_footprint("MREDUCE", n=8, element_width=32),
-                         (32, 8))
+                         (8, 8))
+        # Whole-operation reservation is larger, but serviced in 512-bit slices.
+        self.assertEqual(
+            ma_opcode_total_instruction_footprint("MMAC", n=8, element_width=32),
+            (96, 32),
+        )
         self.assertEqual(ma_reduction_output_entries(8, 32), 2)
 
     def test_matrix_tile_shape_limits_match_isa(self):
