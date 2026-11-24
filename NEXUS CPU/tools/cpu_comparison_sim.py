@@ -103,8 +103,8 @@ PROFILES = {
         "name": "NEXSUS CPU / 8-core proposed architecture",
         "core_count": 8, "core_type": "uniform", "frontend": 8,
         "dispatch": 8, "issue": 10, "retire": 8, "rob": 512, "scheduler_entries": 256,
-        "units": {"INT": 8, "FP": 6, "VEC": 2, "LOAD": 8, "STORE": 4, "BR": 2, "CTX": 1, "ATOM": 1, "ME512": 1, "IRQ": 1},
-        "execution_topology": {"INT128_PAIRS": [[0, 1], [2, 3]], "FMA_LANES": 4},
+        "units": {"INT": 8, "FP": 6, "FMA": 4, "VEC": 2, "LOAD": 8, "STORE": 4, "BR": 2, "CTX": 1, "ATOM": 1, "ME512": 1, "IRQ": 1},
+        "execution_topology": {"INT128_PAIRS": [[0, 1], [2, 3]]},
         "latency": {"INT": 1, "FP": 3, "VEC": 2, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 4, "ME512": 4, "IRQ": 6},
         "l1_kb": 1024, "l2_kb": 2048, "l3_kb": 8192, "l4_kb": 65536,
         "l1_lat": 2, "l2_lat": 8, "l3_lat": 24, "l4_lat": 64, "dram_lat": 120,
@@ -130,7 +130,7 @@ def add_op(ops: List[Op], kind: str, deps=(), address=0, width=8, label="", comm
 def execution_resource_kind(kind: str, matrix_unit: str) -> str:
     """Map arithmetic opcodes to the physical issue resource."""
     if kind == "FMA":
-        return "FP"
+        return "FMA"
     if kind == "ME512":
         return matrix_unit
     if kind.startswith("VEC_"):
@@ -2521,8 +2521,8 @@ def run_execution_resource_count_sweep(workloads: Dict[str, List[Op]], profile_d
 
 
 def run_fma_resource_sweep(workloads: Dict[str, List[Op]], profile_dict: dict,
-                           fp_counts=(6, 8), fma_counts=(2, 4)) -> dict:
-    """Compare dedicated FMA issue capacity; FMA lanes are a subset of FP lanes."""
+                           fp_counts=(6,), fma_counts=(4,)) -> dict:
+    """Sweep physically independent FP64 and dedicated FMA execution pools."""
     target = {name: workloads[name] for name in (
         "fp_throughput", "fma_throughput", "fma_dependency_chain",
         "fp_fma_mixed", "numeric_tile", "scalar_control"
@@ -2531,13 +2531,12 @@ def run_fma_resource_sweep(workloads: Dict[str, List[Op]], profile_dict: dict,
     rows = {}
     for fp_count in fp_counts:
         for fma_count in fma_counts:
-            if fma_count > fp_count:
-                continue
+            if fp_count < 1 or fma_count < 1:
+                raise ValueError("FP and FMA execution counts must be positive")
             profile = dict(profile_dict)
-            profile["units"] = {**profile_dict["units"], "INT": 8, "FP": fp_count}
-            profile["execution_topology"] = {
-                "INT128_PAIRS": [[0, 1], [2, 3]], "FMA_LANES": fma_count,
-            }
+            profile["units"] = {**profile_dict["units"], "INT": 8,
+                                "FP": int(fp_count), "FMA": int(fma_count)}
+            profile["execution_topology"] = {"INT128_PAIRS": [[0, 1], [2, 3]]}
             run = simulate_cpu(target, profile, 8,
                                {"task_workspace": False, "code_slots": False})
             key = f"FP{fp_count}_FMA{fma_count}"
@@ -2549,30 +2548,31 @@ def run_fma_resource_sweep(workloads: Dict[str, List[Op]], profile_dict: dict,
                     "execution_unit_blocked_op_cycles": row["stall_counters"]["execution_unit_blocked_op_cycles"],
                     "dependency_blocked_op_cycles": row["stall_counters"]["dependency_blocked_op_cycles"],
                     "issue_width_blocked_op_cycles": row["stall_counters"]["issue_width_blocked_op_cycles"],
+                    "issue_span_cycles": row["issue_span_cycles"],
                 }
-            rows[key] = {"fp64_lanes_per_core": fp_count, "fma_lanes_per_core": fma_count,
+            rows[key] = {"fp64_lanes_per_core": int(fp_count),
+                         "dedicated_fma_units_per_core": int(fma_count),
                          "total_cycles": run["total_cycles"], "total_ops": run["total_ops"],
                          "kernels": kernels}
     if any(not row["ops_preserved"] for variant in rows.values()
            for row in variant["kernels"].values()):
-        raise AssertionError("FMA sweep changed logical operation count")
+        raise AssertionError("FP/FMA sweep changed logical operation count")
     return {
-        "experiment": "NEXSUS FP64 and dedicated FMA lane topology sweep",
+        "experiment": "NEXSUS independent FP64 lanes and dedicated FMA units",
         "cores": 8, "fp_counts": list(fp_counts), "fma_counts": list(fma_counts),
         "same_logical_workload": expected_ops, "results": rows,
         "assumptions": (
-            "FMA lanes are a physical subset of FP64 lanes and share the same FP slot "
-            "availability array. FMA operations can issue only on the first FMA_LANES "
-            "FP slots; ordinary FP operations can issue on any FP slot. Other resources "
-            "and eight-core scheduling remain fixed. Simulator estimates, not silicon."
+            "FP64 and FMA use separate execution availability arrays. FP operations "
+            "cannot consume FMA slots and FMA operations cannot consume FP64 slots. "
+            "Global issue width and shared FA register-bank port limits remain separate; "
+            "FA port capacity is not assumed to scale with unit count. Simulator estimates."
         ),
     }
 
 
-
 def run_fma_latency_sweep(workloads: Dict[str, List[Op]], profile_dict: dict,
                           latencies=(3, 4, 5, 6), fp_count=6, fma_count=4) -> dict:
-    """Sweep FMA result latency independently from its one-op-per-cycle issue slots."""
+    """Sweep FMA result latency on its independent dedicated execution pool."""
     target = {name: workloads[name] for name in (
         "fp_throughput", "fma_throughput", "fma_dependency_chain", "fp_fma_mixed"
     )}
@@ -2580,49 +2580,41 @@ def run_fma_latency_sweep(workloads: Dict[str, List[Op]], profile_dict: dict,
     rows = {}
     for fma_latency in latencies:
         profile = dict(profile_dict)
-        profile["units"] = {**profile_dict["units"], "FP": fp_count}
+        profile["units"] = {**profile_dict["units"], "FP": int(fp_count),
+                            "FMA": int(fma_count)}
         profile["latency"] = {**profile_dict["latency"], "FMA": int(fma_latency)}
-        profile["execution_topology"] = {
-            **(profile_dict.get("execution_topology", {}) or {}),
-            "FMA_LANES": fma_count,
-        }
+        profile["execution_topology"] = dict(profile_dict.get("execution_topology", {}) or {})
         run = simulate_cpu(target, profile, 8,
                            {"task_workspace": False, "code_slots": False})
         kernels = {}
         for name, row in run["kernels"].items():
             kernels[name] = {
-                "ops": row["ops"],
-                "ops_preserved": row["ops"] == expected_ops[name],
-                "cycles": row["cycles"],
-                "issue_span_cycles": row["issue_span_cycles"],
+                "ops": row["ops"], "ops_preserved": row["ops"] == expected_ops[name],
+                "cycles": row["cycles"], "issue_span_cycles": row["issue_span_cycles"],
                 "ipc": row["aggregate_ipc"],
                 "execution_unit_blocked_op_cycles": row["stall_counters"]["execution_unit_blocked_op_cycles"],
                 "dependency_blocked_op_cycles": row["stall_counters"]["dependency_blocked_op_cycles"],
             }
         rows[str(fma_latency)] = {
             "fma_latency_cycles": int(fma_latency),
-            "fp64_lanes_per_core": fp_count,
-            "fma_lanes_per_core": fma_count,
-            "total_cycles": run["total_cycles"],
-            "total_ops": run["total_ops"],
+            "fp64_lanes_per_core": int(fp_count),
+            "dedicated_fma_units_per_core": int(fma_count),
+            "total_cycles": run["total_cycles"], "total_ops": run["total_ops"],
             "kernels": kernels,
         }
     if any(not row["ops_preserved"] for variant in rows.values()
            for row in variant["kernels"].values()):
         raise AssertionError("FMA latency sweep changed logical operation count")
     return {
-        "experiment": "NEXSUS FMA result-latency sensitivity with fixed FP6/FMA4 topology",
-        "cores": 8,
-        "fp64_lanes_per_core": fp_count,
-        "fma_lanes_per_core": fma_count,
+        "experiment": "NEXSUS dedicated FMA result-latency sensitivity with fixed FP6/FMA4 topology",
+        "cores": 8, "fp64_lanes_per_core": int(fp_count),
+        "dedicated_fma_units_per_core": int(fma_count),
         "latencies_cycles": [int(x) for x in latencies],
-        "same_logical_workload": expected_ops,
-        "results": rows,
+        "same_logical_workload": expected_ops, "results": rows,
         "assumptions": (
-            "FMA uses the first FMA_LANES slots of the FP64 lane pool and retains "
-            "one-op-per-cycle initiation per lane; only result latency changes. "
-            "This isolates dependency-chain latency from issue throughput. "
-            "Simulator estimates, not silicon measurements."
+            "FMA uses its own dedicated execution slots and retains one-op-per-cycle "
+            "initiation per unit; only result latency changes. FP64 uses a separate pool. "
+            "Global issue width and FA bank constraints remain separate. Simulator estimates."
         ),
     }
 
