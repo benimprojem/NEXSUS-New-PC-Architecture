@@ -362,3 +362,26 @@ These rates are distinct. The 64 B/cycle core-facing App RAM capacity must not b
 For a full 64-KiB C0 cold fill at the current modeled 16 B/cycle stage rate, the **payload transfer duration alone** is 4,096 cycles. Any configured first-beat/control overhead must be reported separately and only once per modeled startup/fill transaction. This arithmetic is a model-derived value, not a measured startup time. Initial CS prefill (up to 16 KiB at 20 B/cycle) and EB prefill (4 KiB at 20 B/cycle) are additional stage work, but they may overlap with upstream transfer once pages are available; therefore do not simply add all stage-duration totals to assert a startup critical path. The startup critical path must be calculated from the event-level pipeline timeline.
 
 The standalone pipeline's 8-byte App-RAM beat setting is a different configurable abstraction. It is not the selected comparison operating point and must not be used to replace the rates in the decision register without an explicit architecture/model update.
+
+
+## 16. FMA latency/throughput sweep checkpoint — resource-model audit
+
+The next experiment is the FMA result-latency vs throughput sweep, following the 6 FP64 lanes + 4 dedicated FMA units decision. Before interpreting a sweep, the current implementation has been audited:
+
+- FMA operations are currently mapped to the generic `FP` issue resource by `execution_resource_kind()`.
+- FMA is limited to the first four slots of the six-slot FP resource array through `FMA_LANES=4`.
+- Ordinary FP operations may select from all six FP slots, including those first four shared slot indices.
+- Therefore the present model represents FMA as a constrained subset of FP slots, **not as a separately modeled four-unit FMA resource**.
+
+This may not correctly represent the fixed architectural description of six FP64 lanes plus four dedicated FMA units. No physical unit-count change is implied. Before the next latency sweep is accepted, the model must explicitly define whether FMA units are independent execution resources, share some FP issue/read/write constraints, or have a hybrid topology. Register-file port conflicts and operand/result connectivity remain separate constraints and must not be invented.
+
+### 16.1 Required next experiment
+
+1. Preserve FP64 lanes = 6 and dedicated FMA units = 4.
+2. Audit and correct resource scheduling so independent FMA throughput and dependent-chain latency are measured separately, with the intended dedicated-unit semantics represented.
+3. Add a mixed FP64 + FMA test that demonstrates the modeled concurrency and any documented shared constraints.
+4. Re-run regression and confirm the FMA-only throughput, dependent FMA chain, mixed FP/FMA, and ordinary FP64 tests.
+5. Only then sweep FMA result latency 3/4/5/6 cycles; keep unit counts and all other parameters fixed.
+6. Keep CodeFlow cold-start and steady-state instruction-fetch accounting separated in comparison outputs; do not let fetch startup accounting silently distort the arithmetic-latency result.
+
+The earlier FMA-latency sweep is not considered a validated result because the previous CI attempt failed before the sweep ran. The resource-mapping audit is an additional prerequisite for meaningful next results.
