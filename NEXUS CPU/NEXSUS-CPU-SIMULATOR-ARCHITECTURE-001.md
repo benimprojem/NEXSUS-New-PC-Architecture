@@ -4,7 +4,10 @@
 **Status:** Simulator design proposal; timing and baseline profiles are configurable, not hardware claims  
 **Scope:** Functional and cycle-level behavioral simulation of NEXSUS CPU, plus a fair conventional-CPU comparison framework
 
-## Naming baseline\nCanonical CodeFlow and workspace names (including the rule that singleton resources have no numeric suffix) are defined in [Naming Decision 001](NEXSUS-CPU-CODEFLOW-NAMING-001.md). New text uses EB, OW, TW, CP0–CP3 and XW; SPMx remains legacy compatibility notation.\n\n## 1. Goal
+## Naming baseline
+Canonical CodeFlow and workspace names (including the rule that singleton resources have no numeric suffix) are defined in [Naming Decision 001](NEXSUS-CPU-CODEFLOW-NAMING-001.md). New text uses C0, CS0–CS7, CST, EB, OS, WS, CP0–CP3 and XW. Legacy SPM/P0/PX terms are retained only when describing historical simulator revisions.
+
+## 1. Goal
 
 Build a reproducible simulator that executes the same algorithmic workloads on:
 1. a configurable conventional/reference CPU model; and
@@ -39,8 +42,8 @@ This layer answers: **Does the program produce the correct result?**
 It models:
 - NEXSUS architectural registers RA/FA/DA/MA and their views/pairs;
 - ISA instruction semantics and precise faults;
-- P0 command-buffer/refill behavior at the architectural boundary;
-- EB, OW, TW, CP0–CP3 and XW roles, ownership and access permissions;
+- CodeFlow command-page/refill behavior at the architectural boundary;
+- EB, OS, WS, CP0–CP3 and XW roles, ownership and access permissions;
 - App RAM and Data RAM address spaces;
 - L1–L4 domain permissions, ownership and visibility;
 - task architectural state and context save/restore;
@@ -57,15 +60,15 @@ This layer answers: **How many modeled cycles and resources does execution requi
 
 It models, as configurable resources:
 - fetch, decode, dispatch and issue;
-- PX page-pool refill, dual-bank SPM0 code feed, and App RAM bank groups;
-- register-bank read/write ports and dependency/forwarding rules;
-- ALU, FPU and ME512 pipelines;
+- App RAM→C0→CS0–CS7→CST→EB refill, bank switching and instruction-feed rates;
+- RA/FA/DA/MA register-bank read/write ports, shared 80R/64W logical RAC admission, dependency and forwarding rules;
+- Arithmetic ALU, Logic, Compare, FP64, dedicated FMA, VEC and ME512 pipelines;
 - AGU and memory request queues;
 - L1–L4 domains and physical bank groups;
 - per-bank queues, local arbitration, port direction and turnaround;
 - wide-access parent/child tracking and all-or-none multi-bank admission;
-- workspace access bandwidth/latency;
-- task switch, context save/restore and SPM residency;
+- OS/WS workspace access bandwidth/latency and protected CP0–CP3/XW context paths;
+- task switch, context save/restore and workspace ownership/epoch transitions;
 - IRQ pending/acceptance, exception entry/exit and handler execution;
 - Fabric/MEMXFER traffic and transfer completion.
 
@@ -109,11 +112,13 @@ The first comparison must publish a complete reference parameter table. Unknown 
 
 The NEXSUS backend must read architecture parameters from versioned configuration, not hard-code speculative values in the simulator.
 
-The initial architectural resource map includes:
-- RA0–RA31, FA0–FA31, DA0–DA31 and MA0–MA31;
-- 2 ALUs, at least 2 FPUs and one ME512 per core as the current baseline proposal;
-- P0 64-bit command records and 512-bit peak refill interface target;
-- EB 2 × 2 KiB banks; OW 8 KiB; TW 8 KiB; CP0–CP3 (4 × 8 KiB); XW 8 KiB, each with defined roles/permissions;
+The selected architectural starting profile includes:
+- RA0–RA31, FA0–FA31, DA0–DA31 (32 × 64-bit each) and MA0–MA31 (32 × 256-bit);
+- per core: Arithmetic ALU=8, Logic=8, Compare=8, FP64=6, dedicated FMA=4, VEC=2, ME512=1, LOAD=8 and STORE=4;
+- global issue width=16 instructions/cycle, scheduler entries=256 and ROB=512;
+- shared dynamic RAC logical budget=80R/64W per core per cycle. This is a 64-bit-slot budget, not a monolithic physical SRAM port count. RA/FA/DA/MA are separate physical register domains; physical bank/replica topology and distributed writeback remain configurable;
+- CodeFlow path: App RAM→C0 (64 KiB)→CS0–CS7 (8 × 2 KiB)→CST→EB (2 × 2 KiB banks). Registered stage-rate assumptions are specified in the CodeFlow/decision documents;
+- OS workspace=8 KiB; WS=8 KiB; CP0–CP3 (4 × 8 KiB); XW=8 KiB, each with defined roles/permissions;
 - separate App RAM and Data RAM paths;
 - Fixed cache topology per eight-core block: 8 × private L1 (1 MiB/core), 4 × pair-shared L2 (2 MiB each), 2 × four-core-shared L3 (8 MiB each), and 1 × eight-core-shared L4 (64 MiB+).
 - Every core may access its own L1, pair L2, four-core L3, and block L4 subject to permissions/visibility. Both L3 groups in one eight-core block share the same L4; the L3 boundary is not an L4 boundary. Cross-L4-block access is explicit, not implicit.
@@ -145,7 +150,7 @@ The benchmark suite must contain different bottleneck classes. Initial workloads
 | W06 | Strided and random memory access | bank conflicts, queueing and latency |
 | W07 | Mixed compute + memory | overlap of execution and memory paths |
 | W08 | Producer/consumer across cores | synchronization, shared domains and visibility |
-| W09 | Task-switch stress | SPM context residency and Data RAM save/restore |
+| W09 | Task-switch stress | OS/WS access epochs, protected CP context residency and Data RAM save/restore |
 | W10 | IRQ/exception stress | interrupt latency, frame save/restore and handler overhead |
 | W11 | MEMXFER bulk movement | chunking, reservations, arbitration and completion |
 | W12 | Mixed multi-task system load | scheduler, QoS, fairness and aggregate throughput |
@@ -160,7 +165,7 @@ At minimum report:
 - instructions/operations issued, completed and retired;
 - IPC and per-unit utilization;
 - dependency, issue, queue-full, bank-conflict and port-turnaround stall cycles;
-- App RAM/PX refill stalls, SPM0 bank-switch bubbles, double-buffer overlap efficiency, and PX_NEXT/PX_END handling;
+- App RAM/C0/CS/CST/EB refill stalls, EB bank-switch bubbles, double-buffer overlap efficiency, and CodeFlow continuation/end handling;
 - Data RAM and L1–L4 bytes read/written;
 - per-bank service and conflict histograms;
 - wide-access assembly/commit delay;
