@@ -70,6 +70,15 @@ These tests are designed from the architecture contract upward. Implement them i
 - Validation: **VALID** on CI run `44118299885` (commit `cc7d6fbc6f19644590ea87aaf8e0de9cc13eeb55`); both independent-path tests and the full workflow passed.
 - Scope: validates core-facing link capacity and App/Data path independence. It deliberately does not claim that one 8×64-bit physical bank group can satisfy all eight cores simultaneously. Total bank-group count/placement, physical port replication, and multi-client Fabric arbitration/QoS remain open for NEX-T004 and follow-up tests.
 
+### 3.7 NEX-T007 MA/RAC footprint extension
+
+- Extended test file: `NEXUS CPU/tools/test_register_bank_t007.py`
+- New coverage: 80R/64W logical per-core RAC baseline; conversion of each 256-bit MA entry to four 64-bit logical slots; 512-bit pair conversion; vector, VMACC, VSUM, VDOT, MMUL, MMAC, MTRANS and MREDUCE operand-footprint formulas; supported tile-shape limits.
+- Supporting model: `NEXUS CPU/tools/register_bank_model.py`
+- Implementation commits: `b6535a14bcdda9f0dc8e38c1e48b4816049f0e11`, `6527b55c7e51416a4b394bac27a4a822667210c9`
+- Validation status: **IMPLEMENTED — awaiting a passing full CI run**. Do not treat this extension as VALID until its new regression tests pass on the recorded commit.
+- Scope limitation: logical operand-slot accounting only. Dynamic RAC arbitration, physical RF banking/replication, distributed writeback timing and cycle-level contention remain follow-up implementation work.
+
 ### 3.3 NEX-T012 architecture definition\n\n- Architectural decision: System Fabric clock = 2× CPU core clock.\n- Scheduling model: two Fabric scheduling ticks are available per CPU cycle; requests may be time-interleaved across destination queues.\n- The model must distinguish scheduler opportunity from physical link bandwidth and destination service capacity.\n- Required tests: two-tick cadence; alternating destinations; same-destination queue contention; independent destination progress; backpressure; fairness under sustained mixed traffic; no implicit 2× link-bandwidth multiplier.\n- Execution status: **PLANNED**. Exact lane width, queue depth, multi-client arbitration, and destination service curves remain open.\n\n## 4. Historical test files — retained, not yet re-certified
 
 The following files existed before this registry. They are not deleted, renamed, or silently treated as valid. Their historical outputs remain useful for regression analysis, but each must be mapped to a new test ID and re-run where relevant.
