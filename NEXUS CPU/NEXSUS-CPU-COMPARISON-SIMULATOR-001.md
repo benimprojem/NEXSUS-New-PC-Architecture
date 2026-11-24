@@ -83,18 +83,18 @@ Intel's product specification lists 8 P-cores + 16 E-cores, 24 total cores/threa
 
 ### Selected NEXSUS 128-window architecture
 
-Already specified architectural anchors:
-- 2 integer ALUs, 2 FPUs and 1 ME512 per core.
-- 128 KiB private L1 per core.
-- 1 MiB L2 shared by two cores.
-- 8 MiB L3 shared by four cores.
-- 64 MiB L4 shared by eight or more cores. The v0.1 model includes this L4 capacity and a provisional 64-cycle latency assumption; this latency is not frozen.
-- 8-bank × 64-bit bank-group candidate.
-- Separate App RAM instruction path and Data RAM data path.
-- P0 command cache; 64-bit command records and 512-bit peak refill interface.
-- RA/FA/DA/MA register banks and SPM0–SPM7.
+Current architecture anchors (use the Architecture Decision Register as authority):
+- 8 cores in the selected comparison profile.
+- Arithmetic ALU=8, Logic Unit=8, Compare Unit=8, FP64=6, dedicated FMA=4, VEC=2, ME512=1, LOAD=8, STORE=4 per core.
+- Scheduler entries=256 and ROB=512.
+- L1=1 MiB private per core; L2=2 MiB shared per core pair; L3=8 MiB shared per four-core group; L4=64 MiB+ shared per eight-core block.
+- App RAM and Data RAM are independent memory systems/controllers, each with a 64 B/cycle/core connection.
+- Canonical instruction path: App RAM → Code Cache (C0) → Code Slots (CS0–CS7) → Code Stream Transfer (CST) → Execution Buffer (EB).
+- Canonical workspaces: Operating-System Workspace (OW), Task Workspace (TW), Context Pool (CP0–CP3), and Exception Workspace (XW); EB is code-fetch-only.
+- Architectural register banks: RA0–RA31, FA0–FA31, DA0–DA31 (32 × 64-bit each), MA0–MA31 (32 × 256-bit).
+- Shared Register Access Controller budget: 32 logical reads + 32 logical writes per cycle across RA/FA/DA/MA.
 
-NEXSUS dispatch/retire width, scheduling model, branch predictor, ROB-equivalent capacity, cache/bank latency, clock and core count are not frozen. The simulator uses one selected NEXSUS profile: front-end 8, dispatch 8, issue 10, retire 8, and a 128-entry modeled window. The execution-resource profile is INT 4, FP 4, VEC 2, LOAD 8, STORE 4, BR 2, CTX 1 and ATOM 1. These are the chosen comparison configuration, but remain model parameters rather than a claim of validated silicon performance.
+The simulator's selected profile uses front-end 8, dispatch 8, issue 10, retire 8, scheduler entries 256 and ROB 512. The execution-resource profile mirrors the unit counts above. These are architecture/model parameters, not a claim of validated silicon timing or throughput.
 
 ## 5. Controlled clock and core-count experiment
 
@@ -380,7 +380,7 @@ The old `FMA_LANES` subset model and the test asserting that FMA count must be n
 
 - Global issue width remains a shared admission limit.
 - FA register read/write ports, operand delivery, bypass and result writeback may constrain simultaneous FP64 + FMA execution.
-- The existing 4-read/2-write FA port figure is retained only as an unverified early target; it is not treated as sufficient for 6 FP64 + 4 FMA.
+- The shared 32R/32W RAC budget applies across RA/FA/DA/MA. It is not 32R/32W per bank, and no fixed FA-only port allocation is assumed.
 - No result such as “10 operations per cycle” is accepted until FA port topology and global issue limits are modeled and validated.
 
 ### 16.2 Required validation
