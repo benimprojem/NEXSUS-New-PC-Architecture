@@ -1954,6 +1954,12 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
                 read_counts[bank] = read_counts.get(bank, 0) + 1
             for bank, _index, _slots in write_accesses:
                 write_counts[bank] = write_counts.get(bank, 0) + 1
+            destinations = [(bank, index) for bank, index, _slots in write_accesses]
+            if len(destinations) != len(set(destinations)):
+                raise ValueError(f"op {op.seq} writes one register more than once")
+            if any(destination in rac_destinations_this_cycle for destination in destinations):
+                stalls["rac_destination_conflict_op_cycles"] += 1
+                continue
             if p.rac_physical_read_ports is not None and any(
                 physical_reads_this_cycle.get(bank, 0) + count >
                 p.rac_physical_read_ports.get(bank, 0)
@@ -1967,12 +1973,6 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
                 for bank, count in write_counts.items()
             ):
                 stalls["rac_physical_write_port_blocked_op_cycles"] += 1
-                continue
-            destinations = [(bank, index) for bank, index, _slots in write_accesses]
-            if len(destinations) != len(set(destinations)):
-                raise ValueError(f"op {op.seq} writes one register more than once")
-            if any(destination in rac_destinations_this_cycle for destination in destinations):
-                stalls["rac_destination_conflict_op_cycles"] += 1
                 continue
             vector_factor = (max(1, math.ceil(op.exec_width_bits / p.vector_bits))
                              if is_vector_operation(kind) or (kind == "ME512" and exec_kind == "VEC") else 1)
