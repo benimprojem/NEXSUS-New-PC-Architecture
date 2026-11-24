@@ -140,18 +140,18 @@ def ma_reduction_output_entries(n, element_width):
     return (n * accumulator_width + MA_ENTRY_BITS - 1) // MA_ENTRY_BITS
 
 
-def ma_opcode_rac_footprint(opcode, *, n=None, element_width=None):
-    """Return (logical 64-bit RAC read slots, write slots) for an MA opcode.
+def ma_opcode_total_instruction_footprint(opcode, *, n=None, element_width=None):
+    """Return total logical 64-bit source/destination slots for the whole MA op.
 
-    Each 256-bit MA entry costs four logical 64-bit slots. This is operand
-    accounting, not a claim about physical SRAM ports or execution latency.
+    This describes the architectural register groups held/reserved by the
+    instruction. It is not a per-cycle RAC service demand for large tiles.
     """
     op = opcode.upper()
     fixed = {
-        "VEC_R3": (8, 4),   # two MA sources, one MA destination
-        "VMACC": (12, 4),   # A, B, accumulator -> D
-        "VSUM": (4, 4),     # one MA source -> one MA destination
-        "VDOT": (8, 4),     # A, B -> one MA destination
+        "VEC_R3": (8, 4),
+        "VMACC": (12, 4),
+        "VSUM": (4, 4),
+        "VDOT": (8, 4),
         "ME512_PAIR": (8, 8),
     }
     if op in fixed:
@@ -168,4 +168,42 @@ def ma_opcode_rac_footprint(opcode, *, n=None, element_width=None):
     if op == "MREDUCE":
         out = ma_reduction_output_entries(n, element_width)
         return 4 * t, 4 * out
+    raise RegisterAccessError(f"unknown MA opcode footprint: {opcode}")
+
+
+def ma_opcode_rac_footprint(opcode, *, n=None, element_width=None,
+                            slice_entries_per_operand=2):
+    """Return per-cycle logical 64-bit RAC slots for an MA opcode.
+
+    VEC instructions use one 256-bit entry per operand. ME512 matrix tiles
+    larger than one 512-bit slice are streamed: the full tile groups remain
+    reserved for the instruction, but no more than slice_entries_per_operand
+    MA entries per operand are read/written in one modeled cycle. The default
+    of two entries is a provisional 512-bit-per-operand-per-cycle service
+    assumption, not a validated physical port specification.
+    """
+    op = opcode.upper()
+    fixed = {
+        "VEC_R3": (8, 4),   # two MA sources, one MA destination
+        "VMACC": (12, 4),   # A, B, accumulator -> D
+        "VSUM": (4, 4),     # one MA source -> one MA destination
+        "VDOT": (8, 4),     # A, B -> one MA destination
+        "ME512_PAIR": (8, 8),
+    }
+    if op in fixed:
+        return fixed[op]
+    if n is None or element_width is None:
+        raise RegisterAccessError(f"{op} requires tile N and element width W")
+    t = ma_tile_entries(n, element_width)
+    slice_entries = min(t, slice_entries_per_operand)
+    if op == "MMUL":
+        return 8 * slice_entries, 4 * slice_entries
+    if op == "MMAC":
+        return 12 * slice_entries, 4 * slice_entries
+    if op == "MTRANS":
+        return 4 * slice_entries, 4 * slice_entries
+    if op == "MREDUCE":
+        out = ma_reduction_output_entries(n, element_width)
+        out_slice_entries = min(out, slice_entries_per_operand)
+        return 4 * slice_entries, 4 * out_slice_entries
     raise RegisterAccessError(f"unknown MA opcode footprint: {opcode}")
