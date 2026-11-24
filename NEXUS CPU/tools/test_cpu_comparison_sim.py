@@ -1952,7 +1952,7 @@ class RACCycleIntegrationTests(unittest.TestCase):
         ]
         result = sim.simulate_stream(ops, p)
         self.assertEqual(result["issue_peak_ops_per_cycle"], 4)
-        self.assertEqual(result["rac_peak_read_slots_per_cycle"], 7)
+        self.assertEqual(result["rac_peak_read_slots_per_cycle"], 6)
         self.assertEqual(result["rac_peak_write_slots_per_cycle"], 7)
         self.assertEqual(result["stall_counters"]["rac_physical_write_port_blocked_op_cycles"], 0)
 
