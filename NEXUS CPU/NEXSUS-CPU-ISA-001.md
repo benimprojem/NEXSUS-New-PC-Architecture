@@ -21,9 +21,11 @@ Bu bölüm geçerli çekirdek başına execution kaynaklarını tanımlar.
 | LOAD | 8 | Load execution/admission kaynakları |
 | STORE | 4 | Store execution/admission kaynakları |
 
-FP64 lane ve FMA birimleri fiziksel execution kaynağı olarak ayrıdır. FMA komutları FP64 lane havuzundan slot tüketmez; normal FP komutları FMA birimlerini kullanmaz. İki kaynak sınıfı aynı çevrimde bağımsız hazır komutlar alabilir. Bu, FA register bankının sınırsız operand beslemesi sağladığı anlamına gelmez: FA read/write portları, bypass ve global issue/dispatch sınırları ayrı kısıtlardır; bunlar için doğrulanmamış ek kapasite varsayılmaz.
+FP64 lane ve FMA birimleri fiziksel execution kaynağı olarak ayrıdır. FMA komutları FP64 lane havuzundan slot tüketmez; normal FP komutları FMA birimlerini kullanmaz. İki kaynak sınıfı aynı çevrimde bağımsız hazır komutlar alabilir. Bu, FA register bankının sınırsız operand beslemesi sağladığı anlamına gelmez: ortak RAC bütçesi, bypass ve global issue/dispatch sınırları ayrıca geçerlidir.
 
-Arithmetic ALU, Logic Unit ve Compare Unit birbirinden bağımsız, ayrı execution resource pool'lardır. Bu üç sınıfın her biri için ayrı issue queue bulunur; aynı sınıftaki birimler kendi kuyruğundan beslenir. FP64, FMA, VEC, ME512, LOAD ve STORE için de ayrı sınıf kuyrukları kullanılır. Kuyruk derinlikleri ve fiziksel register port/replication sayıları henüz açık tasarım parametreleridir. Global dispatch/issue kapasitesi tüm kuyruklardan aynı çevrimde seçilebilecek toplam komut sayısını ayrıca sınırlar.\n\nBu tabloda verilen lane/unit sayıları geçerli NEXSUS çekirdek konfigürasyonudur.
+Arithmetic ALU, Logic Unit ve Compare Unit birbirinden bağımsız execution resource pool'lardır. Her sınıfın ayrı issue queue'su vardır; FP64, FMA, VEC, ME512, LOAD ve STORE için de ayrı kuyruklar kullanılır. Kuyruk derinlikleri OPEN'dır. Global dispatch/issue kapasitesi tüm kuyruklardan seçilebilecek toplam komut sayısını sınırlar.
+
+Bu tabloda verilen lane/unit sayıları geçerli NEXSUS çekirdek konfigürasyonudur.
 
 ## 1.1 Issue queue ve register operand talebi
 
@@ -63,10 +65,15 @@ RAC, tüm register bankları için ortak **32R + 32W / cycle** erişim bütçesi
 | RBn | RAn alt 32-bit görünümü | 32-bit integer erişim |
 | RCn | RAn alt 16-bit görünümü | 16-bit integer erişim |
 | RDn | RAn alt 8-bit görünümü | 8-bit integer erişim |
-| SPM0 | 2 KiB; 256 × 64-bit kayıt | Doğrudan adreslenebilir geçici yürütme durumu/sonuç alanı; 8–512-bit erişim |
-| SPM1–SPM7 | 8 KiB × 7; byte-addressed | Her biri 8–512-bit erişimli geçici veri alanı |
+| Code Cache (C0) | 64 KiB | App RAM'den gelen executable-code staging/cache; yazılım register bankı değildir |
+| Code Slots (CS0–CS7) | 8 × 2 KiB | Doğrulanmış executable-code sayfalarının eşit havuzu |
+| Execution Buffer (EB) | 2 × 2 KiB | CPU'nun instruction-fetch için kullandığı çift banklı kod alanı; yazılım veri alanı değildir |
+| Operating-System Workspace (OW) | 8 KiB | PL1/PL2 OS-owned çalışma ve syscall/I/O exchange alanı |
+| Task Workspace (TW) | 8 KiB | Yalnızca o çekirdekte çalışan ve sahipliği atanmış PL0 task erişebilir |
+| Context Pool (CP0–CP3) | 4 × 8 KiB | Yalnızca OS context-manager yolları; task context image'ları |
+| Exception Workspace (XW) | 8 KiB; 8 × 1 KiB slice | Exception hardware'a özel; normal yazılım erişimi yok |
 
-RA/RB/RC/RD aynı RA fiziksel kaydının alt-bit görünümleridir; küçük görünüm yazmalarında etkilenmeyen üst bitler korunur. FA ayrı fiziksel banktır ve RA view alias'ı değildir. FA'nın FP128 işlemleri çift numaralı başlangıç kaydından başlayan iki kayıtlı pair kullanır. Register ayrıntıları SPM/register dokümanında tanımlanır.
+RA/RB/RC/RD aynı RA fiziksel kaydının alt-bit görünümleridir; küçük görünüm yazmalarında etkilenmeyen üst bitler korunur. FA ayrı fiziksel banktır ve RA view alias'ı değildir. FA'nın FP128 işlemleri çift numaralı başlangıç kaydından başlayan iki kayıtlı pair kullanır. Register ayrıntıları [Register Views and Direct Workspaces](NEXSUS%20CPU%20%E2%80%94%20SPM,%20Register%20G%C3%B6r%C3%BCn%C3%BCmleri%20ve%20Do%C4%9Frudan%20Alan%20Eri%C5%9Fimi.md) belgesinde; workspace adları ve erişim sınırları [Memory Path and Naming](NEXSUS-CPU-MEMORY-PATH-AND-NAMING-001.md) ve [Workspace Access Protection](NEXSUS-CPU-SPM-ACCESS-PROTECTION-001.md) belgelerinde tanımlanır.
 
 ### 2.1 Register bank ve operand kuralları
 
@@ -497,20 +504,21 @@ FETCH_AND.ACQ_REL.L4.W64 DA9, [RA20], DA10
 
 Bu mnemonic'ler sembolik assembly gösterimleridir. ATOM formatının bit yerleşimi ve ORDER kodları `NEXSUS-CPU-INSTRUCTION-ENCODING-001.md` belgesinde tanımlanır; numeric opcode ataması encoding belgesinde henüz yapılmamıştır.
 
-## 6. SPM komutları
+## 6. CPU workspaces, code residency and access permissions
 
-SPM0 kayıt-ofsetiyle, SPM1–SPM7 byte-ofsetiyle adreslenir. Bu komut isimleri taslak mnemonic'lerdir.
+Eski SPM0–SPM7 adları yeni mimari metinlerde kullanılmaz. Bunların güncel karşılıkları görevlerine göre ayrılmıştır:
 
-| Mnemonic | Operand | İşlev | Etki |
-|---|---|---|---|
-| SPM.RD | dst, addr | SPM alanından genişliği belirtilen veri okuma | SPM → RA/FA/DA/MA (uygun genişlikte) |
-| SPM.WR | addr, src, width | SPM alanına 8–512-bit veri yazma | RA/FA/DA/MA → SPM (uygun genişlikte) |
-| SPM.GET | dst, addr, width, bit | Alan okuma | SPM → register |
-| SPM.PUT | addr, src, width, bit | Alan güncelleme | Kısmi write |
-| SPM.MASK | addr, mask, value | Maskeli güncelleme | Alan koruma |
-| SPM.COPY | dst, src, length | SPM içi kopyalama | SPM transfer |
+| Canonical resource | Capacity | PL0 user | PL1 supervisor / OS | PL2 machine | Ownership and permitted use |
+|---|---:|---|---|---|---|
+| Execution Buffer (EB) | 2 × 2 KiB | No direct access | No direct access | No direct software access | CPU instruction-fetch hardware only; active bank is executable code, inactive bank may be refilled by CST |
+| Operating-System Workspace (OW) | 8 KiB | Denied | Allowed | Allowed | OS-owned; syscall/I/O exchange is mediated by OS; not a general user buffer |
+| Task Workspace (TW) | 8 KiB | Current task only | Controlled save/restore and management | Controlled management | Single per-core user workspace; ownership follows the currently running task |
+| Context Pool (CP0–CP3) | 4 × 8 KiB | Denied | Context-manager paths only | Controlled maintenance/debug | Protected saved task contexts; ordinary application and unrelated OS code cannot access |
+| Exception Workspace (XW) | 8 KiB; 8 × 1 KiB depth slices | Denied | Denied by default | Denied to ordinary software | Exception hardware only; exceptional explicitly authorized read-only diagnostic inspection may be defined; software writes are never allowed |
 
-SPM0, 256 adet 64-bit temel kayıt üzerinden doğrudan adreslenir; SPM1–SPM7 ise her biri 8 KiB byte-addressed alandır. Tüm SPM alanları 8/16/32/64/128/256/512-bit veri erişimlerini destekler. Geniş erişimler gerektiğinde ardışık temel kayıtları veya byte konumlarını kapsar; alignment ve sınır davranışı mimari kurallarla denetlenir.
+**No generic software SPM load/store instruction is defined.** Workspace access uses the existing privileged context, syscall, exception and transfer mechanisms. EB is not a data workspace and cannot be addressed by software. C0 and CS0–CS7 are code staging/residency resources controlled by CodeFlow Manager (CFM); software does not treat their physical slot identifiers as general-purpose addresses. Code Stream Transfer (CST) may fill only the inactive EB bank, and the bank switch occurs only after content, task identity, generation, mapping, permissions and valid-byte range are verified.
+
+OW/TW/CP/XW ownership and privilege checks are mandatory on every access. PL2 is not an unrestricted bypass: it does not grant ordinary software access to EB or XW. A permission/ownership violation raises a precise protection exception. Detailed policy is normative in `NEXSUS-CPU-SPM-ACCESS-PROTECTION-001.md` and `NEXSUS-CPU-MEMORY-PATH-AND-NAMING-001.md`.
 
 ## 7. Floating-point komutları
 
@@ -973,7 +981,7 @@ Bu örnek, producer ile transferi başlatan çekirdek arasındaki L3 synchroniza
 - Scalar CMP komutları 8 Compare Unit'a yönlendirilir.
 - FP32/FP64 komutları altı FP64 lane üzerinde; FMA komutları ayrı dört dedicated FMA birimi üzerinde yürütülür.
 - Vector komutları 2 VEC execution unit'a; 512-bit matrix/vector komutları 1 ME512'ye yönlendirilir.
-- LOAD/STORE ve SPM komutları ilgili memory/register path'ine gider.
+- LOAD/STORE komutları Data RAM domain'lerine gider; workspace işlemleri OW/TW/CP/XW rolü ve izinleriyle kontrol edilir. EB, C0 ve CS0–CS7 yalnızca CodeFlow/instruction-fetch yolu tarafından kullanılır.
 - Her execution sınıfının ayrı issue queue'su vardır. Global dispatch/issue seçimi bu kuyruklardan bağımsız hazır komutları seçer.
 - Aynı registera yazma, operand dependency, register-port bütçesi, global issue width ve memory conflict paralelliği sınırlar.
 
@@ -1067,13 +1075,13 @@ Bu bölümde mantıksal operand talebi ile fiziksel register-file port sayısı 
 | FA | 24 scalar operand | 10 sonuç | 6 FP64 × (2R+1W), 4 FMA × (3R+1W) |
 | DA | 4 store-source read | 8 load-result write | LOAD=8, STORE=4; transfer/XFER ayrıca hesaba katılır |
 | MA | Operand biçimine bağlı | Operand biçimine bağlı | VEC=2 ve ME512=1; her opcode'un MA pair/entry tüketimiyle hesaplanır |
-| SPM0 / SPM1–SPM7 | Ayrı SPM erişim talebi | Ayrı SPM erişim talebi | SPM kendi bank/port tasarımına sahiptir |
+| OW / TW / CP / XW | Rol ve izin kontrollü workspace erişimi | Rol ve izin kontrollü workspace erişimi | EB/C0/CS code-fetch kaynaklarıdır; RAC register operand bütçesine dahil değildir |
 
 RA ve FA rakamları 64-bit kayıt operandı sayısıdır; fiziksel byte/bit genişliği, pair erişimi ve bypass ayrıca değerlendirilir. FA'nın FP128 işlemleri iki ardışık FA entry'si tüketir. MA tarafında VEC ve ME512'nin her komut için kullandığı kaynak/hedef sayısı opcode bazında normalize edilmeden fiziksel port sayısı sabitlenmeyecektir.
 
 Fiziksel uygulama için tek bir 48-read/24-write RA register-file veya 24-read/10-write FA register-file zorunlu değildir. Bankalama, read replication, operand broadcast/collector, bypass ve sınıf bazlı writeback portları birlikte tasarlanabilir. Aynı fiziksel register'a aynı cycle birden fazla write yasaktır; farklı hedeflere paralel writeback ise bank/port ve global writeback kapasitesi izin verdiği ölçüde yapılır.
 
-**Port planı henüz OPEN:** tüm birimlerin talebi; LOAD/STORE, XFER, FCONV, vector/matrix, SPM ve bypass dahil tek bir demand matrix'te birleştirilecek. Ardından fiziksel port/replica sayısı ve arbitration tasarlanıp cycle-level testlerle doğrulanacak.
+**RAC erişim tavanı FIXED:** tüm RA/FA/DA/MA banklarının toplamı çevrim başına 32 mantıksal read + 32 mantıksal write'tır. RAC, hazır issue-queue komutlarının tam operand ayak izini atomik rezerve eder; kullanılmayan erişim kapasitesi başka sınıflara aktarılır. Bank içi fiziksel port/replica topolojisi, bank çakışmaları, bypass ve writeback uygulaması OPEN'dır. LOAD/STORE, XFER, FCONV, vector/matrix ve bütün register-bank transferleri talep matrisine dahil edilmelidir. OW/TW/CP/XW bellek erişimleri RAC'ın RA/FA/DA/MA register erişim bütçesi değildir.
 
 ## 16. Issue queue ve paralel issue modeli
 
@@ -1092,7 +1100,7 @@ Fiziksel uygulama için tek bir 48-read/24-write RA register-file veya 24-read/1
 2. Bir komutun yazacağı register, aynı çevrimde bağımlı komutun kaynak operandı olarak kullanılamaz; forwarding varsa bypass ile çözülür.
 3. RA/RB/RC/RD aynı fiziksel RA registerının görünümüdür; bir view'a yazma diğer view okumalarını günceller. FA ayrı banktır; FA pair işlemleri iki FA kaydına bağımlılık ve write-hazard oluşturur.
 4. MA pair kullanan ME512 komutu, pair'in iki fiziksel MA registerını komut tamamlanana veya pipeline'ın güvenli release noktasına kadar rezerve eder.
-5. SPM read/write port/bank conflict scheduler tarafından çözülür.
+5. OW/TW/CP/XW erişimlerinde rol, sahiplik ve privilege kontrolü yapılır; EB/C0/CS kod yolu yazılım erişimine kapalıdır.
 6. Load-use, FP dependency, matrix dependency ve memory ordering kuralları pipeline/ISA ayrıntı belgesinde genişletilecektir.
 
 ## 18. Açık karar / sonraki tasarım konusu
@@ -1100,7 +1108,7 @@ Fiziksel uygulama için tek bir 48-read/24-write RA register-file veya 24-read/1
 - RA ve FA banklarının multiport maliyeti; banked/replicated/renamed alternatifleri.
 - FA pair erişimlerinin port, hizalama ve forwarding maliyeti.
 - MA pair komutlarının register allocation ve ABI'de nasıl temsil edileceği.
-- SPM0/SPM1–SPM7 fiziksel bank/port düzeni ve aynı cycle erişim.
+- OW/TW/CP/XW fiziksel bank/port yerleşimi ve erişim arbitration ayrıntıları; bu kararlar rol/izin sınırlarını değiştiremez.
 - ME512 accumulator/tiling ve matrix shape formatı.
 - Integer MUL/DIV ve FP DIV/SQRT latency/throughput.
 - Precise exception, branch recovery, interrupt/context-save semantiği.
@@ -1155,35 +1163,17 @@ Bu örnekler little-endian memory byte sıralamasını değil, register bit dili
 - Register bank replication, operand queue veya ek portlar ileride throughput artırımı için değerlendirilebilir; ISA'nın görünür RA semantiğini değiştirmez.
 
 
-## 21. SPM erişim ve bank-conflict modeli (ilk taslak)
+## 21. Workspace access, ownership and contention model
 
-SPM0 ve SPM1–SPM7, RA/DA/MA register banklarından ayrı erişim kaynaklarıdır. SPM komutu register operandı kullanıyorsa register portu tüketimi ayrıca hesaba katılır.
+OW, TW, CP0–CP3 and XW are separate role-governed workspaces, not one uniformly accessible SPM region. Their ownership and privilege policy is defined in Section 6 and the dedicated access-protection specification. A request must pass role, owner, privilege, bounds and lifetime checks before it can be admitted.
 
-### SPM0
+- OW is reserved for privileged OS work and mediated syscall/I/O exchange.
+- TW is directly accessible only to the task currently owning that core's user workspace; a live image must be preserved before reassignment.
+- CP0–CP3 are protected context-residency banks. Only OS context-manager paths may allocate, validate, save, restore or evict context slots.
+- XW is exception-hardware-owned and depth-sliced. Normal software reads and writes are denied.
+- EB is a code-fetch workspace, not a software data memory. C0 and CS0–CS7 are managed by CFM/CST and are not general-purpose load/store targets.
 
-- Toplam kapasite 2 KiB'tır ve 256 adet 64-bit temel kayıt içerir.
-- Adresleme doğrudan kayıt ofsetiyle yapılır: `record_offset` 0..255.
-- 8/16/32-bit alan erişimleri 64-bit temel kayıt içindeki byte/bit alanlarını; 128/256/512-bit erişimler ise gerektiğinde ardışık temel kayıtları kapsar.
-- İlk erişim hedefi: cycle başına 2 adet 64-bit read ve 1 adet 64-bit write.
-- Aynı bankaya aynı cycle içinde birden fazla erişim gelirse port kapasitesi aşan erişimler stall/issue ertelemesine girer.
-
-### SPM1–SPM7
-
-- Her alan 8 KiB kapasitelidir; yedi alanın toplamı 56 KiB'tır.
-- Byte-addressed ve değişken genişlikli alan erişimini destekler.
-- 8/16/32/64/128/256/512-bit erişimlerde alignment ve alan sınırı davranışı ayrıca tanımlanacaktır.
-- İlk hedef 2 read + 1 write erişimidir; gerçek paralellik bank dağılımına bağlıdır.
-- Aynı byte/field üzerinde çakışan write'lar aynı cycle'da issue edilmez.
-- Maskeli/partial update, ilgili alan dışındaki bitleri korur.
-
-### Scheduler kuralları
-
-1. SPM read/write port sayısı ve bank conflict, SPM komutlarını sınırlayabilir; Logic Unit/FPU issue'dan bağımsız değildir.
-2. SPM read sonucunun aynı cycle'da kullanılması, doğrudan combinational path garantisi değildir; latency/load-use kuralı mikro-mimariyle belirlenecektir.
-3. SPM COPY/field işlemleri çok cycle veya transfer engine üzerinden yürüyebilir; tek cycle varsayılmaz.
-4. SPM0/SPM1–SPM7 bank sayısı ve interleave/hash adresleme henüz kesin değildir. Mantıksal kayıt/byte adresleri fiziksel bank sayısıyla aynı kavram kabul edilmez.
-
-Bu bölüm port hedeflerini tanımlar; kesin timing ve bank mapping sonraki mikro-mimari revizyonda sabitlenecektir.
+Physical bank count, port implementation, interleave/hash and same-cycle service limits for OW/TW/CP/XW remain implementation details. They must be modeled separately from the fixed 32R/32W RAC budget for RA/FA/DA/MA. Role/permission violations are protection faults, not ordinary bank-contention stalls.
 
 
 ## 22. Ayrık veri bellekleri, yerleşim ve aktarım komutları (taslak)
