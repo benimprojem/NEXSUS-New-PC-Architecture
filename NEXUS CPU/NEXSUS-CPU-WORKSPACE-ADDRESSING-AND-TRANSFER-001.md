@@ -86,7 +86,21 @@ This design lets OW/TW hold register snapshots, spill records, call frames, task
 - Validation is completed before acceptance. A validation fault starts no payload movement. A runtime multi-beat failure may leave physical destination bytes changed, but the destination range remains logically invalid/unpublished and must be fully overwritten before use.
 - Asynchronous transfer tokens retain the existing per-core generation/stale-token rules. XFER.WAIT is the terminal completion boundary.
 
-The transfer engine does not implicitly change task ownership or grant cross-core access. The Data RAM destination still requires the active task/OS permission and domain grant.
+Assembly form uses the workspace offset in the RA selector and the Data RAM byte address in the other RA selector:
+
+```asm
+; RA19 = 0, RA20 = Data RAM destination address, RA21 = 8192
+XFER.WS.MEM   TW[RA19], [L4:RA20], RA21
+
+; Reverse direction: Data RAM source → TW
+XFER.WS.MEM   [L4:RA20], TW[RA19], RA21
+
+; Asynchronous full-workspace save; RA22 receives the token
+XFER.WS.START TW[RA19], [L4:RA20], RA21, RA22
+XFER.WAIT     RA22
+```
+
+For the reverse asynchronous direction, the workspace is the destination endpoint and is write-reserved until WAIT completes. The transfer engine does not implicitly change task ownership or grant cross-core access. The Data RAM destination still requires the active task/OS permission and domain grant.
 
 ## 6. Permission and fault model
 
