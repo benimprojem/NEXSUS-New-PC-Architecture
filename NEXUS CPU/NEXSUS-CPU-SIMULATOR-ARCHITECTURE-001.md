@@ -251,7 +251,9 @@ The final directory and filenames must use ASCII-safe names; the conceptual plac
 Before implementing the timing engine, freeze the first simulator configuration schema and a small shared workload IR. Then implement W01 scalar integer loop end-to-end on both functional backends. This creates the first verified comparison path before adding vector, memory and system complexity.
 
 
-## 14. Updated PX / SPM0 model
+> **Historical appendix notice:** Sections 14–17 preserve the earlier L0I/PX/SPM0 simulator design and results for traceability. They are not the active architecture specification. The current source of truth is the CodeFlow path App RAM→C0→CS0–CS7→CST→EB, the OS/WS workspace model, and the current Architecture Decision Register / ISA / CodeFlow documents. Do not copy legacy resource names or capacities from this appendix into new designs.
+
+## 14. Historical PX / SPM0 model — superseded
 
 The previous simulator baseline listed SPM0 as a single 2 KiB buffer. That is superseded. The current proposal is 4 KiB SPM0 split into two 2 KiB banks, with PX Manager filling the inactive bank while CPU fetch consumes the active bank.
 
@@ -367,4 +369,4 @@ The default `app_beat_interval=1` is a baseline sensitivity assumption, not a fr
 
 
 ## Canonical terminology
-New explanatory text uses **CodeFlow Manager (CFM)**, **Code Slots CS0–CS7** (legacy PX P0–P7), **Code Cache C0** (legacy L0I), **Execution Buffer EB0** (legacy SPM0), and **Code Stream (CST)**. Existing symbols remain backward-compatible. See [NEXSUS-CPU-CODEFLOW-NAMING-001](NEXSUS-CPU-CODEFLOW-NAMING-001.md) for the naming decision.
+New explanatory text uses **CodeFlow Manager (CFM)**, **Code Slots CS0–CS7** (legacy PX P0–P7), **Code Cache C0** (legacy L0I), **Execution Buffer EB** (legacy SPM0), and **Code Stream Transfer (CST)**. Existing symbols remain backward-compatible. See [NEXSUS-CPU-CODEFLOW-NAMING-001](NEXSUS-CPU-CODEFLOW-NAMING-001.md) for the naming decision.
