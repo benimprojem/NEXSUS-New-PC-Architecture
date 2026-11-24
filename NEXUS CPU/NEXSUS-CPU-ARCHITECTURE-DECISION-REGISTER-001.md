@@ -90,7 +90,7 @@ The older SPM/register note contains conflicting 64-entry figures. Those are sup
 
 One independently managed issue queue per execution class: Arithmetic ALU, Logic, Compare, FP64, FMA, VEC, ME512, LOAD and STORE. Each queue feeds the units in its class. Global dispatch/issue selection chooses ready instructions across these queues subject to the global issue limit, dependencies, operand availability, register-port budget and writeback constraints.
 
-Queue depth and global issue width are intentionally **OPEN**. Evaluate global widths 16/24/32 instructions/cycle; do not infer issue width or queue depth from unit count or conflate issue queue capacity with ROB capacity. See `NEXSUS-CPU-ISSUE-WIDTH-RAC-DEMAND-001.md`.
+Queue depth remains **OPEN**. Global issue width is **BASELINE = 16 instructions/cycle**; compare 8/12/24/32 only as controlled sensitivity points. Do not infer issue width or queue depth from unit count or conflate issue queue capacity with ROB capacity. See `NEXSUS-CPU-ISSUE-WIDTH-RAC-DEMAND-001.md`.
 
 ---
 
