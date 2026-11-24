@@ -47,6 +47,9 @@ These tests are designed from the architecture contract upward. Implement them i
 | NEX-T009 | 1/2/4/8-core scaling | Same logical work per experiment, independent per-core paths, active-core accounting, scaling and fairness | VALID |
 | NEX-T010 | Mixed full-architecture workloads | Execution + registers + caches + App RAM + Data RAM under concurrent load; isolated and mixed runs | VALID |
 | NEX-T011 | Cross-architecture comparison | Identical logical work; native and 8-core controlled mode; only core count, CPU clock and CPU-to-memory bandwidth normalized | VALID |\n| NEX-T012 | System Fabric 2× clock and time-interleaved scheduling | Two Fabric ticks per CPU cycle; destination queues progress without false shared-bus serialization; link bandwidth is not multiplied merely by clock ratio; fairness and backpressure are explicit | DEFERRED — final integrated-system phase |
+| NEX-T013 | Instruction pipeline overlap | Continuous CodeFlow page delivery, EB ping-pong safety, registered stage rates and non-starving steady-state feed | VALID |
+| NEX-T014 | Memory path contract | App RAM/Data RAM independence, per-core Data RAM service and cache-fill topology invariants | VALID |
+| NEX-T015 | Dynamic RAC admission and distributed writeback | Shared 80R/64W logical pool, atomic reservations, age-prioritized work-conserving selection, physical bank conflicts, same-destination write rejection and parallel writes to distinct banks | IMPLEMENTED |
 
 ### 3.1 NEX-T001 implementation record
 
@@ -75,9 +78,20 @@ These tests are designed from the architecture contract upward. Implement them i
 - Extended test file: `NEXUS CPU/tools/test_register_bank_t007.py`
 - New coverage: 80R/64W logical per-core RAC baseline; conversion of each 256-bit MA entry to four 64-bit logical slots; 512-bit pair conversion; vector, VMACC, VSUM, VDOT, MMUL, MMAC, MTRANS and MREDUCE operand-footprint formulas; supported tile-shape limits.
 - Supporting model: `NEXUS CPU/tools/register_bank_model.py`
-- Implementation commits: `b6535a14bcdda9f0dc8e38c1e48b4816049f0e11`, `6527b55c7e51416a4b394bac27a4a822667210c9`
-- Validation status: **IMPLEMENTED — awaiting a passing full CI run**. Do not treat this extension as VALID until its new regression tests pass on the recorded commit.
-- Scope limitation: logical operand-slot accounting only. Dynamic RAC arbitration, physical RF banking/replication, distributed writeback timing and cycle-level contention remain follow-up implementation work.
+- Supporting model commits: `b6535a14bcdda9f0dc8e38c1e48b4816049f0e11`, `242995d61ddcfba7fac76dea857f7da74b5a54d5`
+- Test commits: `6527b55c7e51416a4b394bac27a4a822667210c9`, `fe10201d9f262d2555a1ec310d31027c03ce3c00`
+- Validation: **VALID** for the MA footprint/accounting extension on CI run [45440385306](https://github.com/benimprojem/NEXSUS-New-PC-Architecture/actions/runs/45440385306), commit `fe10201d9f262d2555a1ec310d31027c03ce3c00`. The numbered contract and regression-test steps passed; a later unrelated FMA-latency workflow assertion failed because it expected an outdated JSON field name.
+- Scope limitation: validates total MA tile footprints and the provisional one-512-bit-slice-per-operand-per-cycle RAC arithmetic. Dynamic RAC arbitration and physical RF banking/replication are covered separately by NEX-T015 and still require cycle-level integration/timing validation.
+
+### 3.8 NEX-T015 dynamic RAC allocator
+
+- Allocator: `NEXUS CPU/tools/rac_allocator.py`
+- Test file: `NEXUS CPU/tools/test_rac_allocator_t015.py`
+- Contract: one shared per-core 80R/64W logical 64-bit slot pool across RA/FA/DA/MA and CPU-originated workspace requests; physical bank ports remain independent, explicit implementation parameters.
+- Required behavior: complete instruction footprints are granted atomically; different banks may write in parallel; same-destination multiwrite is rejected; a physical bank conflict must not waste available capacity in another bank; age-prioritized waiting requests are retried.
+- Implementation commits: `9296508920d7cc2fdbb0d2f597742630b5040936`, `9c1c425533ed0b9ff216e952b7cf2e867de4cc79`, `c54e58bfdbcaa183376c628f98dff2b9b8507f3f`
+- Validation status: **IMPLEMENTED — awaiting CI validation**.
+- Scope limitation: this is the logical admission/arbitration model; it does not yet model SRAM macro timing, replica placement, bypass-network delay, or integrated cycle-level execution.
 
 ### 3.3 NEX-T012 architecture definition\n\n- Architectural decision: System Fabric clock = 2× CPU core clock.\n- Scheduling model: two Fabric scheduling ticks are available per CPU cycle; requests may be time-interleaved across destination queues.\n- The model must distinguish scheduler opportunity from physical link bandwidth and destination service capacity.\n- Required tests: two-tick cadence; alternating destinations; same-destination queue contention; independent destination progress; backpressure; fairness under sustained mixed traffic; no implicit 2× link-bandwidth multiplier.\n- Execution status: **PLANNED**. Exact lane width, queue depth, multi-client arbitration, and destination service curves remain open.\n\n## 4. Historical test files — retained, not yet re-certified
 
