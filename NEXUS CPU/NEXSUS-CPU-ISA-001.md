@@ -1124,7 +1124,8 @@ Bu bölümde mantıksal operand talebi ile fiziksel register-file port sayısı 
 | FA | 24 scalar operand | 10 sonuç | 6 FP64 × (2R+1W), 4 FMA × (3R+1W) |
 | DA | 4 store-source read | 8 load-result write | LOAD=8, STORE=4; transfer/XFER ayrıca hesaba katılır |
 | MA | Operand biçimine bağlı | Operand biçimine bağlı | VEC=2 ve ME512=1; her opcode'un MA pair/entry tüketimiyle hesaplanır |
-| OSSpace / WS / CP / XW | Rol ve izin kontrollü workspace erişimi | Rol ve izin kontrollü workspace erişimi | EB/C0/CS code-fetch kaynaklarıdır; RAC'ın ortak erişim bütçesine dahildir |
+| OSSpace / WS | WLOAD/WSTORE workspace endpoint | WLOAD/WSTORE workspace endpoint | DA staging ile ortak RAC 32R/32W bütçesini paylaşır; XFER block path ayrı transfer engine kullanır |
+| CP0–CP3 / XW | Protected context / exception access | OS context manager / exception hardware | Özel korumalı uç noktalar; genel RAC operand bütçesi dışında |
 
 RA ve FA rakamları 64-bit kayıt operandı sayısıdır; fiziksel byte/bit genişliği, pair erişimi ve bypass ayrıca değerlendirilir. FA'nın FP128 işlemleri iki ardışık FA entry'si tüketir. MA tarafında VEC ve ME512'nin her komut için kullandığı kaynak/hedef sayısı opcode bazında normalize edilmeden fiziksel port sayısı sabitlenmeyecektir.
 
