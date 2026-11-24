@@ -1,7 +1,7 @@
 # NEXSUS CPU — Global Issue Width and RAC Demand Study 001
 
 **Document ID:** NEXSUS-CPU-ISSUE-WIDTH-RAC-DEMAND-001  
-**Status:** Design-space evaluation — no issue-width or RAC value frozen  
+**Status:** BASELINE selected for implementation/simulation — subject to measured re-evaluation  
 **Date:** 2026-11-24
 
 ## 1. Purpose and separation of variables
@@ -14,7 +14,7 @@ This study evaluates global dispatch/issue width independently from the Resource
 - Do not infer issue width from the number of execution units, issue queues, scheduler entries or ROB entries.
 - Do not change issue width and RAC capacity in the same experiment sweep.
 
-Candidate global issue widths: **16, 24 and 32 instructions/cycle**. These are experiment points, not selected hardware limits.
+Candidate global issue widths: **8, 12, 16, 24 and 32 instructions/cycle**. The selected starting baseline is **16 instructions/cycle**. Widths 8 and 12 provide market-aligned lower comparison points; 24 and 32 remain aggressive scaling/stress points. The 16-wide baseline is not immutable: a measured result may justify reopening it.
 
 ## 2. Operand footprints currently safe to count
 
@@ -65,7 +65,7 @@ The separate LOAD/STORE pools add up to 8 LOAD and 4 STORE admission resources. 
 | 48R/48W | Headroom 12R | Short by 4R | Short by 20R | Plausible width-16 candidate; close at width 24 |
 | 64R/48W | Headroom 28R | Headroom 12R | Short by 4R | Covers known width-24 envelope, not width 32 |
 | 80R/48W | Headroom 44R | Headroom 28R | Headroom 12R | Covers known width-32 envelope before MA/workspace demand |
-| 80R/64W | Headroom 44R | Headroom 28R | Headroom 12R | Adds write headroom; physical cost still needs justification |
+| 80R/64W | Headroom 44R | Headroom 28R | Headroom 12R | Selected starting RAC baseline; generous read/write headroom before MA/workspace traffic |
 
 “Headroom” here is arithmetic budget minus the table's known read envelope. It is not measured throughput. Actual instructions may share/broadcast operands, but no reduction should be assumed until the operand-delivery design proves it. Conversely, MA and workspace operations can increase demand beyond this table.
 
@@ -107,15 +107,17 @@ RAC admission must remain atomic: reserve every source and destination footprint
 ## 7. Experiment sequence
 
 1. Normalize VEC/ME512 and wide/pair operand footprints.
-2. Hold RAC at a generous non-binding setting and sweep global issue width 16/24/32 to expose execution-unit and dependency limits.
-3. Hold each issue width fixed and sweep RAC budgets 32/32, 48/48, 64/48, 80/48 and 80/64.
+2. Keep the selected baseline at 16-wide and use 8/12/24/32 as comparison points. Hold RAC generous/non-binding while measuring issue-width effects.
+3. Hold issue width at 16 and sweep RAC budgets 32/32, 48/48, 64/48, 80/48 and 80/64; include the selected 80R/64W baseline.
 4. Run the complete mixed workload matrix and compare throughput, fairness, stall causes and estimated physical cost.
-5. Select an issue width and RAC operating point only after these results; retain all other values as documented alternatives.
+5. Re-evaluate 16-wide and 80R/64W only if measurements show a meaningful throughput, power, area or timing reason to do so.
 
 ## 8. Current decision
 
-**Global issue width: OPEN.** Evaluate 16, 24 and 32 instructions/cycle.
+**Global issue width: BASELINE = 16 instructions/cycle.** Compare 8, 12, 24 and 32; reopen only with measured evidence.
 
-**RAC: OPEN.** 48R/48W remains the next candidate, not a frozen value. The known read envelope suggests it is most comfortable with width 16, is slightly restrictive at width 24, and restrictive at width 32 before MA/workspace traffic.
+**RAC logical budget: BASELINE = 80R/64W per cycle.** Each slot is one logical 64-bit register/workspace lane access. This is not a requirement for a monolithic 80-read/64-write SRAM. Physical banking, replication, bypass, collectors and distributed writeback implement the logical budget.
 
-**No final issue-width or RAC decision is made by this document.**
+**Register organization: domain-separated physical banks (RA, FA, DA, MA) under one shared dynamic RAC allocator.** The allocator is work-conserving and age-fair, with atomic instruction reservations and no permanent class quotas. Multiple independent banks may accept writes in parallel; same-destination multiwrite conflicts are prohibited and resolved before issue/commit.
+
+These are the selected starting architecture/simulator baselines, not silicon-validated limits. The VEC/ME512 MA-footprint normalization and full cycle-level contention/power/area/timing tests remain required. Re-evaluate only from measured evidence.
