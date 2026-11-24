@@ -3026,7 +3026,9 @@ def main():
                 print(f"{name} cycles: chain={chain['cycles']} independent={throughput['cycles']}")
         return
     if args.fma_sweep:
-        result = run_fma_resource_sweep(workloads, PROFILES["nexus_balanced_128"])
+        result = run_fma_resource_sweep(
+            workloads, PROFILES["nexus_balanced_128"],
+            fp_counts=(6, 8), fma_counts=(2, 4))
         if args.json:
             print(json.dumps(result, indent=2))
         else:
