@@ -59,8 +59,8 @@ Her bank 32 kayıt içerir. Dolayısıyla her register operandı 5-bit selector 
 |---|---:|---:|
 | RA | 00 | 5 bit |
 | FA | 01 | 5 bit |
-| DA | 10 | 6 bit |
-| MA | 11 | 6 bit |
+| DA | 10 | 5 bit |
+| MA | 11 | 5 bit |
 
 Bu iki-bit bank kodları yalnızca bank alanı bulunan genel register-transfer formatlarında kullanılır. Normal ALU/FP/vector komutlarında bank, opcode ailesinden örtük olarak belirlenir; her operand için fazladan bank biti harcanmaz.
 
