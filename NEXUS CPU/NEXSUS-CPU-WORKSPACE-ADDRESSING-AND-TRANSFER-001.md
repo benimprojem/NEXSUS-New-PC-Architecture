@@ -37,7 +37,7 @@ The immediate form denotes an absolute workspace-relative byte offset. The RA fo
 
 WLOAD and WSTORE are the scalar/vector-width access path between a workspace and the DA staging bank. Workspace endpoints participate in the same core-wide RAC access budget as the RA/FA/DA/MA register banks; they do not receive an independent extra pool.
 
-The Resource Access Controller (RAC) provides one global pool of logical 64-bit read and write slots per cycle, dynamically shared across RA, FA, DA, MA, WS, and OS. The former 32R/32W limit is under evaluation; the next candidate is 48R/48W, with larger read-biased alternatives. See NEXSUS-CPU-RAC-48RW-EVALUATION-001.md.
+The Resource Access Controller (RAC) provides one global pool of logical 64-bit read and write slots per cycle, dynamically shared across RA, FA, DA, MA, WS, and OS. The former 32R/32W limit is under evaluation; the next candidate is 48R/48W, with larger read-biased alternatives. Global issue width is separately OPEN at 16/24/32 instructions/cycle; do not conflate issue width with RAC capacity. See `NEXSUS-CPU-RAC-48RW-EVALUATION-001.md` and `NEXSUS-CPU-ISSUE-WIDTH-RAC-DEMAND-001.md`.
 
 - WLOAD.W8/W16/W32/W64 consumes one workspace read slot and one DA write slot. WLOAD.W128/W256/W512 consumes 2/4/8 workspace read slots and 2/4/8 DA write slots.
 - WSTORE.W8/W16/W32/W64 consumes one DA read slot and one workspace write slot. WSTORE.W128/W256/W512 consumes 2/4/8 DA read slots and 2/4/8 workspace write slots.
