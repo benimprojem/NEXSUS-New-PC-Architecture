@@ -1,7 +1,7 @@
 # NEXSUS CPU — Cross-Architecture Comparison Simulator
 
 **Document ID:** NEXSUS-CPU-COMPARISON-SIMULATOR-001  
-**Status:** Simulator v0.3.2-dev; current AMD/Intel/ARM profiles, PX-fed 4 KiB dual-bank SPM0 model, branch-prediction sensitivity model; regression validation in progress  
+**Status:** Simulator v0.3.2-dev; canonical NEXSUS frontend is App RAM→C0→CS0–CS7→CST→EB; OW/TW semantics are specified but workspace timing/transfer simulation is pending  
 **Purpose:** Compare one deterministic mixed workload across current AMD Zen 5, Intel Xeon Redwood Cove+, Apple ARM M6, and the selected NEXSUS architecture.
 
 ## 1. Comparison targets
@@ -154,7 +154,21 @@ The report now includes:
 
 These are diagnostic counters, not mutually exclusive wall-clock durations. Some count per-operation events and others count cycles; they must not be added together as elapsed time. The v0.2.4-dev model replaces the static per-core split with lockstep global bank arbitration. The shared controller models same-cycle DRAM miss contention; NEXSUS shared cache groups now model capacity and hit paths, while coherence and physical controller details remain approximations. The memory-latency exposure counter is descriptive latency accounting, not a count of cycles during which the pipeline was actually stalled. Shared memory arbitration must be implemented before treating 8L4S throughput as a realistic whole-chip prediction.
 
-## 7. P0 and SPM2 first-stage model\n\nThe simulator now accepts independent NEXSUS feature toggles (`spm`, `p0`) without changing the logical operation graph. P0-enabled mode defaults to a 16 KiB command store as two alternating 8 KiB buffers (P0 and P1). Each buffer holds 1,024 64-bit command words. While one buffer supplies execution, the other prefetches the next 8 KiB block; the buffers alternate continuously. The model assumes a 512-bit/cycle App-RAM refill path, hence 128 cycles per 8 KiB transfer, and one refill engine per core. Capacity and refill latency are configurable. Run `--p0-sweep` to compare 4/8/16/32 KiB while holding the logical workload and other parameters constant; use `--p0-capacity-kb` and `--p0-refill-cycles` for a selected configuration. Run `--fetch-sweep` to compare conventional I-cache refill assumptions (8/16/24/32 cycles) against P0/P1 8-KiB block-refill assumptions (64/96/128/160 cycles) on the same command-working-set trace. P0-disabled mode uses a 32 KiB conventional instruction cache (512 × 64-byte lines) and a provisional 32-cycle refill. The fetch gate limits dispatch until the command line is available; this does not equate refill width with decode/retire width. Command-path timings and capacities are explicit model assumptions, not measured silicon values.\n\nSPM2-enabled mode recognizes explicitly tagged task-local accesses and routes in-range accesses (within 8 KiB) to a modeled local workspace with provisional 2-cycle access latency and one port per core. Out-of-range accesses fall back to the normal cache/Data RAM path. SPM2-disabled mode sends all such accesses through the normal cache/Data RAM path. Per-core counters report SPM2 accesses, bytes, port conflicts, overflow events and fallback bytes; P0 counters report hits, refills, refill bytes and command-fetch wait cycles.\n\nThe initial targeted suite includes SPM2 hot-working-set/capacity kernels and P0 sequential/branch/working-set/starvation kernels. The command trace is a deterministic per-core stream after workload partitioning; loop kernels retain their working-set pattern so capacity effects are measurable. Detailed branch-target redirects, refill queue arbitration, SPM2 multi-bank organization and SPM0/1/3–7 behavior remain future work.\n\n
+## 7. CodeFlow frontend and OW/TW workspace model status
+
+The canonical instruction-feed path is App RAM → C0 Code Cache → CS0–CS7 Code Slots → CST → EB. The active EB bank supplies instruction fetch while the inactive bank is eligible for refill. The selected stage rates and startup/steady-state accounting are defined in §15; old P0/P1 and SPM0/PX names are historical simulator terminology, not current architectural resource names.
+
+The simulator's earlier generic SPM2 task-local-access experiment is **not** the OW/TW architecture model and must not be used as its timing or permission contract. The current architectural workspace contract is:
+
+- OW: 8 KiB, OS-owned, directly byte-addressable by authorized PL1/PL2 code.
+- TW: 8 KiB, owned by the currently running task; PL0 accesses only its own active TW.
+- WLOAD/WSTORE access OW/TW through DA staging. WLOAD/WSTORE DA operands consume the shared RAC read/write budget; workspace SRAM ports are modeled separately.
+- XFER.WS.MEM / XFER.WS.START export OW/TW→L1–L4 Data RAM only. The transfer engine may read a workspace source but can never write a workspace destination.
+- Data RAM→TW/OW restore is CPU-mediated through Data RAM LOAD→DA→WSTORE. App RAM is not a workspace data source; it remains on the independent instruction-fetch path.
+- An optional OS/task exchange window consists of paired OW and TW ranges copied by privileged CPU WLOAD/WSTORE operations at syscall handoff. It is not a shared alias or DMA window.
+
+**Simulator implementation status:** OW/TW address decode, access permissions, multi-port/bank arbitration, one-way export timing, CPU-mediated restore cost, and syscall shadow-window copies are not yet represented as executable simulator resources. Do not report SPM2's former 2-cycle/one-port assumptions as OW/TW performance. The next workspace-model phase must add explicit OW/TW resource objects and tests for forbidden external writes, export source reservation, bounds/privilege faults, and CPU-mediated restore.
+
 
 ## 7.1 Cross-architecture comparison fairness
 
@@ -210,17 +224,19 @@ The old AMD 9950X / Intel Arrow Lake P/E profile set is superseded for the curre
 
 The simulator runs native core counts and retains a normalized 8-core comparison as a separate experiment. These are architectural profiles, not silicon-certified replicas. Reference pipeline/cache latencies and bandwidths not explicitly published by vendors are model assumptions and must be included in result manifests.
 
-### 10.1 PX and SPM0
+### 10.1 Canonical CodeFlow resources
 
-The old 2×8 KiB P0/P1 command-buffer model is superseded:
-- PX P0–P7: eight 2 KiB code-pool slots (16 KiB/core).
-- SPM0: 4 KiB total, split into two 2 KiB banks.
-- CPU fetch consumes one bank while PX Manager fills the inactive bank.
-- Full 2 KiB logical pages continue automatically.
-- PX_NEXT and PX_END are metadata read only by PX Manager; they are not instructions and are never copied into SPM0.
-- Current simulator refill latency default is 48 cycles: 32 payload cycles at the proposed 64 B/cycle path plus 16 cycles of provisional source/control overhead. This is a sensitivity assumption, not a guaranteed hardware timing.
+The current instruction path uses these architectural names:
+- C0: 64 KiB per-core Code Cache.
+- CS0–CS7: eight 2 KiB Code Slots (16 KiB total).
+- CST: Code Stream Transfer path, which fills only the inactive EB bank.
+- EB: 4 KiB Execution Buffer, split into two 2 KiB banks.
+- CFM: CodeFlow Manager, responsible for page validation, ownership, generation, permissions and safe bank switching.
 
-The fetch model now reports bank switches, ready boundaries, boundary waits, useful bytes, and PX-pool page hit/miss counters. The model still requires richer App-RAM source arbitration, true concurrent refill timing and task-switch invalidation tests before it can claim realistic zero-stall operation.
+Earlier P0/P1, PX and SPM0 terminology is retained only in historical simulator notes and old result labels. It must not be used as the current ISA or resource map. The active/inactive bank and startup/steady-state invariants are defined in §15.
+
+The fetch model reports bank switches, ready boundaries, boundary waits, useful bytes and code-slot page hit/miss counters. App-RAM source arbitration, concurrent refill timing and task-switch invalidation remain simulator validation items.
+
 
 ### 10.2 Branch prediction
 
