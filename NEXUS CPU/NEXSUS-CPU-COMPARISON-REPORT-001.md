@@ -7,6 +7,9 @@
 **CI:** [Run 43602765784 — all checks passed](https://github.com/benimprojem/NEXSUS-New-PC-Architecture/actions/runs/43602765784)  
 **Results artifact:** `nexus-cpu-comparison-results`
 
+> **Revalidation notice (2026-11-24):** This report is historical. CodeFlow accounting is being corrected to separate cold startup loading (including initial App RAM→C0 fill and initial CS/EB prefill) from primed steady-state execution, where EB is continuously occupied by the executing stream and its alternate bank is used for refill. The older integrated cycle totals and rankings are not accepted as final until recalculated with the corrected startup/steady-state accounting. See the simulator methodology section **15, CodeFlow startup vs steady-state accounting correction**.
+
+
 ## 1. Executive summary
 
 The normalized eight-core model gives NEXSUS Balanced 128 the lowest aggregate modeled cycle count and elapsed time among the four profiles. This is a positive architecture result, but it is not a claim that a physical NEXSUS processor is faster than shipping silicon. All four profiles are simulated approximations with explicit assumptions.
