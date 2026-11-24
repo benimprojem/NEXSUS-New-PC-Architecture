@@ -1007,7 +1007,7 @@ MOVI64 sembolik assembly gösterimidir; temel MOVI opcode'u 0x10'dur ve literal 
 
 | Alan | Kural |
 |---|---|
-| D | Hedef RA0–RA63 selector'ı |
+| D | Hedef RA0–RA31 selector'ı |
 | A | 0 olmalıdır (kullanılmıyor) |
 | W | İlk sürümde 64-bit kodu; diğer genişlikler ayrılmıştır |
 | M | `000` olmalıdır |
