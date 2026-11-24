@@ -38,7 +38,7 @@ Use the expanded canonical name and symbol on first mention. The current user/ap
 | SPM3–SPM6 | Context Pool (CP0–CP3) | Four 8 KiB banks |
 | SPM7 | Exception Workspace (XW) | 8 KiB; eight 1 KiB slices |
 
-SPM0–SPM7 may appear only when explaining or migrating older documents, source, or simulator records. TW and OW are superseded workspace symbols and are not valid current aliases.
+SPM0–SPM7 may appear only when explaining or migrating older documents, source, or simulator records. No superseded workspace symbol is a valid current alias.
 
 ## 5. Data-path and workspace overview
 
