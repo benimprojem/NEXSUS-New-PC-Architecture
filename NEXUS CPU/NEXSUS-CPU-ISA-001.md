@@ -311,8 +311,8 @@ OW ve TW, L1–L4 Data RAM domain'lerinden ayrı, çekirdek-yerel ve doğrudan b
 |---|---|---|
 | WLOAD.OW / WLOAD.TW | DA, [offset veya RA+disp] | Seçilen workspace'ten DA staging bankına ham bit okur |
 | WSTORE.OW / WSTORE.TW | [offset veya RA+disp], DA | DA staging bankından seçilen workspace'e ham bit yazar |
-| XFER.WS.MEM | [DataRAM address], workspace offset, length, direction | OW/TW ile seçilen L1–L4 Data RAM domain'i arasında blok aktarımı |
-| XFER.WS.START | aynı aralık/yön operandları | Blok aktarımını asenkron başlatır ve mevcut XFER token modelini kullanır |
+| XFER.WS.MEM | workspace source, [DataRAM address], length | Yalnızca OW/TW → L1–L4 Data RAM blok aktarımı |
+| XFER.WS.START | aynı kaynak/hedef/uzunluk | Tek yönlü workspace export işlemini asenkron başlatır |
 | XFER.WAIT | mevcut token | XFER.WS.START dahil başlatılmış aktarımın tamamlanmasını bekler |
 
 **Adresleme ve erişim genişliği**
@@ -329,16 +329,20 @@ OW ve TW, L1–L4 Data RAM domain'lerinden ayrı, çekirdek-yerel ve doğrudan b
 - DA staging kullanımı açık ve görünürdür; OW/TW erişimi RA/FA/DA/MA banklarına gizli yan etkiyle yazamaz. DA'nın save/restore sırasında korunması gerekiyorsa ABI, DA staging clobber setini save maskesine dahil eder.
 - Bu mekanizma register bankları arasında yeni bir örtük alias veya doğrudan workspace-register bypass yolu tanımlamaz.
 
-**OW/TW ile Data RAM arasında blok aktarımı**
-- `XFER.WS.MEM`, tek bir OW veya TW byte aralığını seçilmiş L1–L4 Data RAM domain'indeki byte aralığına kopyalar; yön tersine çevrilebilir. Tam 8 KiB çalışma alanı tek işlemle taşınabilir.
+**OW/TW → Data RAM tek yönlü blok aktarımı**
+- `XFER.WS.MEM`, tek bir OW veya TW byte aralığını seçilmiş L1–L4 Data RAM domain'indeki byte aralığına kopyalar. Yön yalnızca workspace→Data RAM'dir; ters yön kodlanamaz. Tam 8 KiB çalışma alanı tek işlemle dış belleğe kaydedilebilir.
 - Bu blok aktarımı DA registerlarını kullanmaz; transfer motoru/Fabric yolunu kullanır. Bu nedenle RAC register erişim bütçesini tüketmez, fakat Data RAM bank/controller ve transfer-engine kaynaklarını kullanır.
 - Kaynak aralığı transfer boyunca read-reserved; hedef aralık write-reserved ve unpublished olur. Başarılı tamamlanma hedef aralığı kullanılabilir kılar. Runtime transfer hatasında kısmi fiziksel yazma mümkün olsa da hedef aralık mantıksal olarak invalid/unpublished kalır; yazılım tam aralığı yeniden yazmadan yayımlayamaz.
 - `XFER.WS.START` kabul edildiğinde token, kaynak/hedef sahipliği ve rezervasyon tamamlanana veya hata kesinleşene kadar korunur. `XFER.WAIT` terminal sonucu tüketir. Var olan XFER token generation ve stale-token kuralları aynen geçerlidir.
-- OW/TW kaynağı aktarım boyunca değiştirilemez; hedef workspace ise transfer tamamlanana kadar CPU tarafından okunamaz/yazılamaz. Bu, kaynak snapshot tutarlılığını ve hedefin kısmi görünür olmamasını sağlar.
+- OW/TW kaynağı aktarım boyunca değiştirilemez. Workspace hedefi diye bir transfer durumu yoktur. Bu, kaynak snapshot tutarlılığını ve hedefin kısmi görünür olmamasını sağlar.
 
-**Encoding durumu:** WLOAD/WSTORE ve XFER.WS.* mnemonic/semantiği ISA taslağına eklendi; numeric opcode ve WS-MEM/WS-MEMXFER bit alanı henüz atanmadı. Mevcut 0x40–0x88 opcode atamaları değiştirilmemiştir. Encoding belgesi güncellenirken reserved opcode alanı ve operand alanları ayrıca doğrulanacaktır.
+**Encoding durumu:** WLOAD/WSTORE ve tek yönlü XFER.WS.* mnemonic/semantiği atanmış opcode ve bit alanlarıyla Instruction Encoding belgesinde tanımlıdır.
 
-## 5.3 Little-endian bellek ve register-grup sıralaması
+**Data RAM'den workspace'e yükleme:** Harici bellekten OW/TW'ye doğrudan DMA/Fabric aktarımı yoktur. Geri yükleme CPU tarafından yapılır: privileged LOAD Data RAM→DA ve ardından WSTORE DA→TW/OW. App RAM bu veri yolunun parçası değildir; yalnızca CodeFlow instruction-fetch kaynağıdır.
+
+**OS/task gölge alanı:** OS, OW içinde request/response staging alanı tutabilir. Syscall girişinde TW'deki belirlenmiş request aralığı WLOAD.TW→DA→WSTORE.OW ile OW'ye kopyalanır; dönüş öncesinde OW'deki yanıt WLOAD.OW→DA→WSTORE.TW ile task'ın belirlenmiş TW yanıt aralığına kopyalanır. Bu kontrollü CPU kopyasıdır; ortak alias veya DMA yazması değildir. Boyut ve offset'ler OS ABI tarafından belirlenir.
+
+### 5.3 Little-endian bellek ve register-grup sıralaması
 
 NEXSUS CPU, Data RAM ve OW/TW workspace byte erişimlerinde **little-endian** kullanır. En düşük bellek adresi, çok byte'lı değerin en düşük anlamlı byte'ını taşır.
 
