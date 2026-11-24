@@ -2,17 +2,17 @@
 
 **Document ID:** NEXSUS-CPU-WORKSPACE-ADDRESSING-AND-TRANSFER-001  
 **Status:** ISA/architecture baseline — WSMEM and workspace MEMXFER opcode/field assignments recorded; microarchitecture implementation open  
-**Scope:** Direct byte addressing, DA-staged register save/restore, and one-way OSSpace/WS→Data RAM block export
+**Scope:** Direct byte addressing, DA-staged register save/restore, and one-way OS/WS→Data RAM block export
 
 ## 1. Design intent
 
-OS Space (OSSpace) and Work Space (WS) are directly addressable, core-local working files, not hardware stacks. Software may use them as stack-like frames, fixed-offset records, arrays, tables, temporary structures, or any combination. No mandatory LIFO discipline is imposed.
+OS workspace (OS) and Work Space (WS) are directly addressable, core-local working files, not hardware stacks. Software may use them as stack-like frames, fixed-offset records, arrays, tables, temporary structures, or any combination. No mandatory LIFO discipline is imposed.
 
-Both workspaces have an 8 KiB capacity per core. OSSpace is OS-owned. WS is a general-purpose application workspace and is not owned by a task ID or treated as task-context state. The OS controls access epochs and must prevent data from one protection domain from leaking into the next when WS is reassigned.
+Both workspaces have an 8 KiB capacity per core. OS is OS-owned. WS is a general-purpose application workspace and is not owned by a task ID or treated as task-context state. The OS controls access epochs and must prevent data from one protection domain from leaking into the next when WS is reassigned.
 
 ## 2. Address space
 
-| Property | OSSpace | WS |
+| Property | OS | WS |
 |---|---:|---:|
 | Capacity | 8 KiB | 8 KiB |
 | Address unit | Byte | Byte |
@@ -28,7 +28,7 @@ WLOAD.WS.W64  DA0, [0x120]
 WSTORE.WS.W64 [0x120], DA0
 
 WLOAD.WS.W64  DA1, [RA4 + 0x120]
-WSTORE.OSSpace.W64 [RA5 + 0x40], DA2
+WSTORE.OS.W64 [RA5 + 0x40], DA2
 ```
 
 The immediate form denotes an absolute workspace-relative byte offset. The RA form denotes a base register containing a workspace-relative offset plus a signed byte displacement. The complete effective range must remain inside 0–8191; wrapping is forbidden.
@@ -37,7 +37,7 @@ The immediate form denotes an absolute workspace-relative byte offset. The RA fo
 
 WLOAD and WSTORE are the scalar/vector-width access path between a workspace and the DA staging bank. Workspace endpoints participate in the same core-wide RAC access budget as the RA/FA/DA/MA register banks; they do not receive an independent extra pool.
 
-The Resource Access Controller (RAC) provides one global pool of logical 64-bit read and write slots per cycle, dynamically shared across RA, FA, DA, MA, WS, and OSSpace. The former 32R/32W limit is under evaluation; the next candidate is 48R/48W, with larger read-biased alternatives. See NEXSUS-CPU-RAC-48RW-EVALUATION-001.md.
+The Resource Access Controller (RAC) provides one global pool of logical 64-bit read and write slots per cycle, dynamically shared across RA, FA, DA, MA, WS, and OS. The former 32R/32W limit is under evaluation; the next candidate is 48R/48W, with larger read-biased alternatives. See NEXSUS-CPU-RAC-48RW-EVALUATION-001.md.
 
 - WLOAD.W8/W16/W32/W64 consumes one workspace read slot and one DA write slot. WLOAD.W128/W256/W512 consumes 2/4/8 workspace read slots and 2/4/8 DA write slots.
 - WSTORE.W8/W16/W32/W64 consumes one DA read slot and one workspace write slot. WSTORE.W128/W256/W512 consumes 2/4/8 DA read slots and 2/4/8 workspace write slots.
@@ -48,8 +48,8 @@ The Resource Access Controller (RAC) provides one global pool of logical 64-bit 
 
 | Instruction | Direction | Operand bank |
 |---|---|---|
-| WLOAD.OSSpace / WLOAD.WS | Workspace → DA | DA destination |
-| WSTORE.OSSpace / WSTORE.WS | DA → workspace | DA source |
+| WLOAD.OS / WLOAD.WS | Workspace → DA | DA destination |
+| WSTORE.OS / WSTORE.WS | DA → workspace | DA source |
 
 Supported widths: 8, 16, 32, 64, 128, 256, and 512 bits.
 
@@ -73,10 +73,10 @@ Existing explicit register-transfer instructions are reused; there is no hidden 
 **Save sequence**
 1. Preserve original DA values first if the ABI requires them.
 2. Move the selected register value into DA using MOV.DA.RA, MOV.DA.FA, or MOV.DA.MA.
-3. Use WSTORE.OSSpace/WSTORE.WS to write the DA payload at the chosen workspace offset.
+3. Use WSTORE.OS/WSTORE.WS to write the DA payload at the chosen workspace offset.
 
 **Restore sequence**
-1. WLOAD.OSSpace/WLOAD.WS reads the payload into DA.
+1. WLOAD.OS/WLOAD.WS reads the payload into DA.
 2. MOV.RA.DA, MOV.FA.DA, or MOV.MA.DA restores the selected register bank.
 
 The compiler/ABI must track DA staging clobbers. If DA values are live across the save/restore sequence, those DA entries must be preserved before they are used as staging. MA 256-bit values and 512-bit pairs follow the existing DA group and selector-alignment rules.
@@ -93,13 +93,13 @@ WLOAD.WS.W64  DA0, [0x000]
 MOV.RA.DA     RA7, DA0
 ```
 
-This design lets OSSpace/WS hold register snapshots, spill records, call frames, application working structures, and temporary datasets without forcing a LIFO stack abstraction.
+This design lets OS/WS hold register snapshots, spill records, call frames, application working structures, and temporary datasets without forcing a LIFO stack abstraction.
 
-## 5. OSSpace/WS → Data RAM block export
+## 5. OS/WS → Data RAM block export
 
-`XFER.WS.MEM` copies a selected byte range only from OSSpace or WS into an L1–L4 Data RAM domain. `XFER.WS.START` starts the same one-way export asynchronously; `XFER.WAIT` consumes its completion token. The reverse direction is architecturally forbidden: Data RAM, App RAM, DMA, Fabric, and other cores cannot write OSSpace/WS through this transfer path.
+`XFER.WS.MEM` copies a selected byte range only from OS or WS into an L1–L4 Data RAM domain. `XFER.WS.START` starts the same one-way export asynchronously; `XFER.WAIT` consumes its completion token. The reverse direction is architecturally forbidden: Data RAM, App RAM, DMA, Fabric, and other cores cannot write OS/WS through this transfer path.
 
-- The source is OSSpace or WS; the destination is an L1–L4 Data RAM domain. Workspace selector, workspace offset, Data RAM byte address, and length are explicit. There is no direction bit.
+- The source is OS or WS; the destination is an L1–L4 Data RAM domain. Workspace selector, workspace offset, Data RAM byte address, and length are explicit. There is no direction bit.
 - Length is an unsigned byte count. A complete 8 KiB workspace can be moved in one operation; partial ranges are also permitted.
 - This path uses the transfer engine/Fabric path, not DA staging. It does not consume RAC logical access slots, but it consumes physical workspace read bandwidth and transfer-engine/Data RAM resources. CPU WLOAD/WSTORE operations consume the shared RAC budget for both workspace and DA lanes.
 - It does consume transfer-engine bandwidth and the relevant Data RAM bank/controller bandwidth. Independent banks/domains may continue in parallel under existing arbitration rules.
@@ -125,7 +125,7 @@ Workspace restore is CPU-mediated, not a transfer-engine operation: privileged c
 
 The workspace selector is not an authorization token.
 
-- OSSpace: PL1/PL2 only; PL0 always receives a protection fault.
+- OS: PL1/PL2 only; PL0 always receives a protection fault.
 - WS: PL0 may access WS during an authorized application execution epoch; PL1/PL2 may access it only through controlled management, initialization, persistence, and recovery paths.
 - WS is not task-ID-owned or task-indexed. A protection-domain change must revoke the old access epoch and clear/reinitialize WS unless an explicitly authorized continuation preserves the same data domain.
 - EB, CP0–CP3, and XW are not exposed through these instructions.
@@ -140,7 +140,7 @@ The workspace selector is not an authorization token.
 - Workspace bank topology is directed to two independent 8 KiB arrays, each 16 banks × 512 B with 1R+1W per bank. RAC logical read/write capacity is under evaluation; bank arbitration and transfer bandwidth still require cycle-level validation.
 - Whether a full-workspace export receives a dedicated fast path or is serviced as a normal bounded block transfer.
 - CPU-mediated Data RAM→workspace restore throughput and whether a privileged copy assist is warranted; it must preserve the no-external-writer invariant.
-- OS/application exchange-window size and ABI layout. The window is a pair of reserved OSSpace/WS ranges copied by privileged CPU instructions, not a shared alias or DMA destination.
+- OS/application exchange-window size and ABI layout. The window is a pair of reserved OS/WS ranges copied by privileged CPU instructions, not a shared alias or DMA destination.
 
 ## 8. Related specifications
 
