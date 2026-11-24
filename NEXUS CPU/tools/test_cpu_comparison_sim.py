@@ -247,6 +247,7 @@ class SelectedNexusProfileTests(unittest.TestCase):
         self.assertEqual((p["frontend"], p["dispatch"], p["issue"], p["retire"], p["rob"]),
                          (8, 8, 16, 8, 512))
         self.assertEqual(p["scheduler_entries"], 256)
+        self.assertEqual((p["rac_read_budget"], p["rac_write_budget"]), (80, 64))
         self.assertEqual(p["units"], {
             "ARITH": 8, "LOGIC": 8, "CMP": 8, "FP": 6, "FMA": 4,
             "VEC": 2, "LOAD": 8, "STORE": 4, "BR": 2, "CTX": 1,
@@ -1920,6 +1921,35 @@ class PerCoreCodeFlowTopologyTests(unittest.TestCase):
         self.assertEqual(controller.accepted, 8)
         self.assertTrue(all(result[f"c{i}"]["accepted"] for i in range(8)))
         self.assertEqual(controller.bus_next_byte, {i: 8 for i in range(8)})
+
+
+
+class RACCycleIntegrationTests(unittest.TestCase):
+    def test_16_wide_mixed_issue_is_limited_by_80r_not_execution_unit_count(self):
+        p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
+        # Isolate the issue/RAC interaction from the selected 8-wide frontend.
+        p.frontend = 16
+        p.dispatch = 16
+        ops = []
+        for _ in range(4):
+            ops.append(sim.Op(len(ops), "FMA"))
+        for _ in range(6):
+            ops.append(sim.Op(len(ops), "FP"))
+        for _ in range(2):
+            ops.append(sim.Op(len(ops), "VEC", exec_width_bits=512))
+        ops.append(sim.Op(len(ops), "ME512", label="MMAC", exec_width_bits=512))
+        for _ in range(3):
+            ops.append(sim.Op(len(ops), "INT"))
+
+        result = sim.simulate_stream(ops, p)
+        self.assertLessEqual(result["rac_peak_read_slots_per_cycle"], 80)
+        self.assertLessEqual(result["rac_peak_write_slots_per_cycle"], 64)
+        self.assertEqual(result["rac_peak_read_slots_per_cycle"], 80)
+        self.assertGreater(
+            result["stall_counters"]["rac_read_budget_blocked_op_cycles"], 0
+        )
+        self.assertEqual(result["rac_read_slots_granted"], 86)
+        self.assertEqual(result["rac_write_slots_granted"], 37)
 
 
 if __name__ == "__main__":
