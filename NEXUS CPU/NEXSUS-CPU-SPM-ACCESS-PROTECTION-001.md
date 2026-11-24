@@ -1,5 +1,5 @@
 # NEXSUS CPU — Workspace Access Protection
-**Document ID:** NEXSUS-CPU-workspace-ACCESS-PROTECTION-001  
+**Document ID:** NEXSUS-CPU-SPM-ACCESS-PROTECTION-001  
 **Status:** Architecture specification — policy baseline  
 **Scope:** Software privilege, ownership, and access boundaries for EB, OW, TW, CP0–CP3 and XW
 
@@ -8,7 +8,7 @@
 Workspace access is governed by both privilege and ownership. A higher privilege level does not automatically grant unrestricted access to every workspace. The active task receives only its assigned user workspace; OS and exception workspaces remain protected.
 
 The workspace role map and capacities are unchanged:
-- EB: 2 KiB CPU execution workspace.
+- EB: 4 KiB dual-bank CPU instruction workspace (2 × 2 KiB).
 - OW: 8 KiB OS workspace and OS-defined syscall/I/O exchange area.
 - TW: 8 KiB active user-task workspace.
 - CP0–CP3: 8 KiB each, OS-managed task-context pool.
@@ -88,6 +88,6 @@ EB belongs exclusively to the CPU's internal execution machinery. No software at
 ## 10. Related specifications
 
 - NEXSUS-CPU-CONTEXT-SAVE-RESTORE-001.md
-- NEXSUS-CPU-TASK-SCHEDULING-workspace-RESIDENCY-001.md
+- NEXSUS-CPU-TASK-SCHEDULING-SPM-RESIDENCY-001.md
 - NEXSUS-CPU-EXCEPTION-FRAME-001.md
 - NEXSUS-CPU-CSR-001.md
