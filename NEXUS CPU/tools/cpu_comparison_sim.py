@@ -22,6 +22,8 @@ class Op:
     label: str = ""
     command_address: int = -1
     exec_width_bits: int = 64
+    rac_reads: Optional[int] = None
+    rac_writes: Optional[int] = None
 
 @dataclass
 class CoreProfile:
@@ -64,6 +66,8 @@ class CoreProfile:
     memory_fabric_shared: bool = False
     cache_grouping: dict = field(default_factory=dict)
     scheduler_entries: int = 0  # 0 keeps the legacy ROB-sized scheduling window
+    rac_read_budget: int = 0  # logical 64-bit slots/core/cycle; 0 disables RAC model
+    rac_write_budget: int = 0
 
 # Publicly documented or independently measured values are marked in docs.
 # Unpublished/uncertain values are conservative model assumptions, not claims.
@@ -103,6 +107,7 @@ PROFILES = {
         "name": "NEXSUS CPU / 8-core proposed architecture",
         "core_count": 8, "core_type": "uniform", "frontend": 8,
         "dispatch": 8, "issue": 16, "retire": 8, "rob": 512, "scheduler_entries": 256,
+        "rac_read_budget": 80, "rac_write_budget": 64,
         "units": {"ARITH": 8, "LOGIC": 8, "CMP": 8, "FP": 6, "FMA": 4, "VEC": 2, "LOAD": 8, "STORE": 4, "BR": 2, "CTX": 1, "ATOM": 1, "ME512": 1, "IRQ": 1},
         "execution_topology": {"ARITH128_PAIRS": [[0, 1], [2, 3]]},
         "latency": {"ARITH": 1, "LOGIC": 1, "CMP": 1, "FP": 3, "FMA": 4, "VEC": 2, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 4, "ME512": 4, "IRQ": 6},
@@ -146,6 +151,46 @@ def execution_resource_kind(kind: str, matrix_unit: str, available_units=None) -
 
 def is_vector_operation(kind: str) -> bool:
     return kind == "VEC" or kind.startswith("VEC_")
+
+
+def rac_operand_footprint(op: Op, profile: CoreProfile) -> Tuple[int, int]:
+    """Return this operation's logical RAC read/write slots.
+
+    NEXSUS budgets count 64-bit lanes. Explicit per-op overrides are preferred
+    for unusual opcodes. Default ME512 footprints use one 512-bit slice per
+    operand per cycle; full tile reservation is tracked separately by ISA.
+    """
+    if profile.rac_read_budget <= 0 and profile.rac_write_budget <= 0:
+        return 0, 0
+    if op.rac_reads is not None or op.rac_writes is not None:
+        return max(0, op.rac_reads or 0), max(0, op.rac_writes or 0)
+
+    kind = op.kind.upper()
+    lanes = max(1, math.ceil(op.exec_width_bits / 64))
+    if kind in ("INT", "ARITH", "LOGIC", "CMP", "FP"):
+        return 2 * lanes, lanes
+    if kind == "FMA":
+        return 3 * lanes, lanes
+    if is_vector_operation(kind):
+        return 2 * lanes, lanes
+    if kind == "ME512":
+        label = op.label.upper()
+        if "MMAC" in label:
+            return 24, 8
+        if "MTRANS" in label or "MREDUCE" in label:
+            return 8, 8
+        return 16, 8
+    if kind == "LOAD":
+        return 0, max(1, math.ceil(op.width / 8))
+    if kind == "STORE":
+        return max(1, math.ceil(op.width / 8)), 0
+    if kind == "ATOM":
+        slots = max(1, math.ceil(op.width / 8))
+        return slots, slots
+    if kind in ("WLOAD", "WSTORE"):
+        slots = max(1, math.ceil(op.width / 8))
+        return slots, slots
+    return 0, 0
 
 
 def build_composite_workload(scale: int = 1) -> Dict[str, List[Op]]:
@@ -1761,10 +1806,15 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
     retired = 0
     max_rob = 0
     max_scheduler = 0
+    rac_read_slots_granted = 0
+    rac_write_slots_granted = 0
+    rac_peak_read_slots_per_cycle = 0
+    rac_peak_write_slots_per_cycle = 0
     hits = {"L1":0,"L2":0,"L3":0,"L4":0,"DRAM":0}
     branch_misses = 0
     stalls = {"dependency_blocked_op_cycles": 0, "issue_width_blocked_op_cycles": 0,
-              "execution_unit_blocked_op_cycles": 0, "frontend_limited_cycles": 0,
+              "execution_unit_blocked_op_cycles": 0, "rac_read_budget_blocked_op_cycles": 0,
+              "rac_write_budget_blocked_op_cycles": 0, "frontend_limited_cycles": 0,
               "rob_full_cycles": 0, "scheduler_full_cycles": 0,
               "branch_recovery_cycles": 0,
               "memory_latency_exposure_cycles": 0}
@@ -1807,6 +1857,8 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
 
         # Select ready operations oldest-first; dependencies may execute out of order.
         issued_this_cycle = 0
+        rac_reads_this_cycle = 0
+        rac_writes_this_cycle = 0
         for seq in list(scheduler):
             op = ops[seq]
             if any(not done[x] for x in op.deps):
@@ -1837,6 +1889,15 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
                 selected_slots = [slot] if slot is not None else None
             if not selected_slots:
                 stalls["execution_unit_blocked_op_cycles"] += 1
+                continue
+            op_rac_reads, op_rac_writes = rac_operand_footprint(op, p)
+            if (p.rac_read_budget > 0 and
+                    rac_reads_this_cycle + op_rac_reads > p.rac_read_budget):
+                stalls["rac_read_budget_blocked_op_cycles"] += 1
+                continue
+            if (p.rac_write_budget > 0 and
+                    rac_writes_this_cycle + op_rac_writes > p.rac_write_budget):
+                stalls["rac_write_budget_blocked_op_cycles"] += 1
                 continue
             vector_factor = (max(1, math.ceil(op.exec_width_bits / p.vector_bits))
                              if is_vector_operation(kind) or (kind == "ME512" and exec_kind == "VEC") else 1)
@@ -1874,6 +1935,12 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
             if kind in ("LOAD", "STORE", "ATOM"):
                 stalls["memory_latency_exposure_cycles"] += max(0, latency - 1)
             issued_this_cycle += 1
+            rac_reads_this_cycle += op_rac_reads
+            rac_writes_this_cycle += op_rac_writes
+            rac_read_slots_granted += op_rac_reads
+            rac_write_slots_granted += op_rac_writes
+            rac_peak_read_slots_per_cycle = max(rac_peak_read_slots_per_cycle, rac_reads_this_cycle)
+            rac_peak_write_slots_per_cycle = max(rac_peak_write_slots_per_cycle, rac_writes_this_cycle)
             if kind == "BR":
                 branch_number += 1
                 if branch_mispredict(op, branch_number, p.branch_predictor):
@@ -1885,6 +1952,10 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
     return {
         "cycles": cycle, "ops": len(ops), "ipc": round(len(ops)/max(1,cycle), 3),
         "max_rob_occupancy": max_rob, "max_scheduler_occupancy": max_scheduler,
+        "rac_read_slots_granted": rac_read_slots_granted,
+        "rac_write_slots_granted": rac_write_slots_granted,
+        "rac_peak_read_slots_per_cycle": rac_peak_read_slots_per_cycle,
+        "rac_peak_write_slots_per_cycle": rac_peak_write_slots_per_cycle,
         "branch_mispredicts": branch_misses,
         "cache_accesses": hits, "stall_counters": stalls
     }
