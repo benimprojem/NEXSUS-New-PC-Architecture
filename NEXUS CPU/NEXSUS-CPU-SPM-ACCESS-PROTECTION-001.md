@@ -5,12 +5,12 @@
 
 ## 1. Design principle
 
-Workspace access is governed by both privilege and ownership. A higher privilege level does not automatically grant unrestricted access to every workspace. The active application execution receives only its assigned user workspace; OS and exception workspaces remain protected.
+Workspace access is governed by privilege, role, and access epoch. A higher privilege level does not automatically grant unrestricted access to every workspace. PL0 application code may use the core-local WS during an authorized application execution epoch; OSSpace and exception workspaces remain protected.
 
 The workspace role map and capacities are unchanged:
 - EB: 4 KiB dual-bank CPU instruction workspace (2 × 2 KiB).
 - OSSpace: 8 KiB OS workspace and OS-defined syscall/I/O exchange area.
-- WS: 8 KiB active user-task workspace.
+- WS: 8 KiB general-purpose application workspace; not task-ID-owned.
 - CP0–CP3: 8 KiB each, OS-managed task-context pool.
 - XW: 8 KiB exception workspace, divided into eight 1 KiB depth-selected slices.
 
@@ -20,7 +20,7 @@ The workspace role map and capacities are unchanged:
 |---|---|---|---|---|
 | EB | Denied | Denied | Denied | CPU hardware only; no software-visible read, write, or address access at any privilege level |
 | OSSpace | Denied | Allowed | Allowed | OS-owned; syscall and I/O exchange data is mediated by the OS |
-| WS | Allowed to current task only | Allowed for controlled save/restore and management | Allowed for controlled management | Ownership follows the current application execution context on that core |
+| WS | Allowed during authorized application execution | Allowed for controlled management/initialization/persistence | Allowed for controlled management | Per-core application workspace; access epoch is controlled by the OS, not a task ID |
 | CP0–CP3 | Denied | OS context-manager only | Controlled maintenance/debug only | No ordinary task or general-purpose user access |
 | XW | Denied | Denied by default; exceptional diagnostic read-only access only when explicitly authorized | Denied to ordinary software; hardware exception machinery owns it | Exception-only; software writes are never permitted |
 
