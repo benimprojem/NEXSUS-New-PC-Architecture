@@ -294,3 +294,54 @@ python run_cross_arch_codeflow_suite.py --scale 1 --pages 64 --tasks 4 --json
 ```
 
 CI validates operation-count parity across the four CPU models and page completion parity across CodeFlow beat profiles. See the Turkish counterpart in `Türkçe/NEXSUS-CPU-CROSS-ARCH-CODEFLOW-001.md`.
+
+
+## 15. CodeFlow startup vs steady-state accounting correction (2026-11-24)
+
+**Required comparison correction:** do not treat the Execution Buffer (EB / legacy SPM0, two 2-KiB banks) as an empty buffer throughout execution. EB must be occupied by the active instruction stream during steady-state execution; the inactive bank is the refill destination. A cold start may have an initially empty EB, but that initial fill is a one-time startup condition, not a recurring execution penalty.
+
+Canonical NEXSUS instruction-feed path and names:
+
+`App RAM \u2192 C0 Code Cache (64 KiB; legacy L0I) \u2192 CS0\u2013CS7 Code Slots (8 \u00d7 2 KiB; legacy PX) \u2192 EB Execution Buffer (2 \u00d7 2 KiB banks; legacy SPM0) \u2192 fetch/execute`
+
+### 15.1 Separate startup from steady-state results
+
+Every future NEXSUS CodeFlow comparison must report at least two distinct measures:
+
+- **Cold-start / first-use latency:** cost of initial code availability, including the initial App RAM source transfer into C0 (the full 64-KiB C0 fill when that is the configured startup policy), and the initial CS/EB prefill needed to begin execution. Report the stage assumptions and whether any startup stages overlap.
+- **Steady-state execution:** after startup, EB is assumed to remain supplied by the pipeline under the selected rates/queue model. Do not repeatedly charge the cold-empty EB startup penalty to every page or instruction. Count only real refill boundary waits, backpressure, misses, or starvation that the model predicts after the EB banks have been primed.
+
+For workloads of different lengths, report cold-start plus execution total as well as steady-state-only time. Startup cost must not be silently excluded, and must not be charged repeatedly.
+
+### 15.2 Pipeline-stage overlap and occupancy
+
+C0, CS and EB are a staged, overlapping feed path, not a series of independent per-page penalties added to every execution page. Initial pipeline fill can have a critical-path startup cost; once streaming, stage service rates, bounded queues, active/inactive EB bank occupancy, and overlap determine throughput and whether refill misses the consumption deadline.
+
+The EB occupancy invariant for steady-state runs is:
+- the active EB bank contains the instruction page/block currently consumed;
+- the second bank is the refill/next-ready bank or is explicitly marked as a boundary-transition state;
+- an empty EB is allowed only during modeled cold start, a real starvation event, or a defined transition—not as the default state during execution.
+
+The model must track startup-fill cycles separately from steady-state EB-not-ready cycles. A page transfer that overlaps execution is not fully additive to execution time; only unhidden work affects the measured critical path.
+
+### 15.3 Reference instruction-cache fairness
+
+AMD/Intel/Apple reference profiles must also distinguish cold instruction-cache startup/refill from steady-state hits/prefetch. The same report format should show cold-start and steady-state separately, while using each reference profile's own disclosed I-cache assumptions. NEXSUS's explicit stages must not be charged repeatedly while a conventional reference's warmed cache is treated as free—or conversely NEXSUS's initial fill must not be omitted.
+
+### 15.4 Parameter audit required before timing claims
+
+The currently checked-in models contain differing App-RAM transfer abstractions (including an 8-byte beat model in the standalone pipeline and 64 B/cycle per-core App-RAM parameter in the CPU profile). Before producing corrected timing tables, audit and reconcile these against the current architecture decision register. Do not silently choose one value or treat 8 bytes/cycle as the finalized AppRAM bandwidth.
+
+### 15.5 Required metrics
+
+Each CodeFlow comparison row must include:
+- startup transfer bytes and startup cycles by stage (App RAM→C0, C0→CS, CS→EB), with overlap assumptions stated;
+- C0 hits/misses and occupancy;
+- CS hits/misses, slot occupancy and eviction/refill count;
+- EB active-bank occupancy, ready-bank occupancy, bank swaps and boundary wait/starvation cycles;
+- steady-state instruction/page consumption rate and stage utilization/backpressure;
+- cold-start + run total, steady-state-only cycles, and amortized cost over short/medium/long run lengths.
+
+### 15.6 Revalidation status
+
+Historical CodeFlow-integrated comparison totals that do not separate one-time startup from primed steady-state occupancy are **provisional and must be recalculated before being used for architecture ranking**. This correction does not change any hardware capacity or bandwidth decision; it changes benchmark accounting and model validation requirements.
