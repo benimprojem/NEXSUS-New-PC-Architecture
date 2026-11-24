@@ -120,7 +120,7 @@ TW is a general-purpose task-local working file. A program may use it as stack-l
 
 - WLOAD.TW and WSTORE.TW provide byte-offset access to the current task's TW through DA staging.
 - WLOAD.OW and WSTORE.OW are available only to authorized PL1/PL2 OS code.
-- Register-bank save/restore uses explicit MOV.DA.RA / MOV.RA.DA, MOV.DA.FA / MOV.FA.DA, and MOV.DA.MA / MOV.MA.DA operations with WSTORE/WLOAD.
+- Register-bank save/restore uses explicit MOV.DA.RA / MOV.RA.DA, MOV.DA.FA / MOV.FA.DA, and MOV.DA.MA / MOV.MA.DA operations with WSTORE/WLOAD. MOV and WLOAD/WSTORE DA operands consume the shared RAC 32R+32W register-access budget; wide DA groups reserve all touched entries atomically.
 - DA staging clobbers must be included in the save plan. If DA values are live, preserve them before using DA as staging and restore them last.
 - XFER.WS.MEM copies a selected OW/TW byte range directly to or from an L1–L4 Data RAM domain. A full 8 KiB TW image can be persisted or restored in one transfer.
 - XFER.WS.START uses the existing asynchronous token model; XFER.WAIT is the completion boundary.
