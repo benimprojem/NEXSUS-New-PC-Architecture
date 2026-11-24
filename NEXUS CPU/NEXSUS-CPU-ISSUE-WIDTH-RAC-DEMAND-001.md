@@ -114,7 +114,7 @@ RAC admission must remain atomic: reserve every source and destination footprint
 
 ## 8. Current decision
 
-**Global issue width: BASELINE = 16 instructions/cycle.** Compare 8, 12, 24 and 32; reopen only with measured evidence.
+**Global backend issue width: BASELINE = 16 instructions/cycle.** Compare 8, 12, 24 and 32; reopen only with measured evidence. This is the backend issue-selector ceiling, not a sustained-IPC guarantee: the current simulator profile still has front-end=8 and dispatch=8. Sustained issue rate is therefore front-end/dispatch-limited unless ready instructions have accumulated in the scheduler. NEX-T016 temporarily raises front-end/dispatch to 16 only to isolate the backend issue/RAC interaction; a separate front-end/dispatch sweep is still required.
 
 **RAC logical budget: BASELINE = 80R/64W per cycle.** Each slot is one logical 64-bit register/workspace lane access. This is not a requirement for a monolithic 80-read/64-write SRAM. Physical banking, replication, bypass, collectors and distributed writeback implement the logical budget.
 
