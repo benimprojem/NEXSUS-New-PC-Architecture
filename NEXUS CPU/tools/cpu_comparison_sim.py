@@ -102,7 +102,7 @@ PROFILES = {
     "nexus_balanced_128": {
         "name": "NEXSUS CPU / 8-core proposed architecture",
         "core_count": 8, "core_type": "uniform", "frontend": 8,
-        "dispatch": 8, "issue": 10, "retire": 8, "rob": 512, "scheduler_entries": 256,
+        "dispatch": 8, "issue": 16, "retire": 8, "rob": 512, "scheduler_entries": 256,
         "units": {"ARITH": 8, "LOGIC": 8, "CMP": 8, "FP": 6, "FMA": 4, "VEC": 2, "LOAD": 8, "STORE": 4, "BR": 2, "CTX": 1, "ATOM": 1, "ME512": 1, "IRQ": 1},
         "execution_topology": {"ARITH128_PAIRS": [[0, 1], [2, 3]]},
         "latency": {"ARITH": 1, "LOGIC": 1, "CMP": 1, "FP": 3, "FMA": 4, "VEC": 2, "LOAD": 4, "STORE": 1, "BR": 1, "ATOM": 8, "CTX": 4, "ME512": 4, "IRQ": 6},
