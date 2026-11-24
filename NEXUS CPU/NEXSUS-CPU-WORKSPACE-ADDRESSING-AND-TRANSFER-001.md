@@ -72,6 +72,18 @@ Existing explicit register-transfer instructions are reused; there is no hidden 
 
 The compiler/ABI must track DA staging clobbers. If DA values are live across the save/restore sequence, those DA entries must be preserved before they are used as staging. MA 256-bit values and 512-bit pairs follow the existing DA group and selector-alignment rules.
 
+Example — save one RA register into TW and restore it later:
+
+```asm
+MOV.DA.RA     DA0, RA7
+WSTORE.TW.W64 [0x000], DA0
+
+; ... RA7 may now be reused ...
+
+WLOAD.TW.W64  DA0, [0x000]
+MOV.RA.DA     RA7, DA0
+```
+
 This design lets OW/TW hold register snapshots, spill records, call frames, task-local structures, and temporary datasets without forcing a LIFO stack abstraction.
 
 ## 5. OW/TW ↔ Data RAM block transfer
