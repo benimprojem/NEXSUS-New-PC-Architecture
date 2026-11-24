@@ -8,7 +8,7 @@ class DynamicRACAllocatorT015(unittest.TestCase):
         rac = RACAllocator()
         requests = [
             RACRequest("ra", reads=tuple(("RA", i, 1) for i in range(24)),
-                       writes=tuple(("RA", 32 + i, 1) for i in range(12)),
+                       writes=tuple(("RA", i, 1) for i in range(12)),
                        queue_class="ARITH"),
             RACRequest("fa", reads=tuple(("FA", i, 1) for i in range(24)),
                        writes=tuple(("FA", 0 + i, 1) for i in range(8)),
