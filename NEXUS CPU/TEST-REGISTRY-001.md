@@ -49,7 +49,7 @@ These tests are designed from the architecture contract upward. Implement them i
 | NEX-T011 | Cross-architecture comparison | Identical logical work; native and 8-core controlled mode; only core count, CPU clock and CPU-to-memory bandwidth normalized | VALID |\n| NEX-T012 | System Fabric 2× clock and time-interleaved scheduling | Two Fabric ticks per CPU cycle; destination queues progress without false shared-bus serialization; link bandwidth is not multiplied merely by clock ratio; fairness and backpressure are explicit | DEFERRED — final integrated-system phase |
 | NEX-T013 | Instruction pipeline overlap | Continuous CodeFlow page delivery, EB ping-pong safety, registered stage rates and non-starving steady-state feed | VALID |
 | NEX-T014 | Memory path contract | App RAM/Data RAM independence, per-core Data RAM service and cache-fill topology invariants | VALID |
-| NEX-T015 | Dynamic RAC admission and distributed writeback | Shared 80R/64W logical pool, atomic reservations, age-prioritized work-conserving selection, physical bank conflicts, same-destination write rejection and parallel writes to distinct banks | IMPLEMENTED |
+| NEX-T015 | Dynamic RAC admission and distributed writeback | Shared 80R/64W logical pool, atomic reservations, age-prioritized work-conserving selection, physical bank conflicts, same-destination write rejection and parallel writes to distinct banks | VALID |
 
 ### 3.1 NEX-T001 implementation record
 
@@ -90,7 +90,7 @@ These tests are designed from the architecture contract upward. Implement them i
 - Contract: one shared per-core 80R/64W logical 64-bit slot pool across RA/FA/DA/MA and CPU-originated workspace requests; physical bank ports remain independent, explicit implementation parameters.
 - Required behavior: complete instruction footprints are granted atomically; different banks may write in parallel; same-destination multiwrite is rejected; a physical bank conflict must not waste available capacity in another bank; age-prioritized waiting requests are retried.
 - Implementation commits: `9296508920d7cc2fdbb0d2f597742630b5040936`, `9c1c425533ed0b9ff216e952b7cf2e867de4cc79`, `c54e58bfdbcaa183376c628f98dff2b9b8507f3f`
-- Validation status: **IMPLEMENTED — awaiting CI validation**.
+- Validation: **VALID** on CI run [45441039124](https://github.com/benimprojem/NEXSUS-New-PC-Architecture/actions/runs/45441039124), commit `c54e58bfdbcaa183376c628f98dff2b9b8507f3f`; numbered contract tests and full regression-test step passed. The remaining full-workflow sweeps are separate validation stages.
 - Scope limitation: this is the logical admission/arbitration model; it does not yet model SRAM macro timing, replica placement, bypass-network delay, or integrated cycle-level execution.
 
 ### 3.3 NEX-T012 architecture definition\n\n- Architectural decision: System Fabric clock = 2× CPU core clock.\n- Scheduling model: two Fabric scheduling ticks are available per CPU cycle; requests may be time-interleaved across destination queues.\n- The model must distinguish scheduler opportunity from physical link bandwidth and destination service capacity.\n- Required tests: two-tick cadence; alternating destinations; same-destination queue contention; independent destination progress; backpressure; fairness under sustained mixed traffic; no implicit 2× link-bandwidth multiplier.\n- Execution status: **PLANNED**. Exact lane width, queue depth, multi-client arbitration, and destination service curves remain open.\n\n## 4. Historical test files — retained, not yet re-certified
