@@ -49,7 +49,7 @@ The currently documented peak operand demand, before MA and workspace-transfer t
 | DA: 8 LOAD + 4 STORE | 4 | 8 | 4 STORE source reads + 8 LOAD result writes |
 | **Subtotal** | **76** | **42** | Excludes MA, WLOAD/WSTORE, XFER and any extra operand/update traffic |
 
-This is a theoretical all-units-active operand demand, not a claim that all these instructions can issue together. Global issue width remains OPEN; evaluate 16, 24 and 32 instructions/cycle independently from RAC capacity. The known scalar/FP/FMA read envelopes are 36R/52R/68R at those widths, before VEC/ME512 and workspace operations. See `NEXSUS-CPU-ISSUE-WIDTH-RAC-DEMAND-001.md`. MA demand is also not fully normalized because VEC and ME512 operand footprints must be expressed in 256-bit MA entries.
+This is a theoretical all-units-active operand demand, not a claim that all these instructions can issue together. Global issue width baseline is 16 instructions/cycle; compare 8/12/24/32 independently from RAC capacity. The known scalar/FP/FMA read envelopes are 36R/52R/68R at widths 16/24/32, before VEC/ME512 and workspace operations. Each 256-bit MA entry consumes four 64-bit RAC slots, so normalized MA opcode demand is added on top of these scalar/FP/FMA envelopes. See `NEXSUS-CPU-ISSUE-WIDTH-RAC-DEMAND-001.md`.
 
 Consequences:
 
@@ -78,7 +78,7 @@ The RAC must remain work-conserving and dynamically allocate the full pool among
 Each issue candidate declares its complete logical footprint:
 
 - RA/FA/DA: each 64-bit register lane read or written counts as one slot.
-- MA: count each 256-bit MA entry independently; a 512-bit pair counts two entries per source or destination.
+- MA: each 256-bit MA entry consumes 4 logical 64-bit RAC slots per read/write; a 512-bit pair consumes 8 slots. A matrix tile with T MA entries consumes 4T slots for each full source or destination group.
 - WLOAD: workspace read lanes + DA destination write lanes.
 - WSTORE: DA source read lanes + workspace write lanes.
 - FP128 and other paired register operands count each physical 64-bit FA entry.
@@ -96,7 +96,7 @@ Age-based fairness is required, but a ready high-priority instruction may use id
 4. Record per-cycle requested versus granted reads/writes, issue stalls by reason, queue age, bank conflicts, DA conflicts, writeback conflicts, throughput and fairness.
 5. Add simultaneous WS+OS tests to confirm the two independent arrays do not cross-contend.
 6. Add XFER+WLOAD tests on the same workspace and on opposite workspaces.
-7. Test worst-case MA pair and 512-bit DA groups; normalize all MA opcode footprints before the final RAC decision.
+7. Test worst-case MA pair and 512-bit DA groups; each MA entry counts as four 64-bit RAC slots. Validate every opcode/tile footprint against the 80R/64W baseline.
 8. Compare area/power/timing estimates for the selected logical budget and physical register-file banking/replication. A logical 48R/48W budget does not require one monolithic 48-port SRAM.
 
 ## 7. Current conclusion
