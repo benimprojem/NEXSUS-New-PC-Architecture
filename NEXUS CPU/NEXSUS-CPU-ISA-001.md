@@ -301,7 +301,7 @@ NEXSUS CPU, veri belleği ve SPM byte erişimlerinde **little-endian** kullanır
 - 128/256/512-bit LOAD işlemlerinde en düşük adresli 64-bit parça ilk DA kaydına yazılır; sonraki parçalar artan adres sırasıyla artan DA selector'larına yerleştirilir. STORE ters yönde aynı eşlemeyi kullanır.
 - FA128 pair'inde düşük anlamlı 64 bit çift indisli ilk FA kaydında, yüksek anlamlı 64 bit sonraki FA kaydındadır.
 - 512-bit MA pair'inde düşük anlamlı 256 bit ilk MA kaydında, yüksek anlamlı 256 bit sonraki MA kaydındadır. DA grubu kullanılıyorsa en düşük DA selector'ı en düşük anlamlı 64-bit parçayı tutar.
-- 64-bit instruction word'leri bellekten/P0'a little-endian byte sırasıyla alınır. EXT çok sözcüklü komutunda literal word, ana word'ü izleyen daha yüksek adresli word'dür; literal'in byte sıralaması da little-endian'dır.
+- 64-bit instruction word'leri App RAM'den beslenen ve aktif bankı Execution Buffer (EB) içinde bulunan instruction-fetch yolundan little-endian byte sırasıyla alınır. EXT çok sözcüklü komutunda literal word, ana word'ü izleyen daha yüksek adresli word'dür; literal'in byte sıralaması da little-endian'dır.
 - Little-endian, register bit numaralandırmasını veya encoding alanlarının mantıksal word içindeki bit konumlarını değiştirmez.
 
 Bu sıralama ISA düzeyinde sabittir; bellek denetleyicisi ve bus byte-lane eşlemesi mikro-mimari uygulama ayrıntısıdır.
@@ -1442,7 +1442,7 @@ CSR IDs and privilege, exception, vector and IRQ state are defined in `NEXSUS-CP
 
 The interrupt/context save protocol is specified in **NEXSUS-CPU-CONTEXT-SAVE-RESTORE-001.md**. It uses existing instructions only; no dedicated SAVECTX/RESTORECTX opcode is introduced in the baseline.
 
-- Context Pool (CP0–CP3) is protected storage managed only by privileged context-manager paths; it is not exposed through generic SPM.RD/SPM.WR instructions.
+- Context Pool (CP0–CP3) is protected storage managed only by privileged context-manager paths; it is not exposed through generic software workspace load/store instructions.
 - Exception Workspace (XW) is reserved to exception hardware for depth-selected entry state; persistent exception frames reside in protected Data RAM.
 - MOV.DA.RA / MOV.RA.DA, MOV.DA.FA / MOV.FA.DA, and MOV.DA.MA / MOV.MA.DA provide the existing architectural register-bank transfer paths.
 - LOAD/STORE move DA staging groups to/from the protected Data RAM software frame. OW is used for OS bookkeeping and TW ownership is preserved across task switches.
