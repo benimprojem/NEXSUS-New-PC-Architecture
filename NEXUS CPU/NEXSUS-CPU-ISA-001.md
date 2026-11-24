@@ -48,11 +48,11 @@ Bu 48R/24W, her sınıfın tam kapasiteyle aynı çevrimde issue edebildiği teo
 | DA | LOAD sonuçları 8W; STORE kaynakları 4R | Transfer/XFER ve geniş erişimler ayrıca sayılmalı |
 | MA | VEC=2 ve ME512=1 execution kaynakları | Tam MA read/write sayısı operand başına MA register sayısı ve 256/512-bit biçime göre hesaplanmalı; kesinleştirilmeden port sayısı yazılmaz |
 
-**Ortak register erişim bütçesi (UNDER EVALUATION):** Önceki 32R/32W değeri artık sabit değildir. İlk yeni deney noktası 48 mantıksal 64-bit read + 48 write slotu/çevrimdir; 64/48 ve 80/48 gibi alternatifler de ölçülecektir. Bu bütçe RA/FA/DA/MA bankalarının ve register kullanan tüm execution sınıflarının ortak havuzudur; her bankaya ayrı kota verilmez. Bir merkezi **Register Access Controller (RAC)**, bağımsız issue queue'ların o çevrimdeki hazır komutlarını, yaşını/önceliğini, kaynak-hedef operand sayılarını ve bank uygunluğunu izleyerek erişimleri dinamik dağıtır. Bir sınıfın kullanmadığı kapasite başka sınıfa verilebilir. Seçim work-conserving olmalı; sürekli talep eden bir sınıfın aç kalmaması için yaşlandırma/fairness uygulanmalıdır. Bir komutun gerekli tüm kaynak okumaları ve hedef yazma rezervasyonu atomik yapılır; bütçe yetmiyorsa komut kısmen issue edilmez. Aynı fiziksel hedefe aynı çevrimde birden fazla write yasaktır. Broadcast, bypass ve operand collector fiziksel trafik azaltımı olarak ayrıca modellenebilir; seçilecek RAC mantıksal erişim tavanını aşamaz. Banka çakışmaları ve MA/FA pair erişimleri gerçek register-entry tüketimi olarak sayılır.
+**Ortak register erişim bütçesi BASELINE = 80R/64W per core per cycle:** Her slot bir mantıksal 64-bit read/write lane erişimidir. RA/FA/DA/MA bankaları ve CPU kaynaklı WS/OS WLOAD/WSTORE uç noktaları aynı dinamik havuzu paylaşır; banka başına sabit kota yoktur. RAC hazır issue-queue komutlarını operand footprint'i, yaş ve banka uygunluğuna göre work-conserving biçimde seçer. Bir komutun tüm kaynak ve hedef slotları atomik rezerve edilir; bütçe veya fiziksel kaynak yetersizse komut kısmen issue edilmez. Aynı hedef register'a aynı çevrimde birden fazla write yasaktır. Farklı fiziksel bankalardaki hedeflere paralel writeback, bank/port ve global writeback ağı izin verdiği ölçüde desteklenir. Her 256-bit MA entry dört 64-bit RAC slotu, her 512-bit MA pair sekiz slot tüketir. Broadcast, bypass ve operand collector yalnızca kanıtlanmış fiziksel trafik optimizasyonlarıdır; mantıksal RAC slot muhasebesini değiştirmez.
 
 ### 1.2 Merkezi Register Access Controller (RAC)
 
-RAC, tüm register bankları ve WLOAD/WSTORE workspace uç noktaları için ortak, deneylerle belirlenecek R/W erişim bütçesini yönetir (ilk deney noktası 48R+48W/cycle). Ayrı execution sınıflarının issue queue'ları RAC'a talep sunar; RAC o çevrimin hazır ve bağımlılıkları çözülmüş komutları arasından dinamik seçim yapar. Seçim, komut yaşı ve kuyruk bekleme süresini dikkate alarak work-conserving ve starvation-resistant olmalıdır. Kaynak operandlarının tamamı ile hedef yazma hakkı aynı anda rezerve edilmeden komut issue edilmez. Bir erişim bütçesi dolduğunda komut bekler; kullanılmayan haklar başka sınıflarca tüketilebilir. RAC R/W değerleri tüm register bankları ve workspace uç noktalarının toplamıdır; banka başına ayrı kota değildir. Pair işlemlerinde tüketilen fiziksel entry sayısı kadar erişim sayılır. RAC'ın bank içi port/replica yerleşimi, bypass ve collector topolojisi mikro-mimari uygulama kararıdır.
+RAC, tüm register bankları ve WLOAD/WSTORE workspace uç noktaları için çekirdek başına **80R/64W mantıksal 64-bit slot** bütçesini yönetir. Ayrı execution sınıflarının issue queue'ları RAC'a talep sunar; RAC hazır komutları operand footprint'i, yaşı ve banka uygunluğuna göre dinamik seçer. Seçim work-conserving ve starvation-resistant olmalıdır. Kaynak operandlarının tamamı ile hedef yazma hakkı aynı anda rezerve edilmeden komut issue edilmez. Kullanılmayan haklar başka sınıflarca tüketilebilir. Pair işlemleri her fiziksel MA entry için dört slot, 512-bit pair için sekiz slot tüketir. RAC'ın bank içi port/replica yerleşimi, bypass ve collector topolojisi mikro-mimari uygulama kararıdır.
 
 ## 2. Register sınıfları
 
@@ -83,7 +83,7 @@ RA/RB/RC/RD aynı RA fiziksel kaydının alt-bit görünümleridir; küçük gö
 | Context Pool (CP0–CP3) | 4 × 8 KiB | OS context-manager erişimi; korumalı task context image'ları |
 | Exception Workspace (XW) | 8 KiB; 8 × 1 KiB slice | Exception hardware'a özel; normal yazılım erişimi yok |
 
-OS ve WS ayrı çalışma alanı uç noktalarıdır; WLOAD/WSTORE işlemleri DA staging ile birlikte RAC'ın ortak 32R/32W bütçesine katılır. CodeFlow/EB erişim ve sahiplik kuralları §6 ve CodeFlow naming belgesinde; OS/WS/CP/XW izinleri §6 ve Workspace Access Protection belgesinde tanımlanır.
+OS ve WS ayrı çalışma alanı uç noktalarıdır; WLOAD/WSTORE işlemleri DA staging ile birlikte RAC'ın ortak 80R/64W mantıksal bütçesine katılır. CodeFlow/EB erişim ve sahiplik kuralları §6 ve CodeFlow naming belgesinde; OS/WS/CP/XW izinleri §6 ve Workspace Access Protection belgesinde tanımlanır.
 
 ### 2.2 Register bank ve operand kuralları
 
@@ -321,7 +321,7 @@ OS ve WS, L1–L4 Data RAM domain'lerinden ayrı, çekirdek-yerel ve doğrudan b
 - Workspace erişimi, seçilen genişliğe göre doğal hizalı olmalıdır. `offset + W/8` değeri 8192'yi aşamaz. Negatif offset, 64-bit taşma veya sınır dışı erişim fault üretir; adres sarımı yapılmaz.
 - WLOAD tüm DA hedef dilimlerini doğrulama tamamlanmadan değiştirmez. WSTORE için tüm aralık ve izin kontrolleri yazma başlamadan tamamlanır; validation fault durumunda workspace'in hiçbir byte'ı değişmez.
 - Kısmi genişlikte WLOAD, DA hedefinin kullanılmayan üst bitlerini sıfırlar; WSTORE yalnızca seçilen W bitini yazar. Veri little-endian'dır.
-- WLOAD ve WSTORE hem workspace uç noktasını hem DA staging uç noktasını RAC üzerinden rezerve eder. Ortak bütçe çevrim başına toplam R/W mantıksal 64-bit slotlarıdır; ilk deney noktası 48R+48W/cycle olup henüz sabitlenmemiştir; 128/256/512-bit erişimler her iki tarafta 2/4/8 slot tüketir. Bütün kaynak ve hedef lane'leri atomik rezerve edilir; bütçe yetersizse komut bekler ve kısmi erişim yapmaz. Fiziksel SRAM bank/port çakışmaları ayrıca bekleme oluşturabilir.
+- WLOAD ve WSTORE hem workspace uç noktasını hem DA staging uç noktasını RAC üzerinden rezerve eder. Ortak bütçe çevrim başına toplam R/W mantıksal 64-bit slotlarıdır; baseline 80R/64W per core per cycle'dır; 128/256/512-bit erişimler her iki tarafta 2/4/8 slot tüketir. Bütün kaynak ve hedef lane'leri atomik rezerve edilir; bütçe yetersizse komut bekler ve kısmi erişim yapmaz. Fiziksel SRAM bank/port çakışmaları ayrıca bekleme oluşturabilir.
 
 **Register banklarıyla veri alışverişi**
 - Register→workspace: mevcut `MOV.DA.RA`, `MOV.DA.FA` veya `MOV.DA.MA` komutları veriyi DA staging bankına alır; ardından `WSTORE.OS/WS` yazar.
@@ -331,7 +331,7 @@ OS ve WS, L1–L4 Data RAM domain'lerinden ayrı, çekirdek-yerel ve doğrudan b
 
 **OS/WS → Data RAM tek yönlü blok aktarımı**
 - `XFER.WS.MEM`, tek bir OS veya WS byte aralığını seçilmiş L1–L4 Data RAM domain'indeki byte aralığına kopyalar. Yön yalnızca workspace→Data RAM'dir; ters yön kodlanamaz. Tam 8 KiB çalışma alanı tek işlemle dış belleğe kaydedilebilir.
-- Bu blok aktarımı DA registerlarını kullanmaz; transfer motoru/Fabric yolunu kullanır. Bu nedenle RAC'ın 32R/32W mantıksal slotlarını tüketmez, fakat fiziksel workspace read bandwidth, Data RAM bank/controller ve transfer-engine kaynaklarını kullanır.
+- Bu blok aktarımı DA registerlarını kullanmaz; transfer motoru/Fabric yolunu kullanır. Bu nedenle RAC'ın 80R/64W mantıksal slotlarını tüketmez, fakat fiziksel workspace read bandwidth, Data RAM bank/controller ve transfer-engine kaynaklarını kullanır.
 - Kaynak aralığı transfer boyunca read-reserved; hedef aralık write-reserved ve unpublished olur. Başarılı tamamlanma hedef aralığı kullanılabilir kılar. Runtime transfer hatasında kısmi fiziksel yazma mümkün olsa da hedef aralık mantıksal olarak invalid/unpublished kalır; yazılım tam aralığı yeniden yazmadan yayımlayamaz.
 - `XFER.WS.START` kabul edildiğinde token, kaynak/hedef sahipliği ve rezervasyon tamamlanana veya hata kesinleşene kadar korunur. `XFER.WAIT` terminal sonucu tüketir. Var olan XFER token generation ve stale-token kuralları aynen geçerlidir.
 - OS/WS kaynağı aktarım boyunca değiştirilemez. Workspace hedefi diye bir transfer durumu yoktur. Bu, kaynak snapshot tutarlılığını ve hedefin kısmi görünür olmamasını sağlar.
@@ -1131,19 +1131,19 @@ RA ve FA rakamları 64-bit kayıt operandı sayısıdır; fiziksel byte/bit geni
 
 **MA logical operand footprint (256-bit MA entries):**
 
-| Opcode family | Source reads | Destination writes | Counting rule |
+| Opcode family | Source MA entries read | Destination MA entries written | RAC logical slots (64-bit lanes) | Counting rule |
 |---|---:|---:|---|
-| VADD/VSUB/VMUL/VDIV/VMIN/VMAX/VAND/VOR/VXOR/VMOD/VCMP/VSHL/VSHR | 2 MA entries | 1 MA entry | D/A/B or D/A/count; each operand is one 256-bit MA entry |
-| VMACC | 3 MA entries | 1 MA entry | A/B/acc read, D write |
-| VSUM | 1 MA entry | 1 MA entry | One source and one 256-bit result |
-| VDOT | 2 MA entries | 1 MA entry | A/B read, 256-bit D result |
-| MMUL.S/U | 2T entries | T entries | T = ceil(N×N×W/256); A/B read, D write |
-| MMAC.S/U | 3T entries | T entries | A/B/C read, D write; T as above |
-| MTRANS | T entries | T entries | Source and destination tile groups |
-| MREDUCE | T entries | O entries | T = ceil(N×N×W/256); O = ceil(N×(W+ceil(log2(N)))/256) |
-| ME512 512-bit pair operand | 2 entries per pair operand | 2 entries per pair result | Each 512-bit pair is two physical 256-bit MA entries |
+| VADD/VSUB/VMUL/VDIV/VMIN/VMAX/VAND/VOR/VXOR/VMOD/VCMP/VSHL/VSHR | 2 | 1 | 8R / 4W | D/A/B or D/A/count; each MA operand is 256-bit |
+| VMACC | 3 | 1 | 12R / 4W | A/B/acc read, D write |
+| VSUM | 1 | 1 | 4R / 4W | One source and one 256-bit result |
+| VDOT | 2 | 1 | 8R / 4W | A/B read, 256-bit D result |
+| MMUL.S/U | 2T | T | 8T R / 4T W | T = ceil(N×N×W/256); A/B read, D write |
+| MMAC.S/U | 3T | T | 12T R / 4T W | A/B/C read, D write; T as above |
+| MTRANS | T | T | 4T R / 4T W | Source and destination tile groups |
+| MREDUCE | T | O | 4T R / 4O W | T = ceil(N×N×W/256); O = ceil(N×(W+ceil(log2(N)))/256) |
+| ME512 512-bit pair operand | 2 entries per pair operand | 2 entries per pair result | 8 RAC slots per pair read/write | Each 512-bit pair is two physical 256-bit MA entries; each MA entry is four 64-bit slots |
 
-A full MA tile operand is counted by its complete architectural register group, even if the ME512 datapath internally processes it in 512-bit slices. Full source/destination aliasing does not silently reduce logical accounting; any read reuse, in-place forwarding or write elision must be explicitly modeled as a physical optimization while preserving atomic architectural commit. Partial-overlap rules and alignment are enforced by the ISA tile-group rules.
+A full MA tile operand is counted by its complete architectural register group, even if the ME512 datapath internally processes it in 512-bit slices. **Each 256-bit MA entry contributes four logical 64-bit RAC slots**, so all R/W slot totals multiply MA-entry counts by four. Full source/destination aliasing does not silently reduce logical accounting; any read reuse, in-place forwarding or write elision must be explicitly modeled as a physical optimization while preserving atomic architectural commit. Partial-overlap rules and alignment are enforced by the ISA tile-group rules.
 
 Fiziksel uygulama için tek bir 48-read/24-write RA register-file veya 24-read/10-write FA register-file zorunlu değildir. Bankalama, read replication, operand broadcast/collector, bypass ve sınıf bazlı writeback portları birlikte tasarlanabilir. Aynı fiziksel register'a aynı cycle birden fazla write yasaktır; farklı hedeflere paralel writeback ise bank/port ve global writeback kapasitesi izin verdiği ölçüde yapılır.
 
@@ -1225,7 +1225,7 @@ Bu örnekler little-endian memory byte sıralamasını değil, register bit dili
 - Aynı RA hücresinin birden fazla komutta okunması broadcast/collector ile fiziksel trafik azaltabilir; ancak seçilecek RAC mantıksal erişim tavanı ve gerçek banka uygunluğu korunur.
 - Scalar destination write, RAC bütçesinden bir write slotu tüketir. RB/RC/RD write da aynı fiziksel RA hedefi için tek write slotudur ve maskeli güncelleme gerektirir.
 - Aynı çevrimde aynı RA hücresine iki destination yazılamaz.
-- Üç scalar havuzun teorik talebi 48R/24W olabilir; RAC tüm RA/FA/DA/MA bankları ve WS/OS uç noktaları için ortak deneysel R/W tavanı içinde hazır komutları dinamik seçer; ilk yeni deney noktası 48R/48W'tır. Talep bütçeyi aşarsa komutun tüm operand/yazma rezervasyonu ertelenir.
+- Üç scalar havuzun teorik talebi 48R/24W olabilir; RAC tüm RA/FA/DA/MA bankları ve WS/OS uç noktaları için ortak 80R/64W başlangıç tavanı içinde hazır komutları dinamik seçer. Talep bütçeyi aşarsa komutun tüm operand/yazma rezervasyonu ertelenir.
 - Register bank replication, operand collector, bypass ve bank topolojisi fiziksel uygulama kararlarıdır; RAC erişim tavanını değiştirmez.
 
 
@@ -1239,7 +1239,7 @@ OS, WS, CP0–CP3 and XW are separate role-governed workspaces, not one uniforml
 - XW is exception-hardware-owned and depth-sliced. Normal software reads and writes are denied.
 - EB is a code-fetch workspace, not a software data memory. C0 and CS0–CS7 are managed by CFM/CST and are not general-purpose load/store targets.
 
-OS ve WS fiziksel olarak ayrı 8 KiB SRAM array'leridir; her biri 16 × 512 B bank ve bank başına 1R+1W önerisiyle modellenir. Bu yön RAC-48RW-EVALUATION belgesinde seçilmiştir; gecikme, ECC ve arbitration ayrıntıları hâlâ doğrulanacaktır. CPU kaynaklı WS/OS erişimleri ortak deneysel RAC bütçesine tabidir; fiziksel bank çakışmaları hizmeti geciktirebilir. Role/permission violations are protection faults, not ordinary bank-contention stalls.
+OS ve WS fiziksel olarak ayrı 8 KiB SRAM array'leridir; her biri 16 × 512 B bank ve bank başına 1R+1W önerisiyle modellenir. Bu yön RAC-48RW-EVALUATION belgesinde seçilmiştir; gecikme, ECC ve arbitration ayrıntıları hâlâ doğrulanacaktır. CPU kaynaklı WS/OS erişimleri ortak 80R/64W RAC başlangıç bütçesine tabidir; fiziksel bank çakışmaları hizmeti geciktirebilir. Role/permission violations are protection faults, not ordinary bank-contention stalls.
 
 
 ## 22. Ayrık veri bellekleri, yerleşim ve aktarım komutları (taslak)
