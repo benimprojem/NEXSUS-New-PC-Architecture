@@ -76,9 +76,9 @@ Initial worst-case logical operand demand, before broadcast/replication:
 - DA: up to **8 load-result writes + 4 store-source reads/cycle**, before transfer/XFER demand.
 - MA: VEC=2 and ME512=1 are included in the port budget; exact MA-entry reads/writes remain OPEN until every vector/matrix opcode's operand footprint is normalized to 256-bit MA entries.
 
-**FIXED shared access budget:** one core-wide pool of **32 logical register reads + 32 logical register writes per cycle**, shared across RA/FA/DA/MA (not 32+32 per bank). A centralized Register Access Controller (RAC) arbitrates dynamically using ready issue-queue demand, operand counts, bank availability and queue age. The allocator is work-conserving and starvation-resistant; it atomically reserves all source reads and destination writes for an instruction, otherwise that instruction does not issue. Idle capacity in one class is available to another. Pair operations count each physical register entry. Same-destination multiwrite remains prohibited.
+**FIXED shared access budget:** one core-wide pool of **32 logical 64-bit reads + 32 logical 64-bit writes per cycle**, shared across RA/FA/DA/MA register banks and CPU-originated WS/OSSpace workspace accesses. This is one total budget, not 32+32 per bank or per workspace. The Resource Access Controller (RAC) arbitrates dynamically using ready issue-queue demand, operand footprints, bank availability and queue age. The allocator is work-conserving and starvation-resistant; it atomically reserves every source read and destination write for an instruction, otherwise that instruction does not issue. WLOAD reserves workspace reads plus DA writes; WSTORE reserves DA reads plus workspace writes. A 128/256/512-bit WLOAD/WSTORE consumes 2/4/8 logical 64-bit slots on each side. XFER.WS.MEM/START use the independent transfer engine and do not consume RAC logical slots. Idle capacity in one class is available to another. Pair operations count each physical register entry. Same-destination multiwrite remains prohibited.
 
-These are logical access limits, not a commitment to one monolithic multiported array. Banking, replication, operand broadcast/collectors, bypass and distributed writeback remain implementation choices. Bank conflicts and the physical topology must be modeled separately; no class has a permanently reserved fixed share of the 32R/32W pool.
+These are logical access limits, not a commitment to one monolithic multiported array or 32 arbitrary conflict-free workspace ports. Banking, replication, operand broadcast/collectors, bypass and distributed writeback remain implementation choices. Bank conflicts and the physical topology must be modeled separately; no class or workspace has a permanently reserved fixed share of the 32R/32W pool.
 
 **Queue depths, physical read/write ports, bank/replica topology, cross-unit connectivity, same-cycle conflict policy, forwarding and writeback arbitration remain OPEN** until a full demand matrix and cycle-level contention tests are complete.
 
@@ -118,8 +118,8 @@ Application RAM (App RAM)
 | Code Slots (CS0–CS7) | 8 × 2 KiB = 16 KiB/core | **FIXED** |
 | Execution Buffer (EB) | 2 × 2 KiB = 4 KiB/core | **FIXED** |
 | Active Execution Page | One active 2 KiB EB bank | **FIXED role** |
-| Operating-System Workspace (OW) | 8 KiB | **FIXED** |
-| Task Workspace (TW) | 8 KiB | **FIXED** |
+| OS Space (OSSpace) | 8 KiB | **FIXED** |
+| Work Space (WS) | 8 KiB | **FIXED; not task-ID-owned** |
 | Context Pool (CP0–CP3) | 4 × 8 KiB; 16 × 2 KiB context slots/core | **FIXED** |
 | Exception Workspace (XW) | 8 KiB; 8 × 1 KiB slices | **FIXED** |
 
@@ -341,7 +341,7 @@ Items already specified in architecture documents are not to be redesigned; they
 
 - The 2026-11-17 explicit clarification establishes independent Data RAM connections of 64 B/cycle per core (512 B/cycle aggregate for eight cores); the older 64 B/cycle aggregate wording is superseded. The 2026-11-13 revision also confirms 32-entry RA/FA/DA/MA banks.
 - The 2026-11-16 App RAM connection correction establishes 64 B/cycle per core and 512 B/cycle aggregate for the eight-core block; System Fabric coordinates independent core-facing paths. Older 64-entry register tables are superseded.
-- The 2026-11-16 memory-path naming decision establishes C0, CS, CST, EB, OW, TW, CP, and XW as current terms. PX, P0–P7, Ping-Pong, SPM0, and L0I are legacy terms.
+- The 2026-11-24 workspace naming decision establishes OS Space (OSSpace) and Work Space (WS) as current terms. OW and TW are superseded symbols and must not appear in current architecture text. PX, P0–P7, Ping-Pong, SPM0, and L0I remain legacy terms.
 - The latest explicit execution-resource decision fixes INT=8, FP64=6, FMA=4, VEC=2, ME512=1.
 - Cache sharing is already defined and simulator-tested: private L1, L2 shared per 2 cores, L3 per 4 cores, and L4 per 8-core group. The latest explicit capacity decision fixes these to L1=1 MiB/core, L2=2 MiB/2-core group, L3=8 MiB/4-core group, and L4=64 MiB+/8-core group.
 
