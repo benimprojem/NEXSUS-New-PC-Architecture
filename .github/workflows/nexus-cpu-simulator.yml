@@ -36,6 +36,8 @@ jobs:
           python -m py_compile "NEXUS CPU/tools/core_scaling_comparison.py"
           python -m py_compile "NEXUS CPU/tools/test_core_scaling_comparison.py"
           python -m py_compile "NEXUS CPU/tools/test_cpu_comparison_sim.py"
+          python -m py_compile "NEXUS CPU/tools/register_subbank_topology_sweep.py"
+          python -m py_compile "NEXUS CPU/tools/test_register_subbank_topology_sweep.py"
           python -m py_compile "NEXUS CPU/tools/l0i_px_pipeline_sim.py"
           python -m py_compile "NEXUS CPU/tools/test_l0i_px_pipeline_sim.py"
           python -m py_compile "NEXUS CPU/tools/run_cross_arch_codeflow_suite.py"
@@ -97,6 +99,7 @@ jobs:
         working-directory: "NEXUS CPU/tools"
         run: |
           python test_cpu_comparison_sim.py
+          python test_register_subbank_topology_sweep.py
           python test_l0i_px_pipeline_sim.py
           python test_nexus_naming_standard.py
           python test_p0p1_command_buffer_sim.py
@@ -693,37 +696,22 @@ jobs:
                       values.append(row["total_cycles"])
                   print(f"{arch}: cycles 1/2/4/8 = {values}")
           PY
-      - name: Generate full architecture benchmark tables
+      - name: Run register sub-bank topology sensitivity sweep
         run: |
-          python "NEXUS CPU/tools/generate_full_architecture_benchmark.py" --scale 1 --output-dir /tmp/nexus-full-architecture-benchmark
+          python "NEXUS CPU/tools/register_subbank_topology_sweep.py" --json > /tmp/nexus-register-subbank-topology.json
           python - <<'PY'
           import json
-          from pathlib import Path
-          root = Path("/tmp/nexus-full-architecture-benchmark")
-          data = json.loads((root / "full-architecture-results.json").read_text(encoding="utf-8"))
-          assert len(data["kernel_names"]) == 37, len(data["kernel_names"])
-          assert set(data["modes"]) == {"native", "normalized_8core", "normalized_8core_common_memory"}
-          expected = {"amd_9950x3d2", "intel_xeon_698x", "apple_m6", "nexus_balanced_128"}
-          for mode_name, mode in data["modes"].items():
-              assert set(mode) == expected
-              assert len({mode[arch]["total_ops"] for arch in expected}) == 1
-              for kernel in data["kernel_names"]:
-                  assert len({mode[arch]["kernels"][kernel]["ops"] for arch in expected}) == 1
-              if mode_name != "native":
-                  assert {mode[arch]["cores_configured"] for arch in expected} == {8}
-          common = data["modes"]["normalized_8core_common_memory"]
-          assert {common[arch]["clock_ghz"] for arch in expected} == {3.0}
-          assert {common[arch]["aggregate_dram_bytes_per_cycle"] for arch in expected} == {512}
-          assert len({common[arch]["cpu_ram_reference_clock_ghz"] for arch in expected}) == 1
-          nexus = common["nexus_balanced_128"]["kernels"]["streaming"]["memory_controller"]
-          assert nexus["per_core_bytes_per_cycle"] == 64
-          assert nexus["aggregate_core_facing_capacity_bytes_per_cycle"] == 512
-          print("PASS: native, 8-core native-profile, and controlled 8-core comparisons; identical per-kernel operation counts.")
-          print("CONTROLLED MODE: 8 cores, 3.0 GHz, 64 B/cycle/core CPU-memory interface (512 B/cycle aggregate); architecture-specific latency/cache/execution retained.")
-          assert (root / "full-architecture-results.md").stat().st_size > 1000
-          assert (root / "full-architecture-results.csv").stat().st_size > 1000
-          print(f"PASS: {len(data['kernel_names'])} kernels, four architecture profiles, native and normalized-8-core tables.")
+          data = json.load(open("/tmp/nexus-register-subbank-topology.json", encoding="utf-8"))
+          assert data["result_count"] == 32
+          assert data["operations_per_case"] == 168
+          assert data["architecture_defaults_selected"] is False
+          assert all(row["status"] in {"completed", "infeasible"} for row in data["results"])
+          for row in data["results"]:
+              if row["status"] == "completed":
+                  assert row["completed"] and row["retired_ops"] == row["logical_ops"]
+          print("PASS: 32 register sub-bank candidates evaluated; no physical default selected.")
           PY
+
       - name: Upload comparison and CS sweep results
         if: always()
         uses: actions/upload-artifact@v4
@@ -732,7 +720,6 @@ jobs:
           path: |
             /tmp/nexus-l4-l1-transfer-sweep.json
             /tmp/nexus-l4-l1-distribution-comparison.json
-            /tmp/nexus-full-architecture-benchmark/
             /tmp/nexus-core-scaling/
             /tmp/nexus-scheduler-rob/
             /tmp/nexus-cpu-results.json

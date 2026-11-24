@@ -1933,9 +1933,16 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
                         raise ValueError(
                             f"invalid physical RAC bank count for {register_class}: {count!r}"
                         )
-                if (p.rac_physical_read_ports_per_bank is None and
+                if (p.rac_physical_read_ports_per_bank is None or
                         p.rac_physical_write_ports_per_bank is None):
-                    raise ValueError("sub-bank mode requires per-bank read/write port maps")
+                    raise ValueError("sub-bank mode requires both per-bank read and write port maps")
+                missing_reads = set(p.rac_physical_bank_counts) - set(p.rac_physical_read_ports_per_bank)
+                missing_writes = set(p.rac_physical_bank_counts) - set(p.rac_physical_write_ports_per_bank)
+                if missing_reads or missing_writes:
+                    raise ValueError(
+                        f"sub-bank port maps missing register classes: reads={sorted(missing_reads)}, "
+                        f"writes={sorted(missing_writes)}"
+                    )
             if physical_ports_enabled and (read_accesses is None or write_accesses is None):
                 if op_rac_reads or op_rac_writes:
                     raise ValueError(
@@ -1990,6 +1997,14 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
                 continue
             read_port_map = (p.rac_physical_read_ports_per_bank
                              if subbank_mode else p.rac_physical_read_ports)
+            if subbank_mode:
+                for bank, count in read_counts.items():
+                    limit = read_port_map.get(bank[0], 0)
+                    if count > limit:
+                        raise ValueError(
+                            f"op {op.seq} requires {count} physical RAC reads from "
+                            f"{bank[0]} sub-bank {bank[1]}, configured limit is {limit}"
+                        )
             if read_port_map is not None and any(
                 physical_reads_this_cycle.get(bank, 0) + count >
                 read_port_map.get(bank[0] if subbank_mode else bank, 0)
@@ -1999,6 +2014,14 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
                 continue
             write_port_map = (p.rac_physical_write_ports_per_bank
                               if subbank_mode else p.rac_physical_write_ports)
+            if subbank_mode:
+                for bank, count in write_counts.items():
+                    limit = write_port_map.get(bank[0], 0)
+                    if count > limit:
+                        raise ValueError(
+                            f"op {op.seq} requires {count} physical RAC writes to "
+                            f"{bank[0]} sub-bank {bank[1]}, configured limit is {limit}"
+                        )
             if write_port_map is not None and any(
                 physical_writes_this_cycle.get(bank, 0) + count >
                 write_port_map.get(bank[0] if subbank_mode else bank, 0)
@@ -2063,7 +2086,8 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
     if retired != len(ops):
         raise RuntimeError(f"simulation did not drain: retired {retired}/{len(ops)}")
     return {
-        "cycles": cycle, "ops": len(ops), "ipc": round(len(ops)/max(1,cycle), 3),
+        "cycles": cycle, "ops": len(ops), "retired_ops": retired,
+        "completed": retired == len(ops), "ipc": round(retired/max(1,cycle), 3),
         "max_rob_occupancy": max_rob, "max_scheduler_occupancy": max_scheduler,
         "issue_peak_ops_per_cycle": issue_peak_ops_per_cycle,
         "rac_read_slots_granted": rac_read_slots_granted,

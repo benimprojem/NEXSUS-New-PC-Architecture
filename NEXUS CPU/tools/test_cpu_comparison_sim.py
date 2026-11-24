@@ -2061,6 +2061,32 @@ class RACCycleIntegrationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "missing physical RAC sub-bank count"):
             sim.simulate_stream([op], p)
 
+    def test_subbank_mode_requires_both_read_and_write_port_maps(self):
+        p = self._physical_rac_profile()
+        p.rac_physical_read_ports = None
+        p.rac_physical_write_ports = None
+        p.rac_physical_bank_counts = {"RA": 2, "FA": 2, "DA": 2, "MA": 2}
+        p.rac_physical_read_ports_per_bank = {"RA": 1, "FA": 1, "DA": 1, "MA": 1}
+        p.rac_physical_write_ports_per_bank = None
+        op = sim.Op(0, "INT", rac_reads=2, rac_writes=1,
+                    rac_read_accesses=(("RA", 0, 1), ("RA", 1, 1)),
+                    rac_write_accesses=(("RA", 2, 1),))
+        with self.assertRaisesRegex(ValueError, "requires both per-bank read and write port maps"):
+            sim.simulate_stream([op], p)
+
+    def test_subbank_mode_rejects_single_instruction_that_exceeds_one_bank_ports(self):
+        p = self._physical_rac_profile()
+        p.rac_physical_read_ports = None
+        p.rac_physical_write_ports = None
+        p.rac_physical_bank_counts = {"RA": 2, "FA": 2, "DA": 2, "MA": 2}
+        p.rac_physical_read_ports_per_bank = {"RA": 1, "FA": 1, "DA": 1, "MA": 1}
+        p.rac_physical_write_ports_per_bank = {"RA": 1, "FA": 1, "DA": 1, "MA": 1}
+        op = sim.Op(0, "INT", rac_reads=2, rac_writes=1,
+                    rac_read_accesses=(("RA", 0, 1), ("RA", 2, 1)),
+                    rac_write_accesses=(("RA", 1, 1),))
+        with self.assertRaisesRegex(ValueError, "requires 2 physical RAC reads"):
+            sim.simulate_stream([op], p)
+
     def test_16_wide_backend_can_issue_sixteen_when_frontend_and_rac_allow(self):
         p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
         p.frontend = 16

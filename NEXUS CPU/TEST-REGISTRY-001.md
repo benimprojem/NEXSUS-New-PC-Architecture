@@ -53,6 +53,7 @@ These tests are designed from the architecture contract upward. Implement them i
 | NEX-T016 | Cycle-level RAC and 16-wide issue integration | Proves 16 backend issues/cycle when front-end/RAC permit it; mixed 16-op issue window exceeds 80R demand, so simulator caps reads at 80, reports RAC stalls, preserves all operations and stays within 64W | VALID |
 | NEX-T017 | Cycle-level physical register-bank ports | Explicit RA/FA/DA/MA operand identities enforce configurable per-bank read/write ports; different banks proceed in parallel, same-bank port conflicts retry, same-cycle duplicate destinations serialize, and missing identity is rejected when physical-port mode is enabled | VALID |
 | NEX-T018 | Physical register sub-bank mapping | Configurable bank count per RA/FA/DA/MA class; register index maps deterministically by index modulo bank count; per-sub-bank read/write limits, collisions, parallelism and MA512 paired-entry accesses are tested without freezing a default topology | VALID |
+| NEX-T019 | Physical register sub-bank topology sensitivity | Sweep 2/4/8/16 sub-banks and 1R/1W, 2R/1W, 2R/2W and 4R/2W per-bank candidates under distributed and concentrated register-access mixes; reject impossible single-instruction port footprints immediately; select no default topology | IMPLEMENTED |
 
 ### 3.1 NEX-T001 implementation record
 
@@ -139,6 +140,20 @@ These tests are designed from the architecture contract upward. Implement them i
 - No bank count or per-bank port count is selected as the architecture default. This configurable mapping is not a claim about final SRAM macro implementation.
 - Validation: **VALID** on CI run [45483820830](https://github.com/benimprojem/NEXSUS-New-PC-Architecture/actions/runs/45483820830), commit `5a834219292d97355034987d2c311e66cfd5fc8f`. All 38 workflow steps passed, including compile, numbered contract tests, regression tests, architecture sweeps, full benchmark-table generation and artifact upload.
 - Scope limitation: validates deterministic sub-bank mapping and configurable per-sub-bank port constraints in the simulator. Actual SRAM macro topology, bank replication, bypass-network timing and integrated writeback timing remain OPEN.
+
+
+### 3.12 NEX-T019 physical register sub-bank topology sensitivity
+
+- Sweep: `NEXUS CPU/tools/register_subbank_topology_sweep.py`.
+- Regression: `NEXUS CPU/tools/test_register_subbank_topology_sweep.py`; simulator guard tests are in `test_cpu_comparison_sim.py`.
+- Candidate sub-bank counts per RA/FA/DA/MA class: 2, 4, 8 and 16.
+- Candidate per-bank port configurations: 1R/1W, 2R/1W, 2R/2W and 4R/2W.
+- Workloads: deterministic distributed and concentrated register-index patterns, including RA arithmetic, FA FP/FMA, DA LOAD/STORE, VEC512 and ME512 paired MA accesses.
+- The experiment retains the logical 80R/64W RAC budget and 16-wide isolated backend setup; it does not select a physical bank count or port topology.
+- Sub-bank mode requires both directional port maps and every configured register class in both maps. An instruction whose own footprint exceeds one physical sub-bank's ports is rejected immediately rather than stalling until the simulator cycle limit.
+- Simulator results now report `retired_ops` and `completed`; partial streams cannot be mistaken for successful workloads.
+- Status: **IMPLEMENTED — awaiting CI**.
+- Scope limitation: synthetic access-pattern sensitivity only. Compiler/register-allocator-derived operand traces, physical macro area/timing/power, replication and bypass costs remain future validation inputs.
 
 ### 3.3 NEX-T012 architecture definition\n\n- Architectural decision: System Fabric clock = 2× CPU core clock.\n- Scheduling model: two Fabric scheduling ticks are available per CPU cycle; requests may be time-interleaved across destination queues.\n- The model must distinguish scheduler opportunity from physical link bandwidth and destination service capacity.\n- Required tests: two-tick cadence; alternating destinations; same-destination queue contention; independent destination progress; backpressure; fairness under sustained mixed traffic; no implicit 2× link-bandwidth multiplier.\n- Execution status: **PLANNED**. Exact lane width, queue depth, multi-client arbitration, and destination service curves remain open.\n\n## 4. Historical test files — retained, not yet re-certified
 
