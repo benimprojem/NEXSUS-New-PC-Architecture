@@ -1806,6 +1806,7 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
     retired = 0
     max_rob = 0
     max_scheduler = 0
+    issue_peak_ops_per_cycle = 0
     rac_read_slots_granted = 0
     rac_write_slots_granted = 0
     rac_peak_read_slots_per_cycle = 0
@@ -1946,12 +1947,14 @@ def simulate_stream(ops: List[Op], p: CoreProfile) -> dict:
                 if branch_mispredict(op, branch_number, p.branch_predictor):
                     branch_misses += 1
                     frontend_blocked_until = max(frontend_blocked_until, cycle + p.branch_penalty)
+        issue_peak_ops_per_cycle = max(issue_peak_ops_per_cycle, issued_this_cycle)
         cycle += 1
     if retired != len(ops):
         raise RuntimeError(f"simulation did not drain: retired {retired}/{len(ops)}")
     return {
         "cycles": cycle, "ops": len(ops), "ipc": round(len(ops)/max(1,cycle), 3),
         "max_rob_occupancy": max_rob, "max_scheduler_occupancy": max_scheduler,
+        "issue_peak_ops_per_cycle": issue_peak_ops_per_cycle,
         "rac_read_slots_granted": rac_read_slots_granted,
         "rac_write_slots_granted": rac_write_slots_granted,
         "rac_peak_read_slots_per_cycle": rac_peak_read_slots_per_cycle,
