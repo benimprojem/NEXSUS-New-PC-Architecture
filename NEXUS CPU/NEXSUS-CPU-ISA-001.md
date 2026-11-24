@@ -8,7 +8,7 @@
 
 ## 1. Çekirdek Execution Unit konfigürasyonu
 
-Bu bölüm geçerli çekirdek başına execution kaynaklarını tanımlar. Eski “en az iki FPU” ve “iki FP komutu/çevrim” varsayımı kaldırılmıştır.
+Bu bölüm geçerli çekirdek başına execution kaynaklarını tanımlar. 
 
 | Birim | Çekirdek başına | İşlev |
 |---|---:|---|
