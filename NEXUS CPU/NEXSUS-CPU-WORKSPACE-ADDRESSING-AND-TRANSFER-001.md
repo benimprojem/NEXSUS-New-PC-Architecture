@@ -59,7 +59,7 @@ Rules:
 3. 128/256/512-bit accesses use 2/4/8 consecutive DA registers; the DA range must not exceed DA31.
 4. Little-endian byte order is identical to Data RAM LOAD/STORE.
 5. A narrow WLOAD zeroes unused high bits in the destination DA register. WSTORE changes only the selected W bits.
-6. All permission, ownership, bounds, alignment, and DA-selector checks occur before architectural commit.
+6. All permission, access-epoch, bounds, alignment, and DA-selector checks occur before architectural commit.
 7. A faulting WLOAD leaves every DA destination unchanged. A validation-faulting WSTORE changes no workspace byte.
 8. WLOAD/WSTORE are synchronous architectural accesses. Their internal latency and workspace bank/port implementation are microarchitectural.
 9. WLOAD/WSTORE reserve both their workspace and DA footprints through the shared RAC. Wide accesses reserve every touched 64-bit lane atomically. If the shared 32R+32W budget is unavailable, the instruction waits without a partial register or workspace operation.
@@ -101,7 +101,7 @@ This design lets OSSpace/WS hold register snapshots, spill records, call frames,
 
 - The source is OSSpace or WS; the destination is an L1–L4 Data RAM domain. Workspace selector, workspace offset, Data RAM byte address, and length are explicit. There is no direction bit.
 - Length is an unsigned byte count. A complete 8 KiB workspace can be moved in one operation; partial ranges are also permitted.
-- This path uses the transfer engine/Fabric path, not DA staging. It does not consume RAC register-read or register-write slots. By contrast, WLOAD/WSTORE do consume RAC slots for their DA register operands.
+- This path uses the transfer engine/Fabric path, not DA staging. It does not consume RAC logical access slots, but it consumes physical workspace read bandwidth and transfer-engine/Data RAM resources. CPU WLOAD/WSTORE operations consume the shared RAC budget for both workspace and DA lanes.
 - It does consume transfer-engine bandwidth and the relevant Data RAM bank/controller bandwidth. Independent banks/domains may continue in parallel under existing arbitration rules.
 - The source workspace range is read-reserved for the transfer lifetime. Workspace is never a destination.
 - Data RAM destination ranges use the existing XFER range-reservation and unpublished-destination rules. A destination becomes usable only after successful completion.
@@ -126,8 +126,8 @@ Workspace restore is CPU-mediated, not a transfer-engine operation: privileged c
 The workspace selector is not an authorization token.
 
 - OSSpace: PL1/PL2 only; PL0 always receives a protection fault.
-- WS: PL0 only for the current PL0 application execution context; PL1/PL2 may access it only through controlled scheduler/context-management paths.
-- A task cannot address another task's WS image.
+- WS: PL0 may access WS during an authorized application execution epoch; PL1/PL2 may access it only through controlled management, initialization, persistence, and recovery paths.
+- WS is not task-ID-owned or task-indexed. A protection-domain change must revoke the old access epoch and clear/reinitialize WS unless an explicitly authorized continuation preserves the same data domain.
 - EB, CP0–CP3, and XW are not exposed through these instructions.
 - Permission, active application-access epoch, range, alignment, and mapping validation precedes commit.
 - Violations use the existing precise protection, alignment, bounds, address-overflow, or memory-access fault path. No denied write may partially commit.
