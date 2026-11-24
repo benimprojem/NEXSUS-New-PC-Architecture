@@ -1995,6 +1995,71 @@ class RACCycleIntegrationTests(unittest.TestCase):
         ops = [sim.Op(0, "INT", rac_reads=1, rac_writes=1)]
         with self.assertRaisesRegex(ValueError, "explicit RAC bank/index metadata"):
             sim.simulate_stream(ops, p)
+ 
+    def test_subbanks_allow_parallel_access_to_distinct_register_indices(self):
+        p = self._physical_rac_profile()
+        p.rac_physical_read_ports = None
+        p.rac_physical_write_ports = None
+        p.rac_physical_bank_counts = {"RA": 4, "FA": 2, "DA": 2, "MA": 2}
+        p.rac_physical_read_ports_per_bank = {"RA": 1, "FA": 1, "DA": 1, "MA": 1}
+        p.rac_physical_write_ports_per_bank = {"RA": 1, "FA": 1, "DA": 1, "MA": 1}
+        ops = [
+            sim.Op(0, "INT", rac_reads=1, rac_writes=1,
+                   rac_read_accesses=(("RA", 0, 1),), rac_write_accesses=(("RA", 4, 1),)),
+            sim.Op(1, "INT", rac_reads=1, rac_writes=1,
+                   rac_read_accesses=(("RA", 1, 1),), rac_write_accesses=(("RA", 5, 1),)),
+        ]
+        result = sim.simulate_stream(ops, p)
+        self.assertEqual(result["issue_peak_ops_per_cycle"], 2)
+        self.assertEqual(result["stall_counters"]["rac_physical_read_port_blocked_op_cycles"], 0)
+        self.assertEqual(result["stall_counters"]["rac_physical_write_port_blocked_op_cycles"], 0)
+
+    def test_subbank_collision_stalls_only_same_physical_subbank(self):
+        p = self._physical_rac_profile()
+        p.rac_physical_read_ports = None
+        p.rac_physical_write_ports = None
+        p.rac_physical_bank_counts = {"RA": 2, "FA": 2, "DA": 2, "MA": 2}
+        p.rac_physical_read_ports_per_bank = {"RA": 1, "FA": 1, "DA": 1, "MA": 1}
+        p.rac_physical_write_ports_per_bank = {"RA": 1, "FA": 1, "DA": 1, "MA": 1}
+        ops = [
+            sim.Op(0, "INT", rac_reads=1, rac_writes=1,
+                   rac_read_accesses=(("RA", 0, 1),), rac_write_accesses=(("RA", 2, 1),)),
+            sim.Op(1, "INT", rac_reads=1, rac_writes=1,
+                   rac_read_accesses=(("RA", 2, 1),), rac_write_accesses=(("RA", 4, 1),)),
+            sim.Op(2, "FP", rac_reads=1, rac_writes=1,
+                   rac_read_accesses=(("FA", 0, 1),), rac_write_accesses=(("FA", 1, 1),)),
+        ]
+        result = sim.simulate_stream(ops, p)
+        self.assertGreater(result["stall_counters"]["rac_physical_read_port_blocked_op_cycles"], 0)
+        self.assertEqual(result["issue_peak_ops_per_cycle"], 2)
+        self.assertEqual(result["ops"], 3)
+
+    def test_ma512_pair_uses_two_physical_entries_and_eight_logical_slots(self):
+        p = self._physical_rac_profile()
+        p.rac_physical_read_ports = None
+        p.rac_physical_write_ports = None
+        p.rac_physical_bank_counts = {"RA": 4, "FA": 2, "DA": 2, "MA": 4}
+        p.rac_physical_read_ports_per_bank = {"RA": 1, "FA": 1, "DA": 1, "MA": 1}
+        p.rac_physical_write_ports_per_bank = {"RA": 1, "FA": 1, "DA": 1, "MA": 1}
+        op = sim.Op(0, "VEC", exec_width_bits=512, rac_reads=8, rac_writes=8,
+                    rac_read_accesses=(("MA", 0, 4), ("MA", 1, 4)),
+                    rac_write_accesses=(("MA", 2, 4), ("MA", 3, 4)))
+        result = sim.simulate_stream([op], p)
+        self.assertEqual(result["rac_peak_read_slots_per_cycle"], 8)
+        self.assertEqual(result["rac_peak_write_slots_per_cycle"], 8)
+        self.assertEqual(result["issue_peak_ops_per_cycle"], 1)
+
+    def test_subbank_mode_rejects_missing_class_mapping(self):
+        p = self._physical_rac_profile()
+        p.rac_physical_read_ports = None
+        p.rac_physical_write_ports = None
+        p.rac_physical_bank_counts = {"RA": 4}
+        p.rac_physical_read_ports_per_bank = {"RA": 1}
+        p.rac_physical_write_ports_per_bank = {"RA": 1}
+        op = sim.Op(0, "FP", rac_reads=1, rac_writes=1,
+                    rac_read_accesses=(("FA", 0, 1),), rac_write_accesses=(("FA", 1, 1),))
+        with self.assertRaisesRegex(ValueError, "missing physical RAC sub-bank count"):
+            sim.simulate_stream([op], p)
 
     def test_16_wide_backend_can_issue_sixteen_when_frontend_and_rac_allow(self):
         p = sim.profile_from_dict(sim.PROFILES["nexus_balanced_128"])
